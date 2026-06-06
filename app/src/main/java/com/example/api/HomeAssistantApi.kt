@@ -1,0 +1,52 @@
+package com.example.api
+
+import com.squareup.moshi.JsonClass
+import retrofit2.Response
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.POST
+import retrofit2.http.Path
+
+@JsonClass(generateAdapter = true)
+data class EntityState(
+    val entity_id: String,
+    val state: String,
+    val attributes: Map<String, Any>? = null,
+    val last_changed: String? = null,
+    val last_updated: String? = null
+) {
+    fun getDoubleAttribute(key: String): Double? {
+        val value = attributes?.get(key) ?: return null
+        return when (value) {
+            is Number -> value.toDouble()
+            is String -> value.toDoubleOrNull()
+            else -> null
+        }
+    }
+
+    fun getStringAttribute(key: String): String? {
+        return attributes?.get(key)?.toString()
+    }
+
+    fun getBooleanAttribute(key: String): Boolean? {
+        val value = attributes?.get(key) ?: return null
+        return when (value) {
+            is Boolean -> value
+            is String -> value.lowercase().toBooleanStrictOrNull()
+            is Number -> value.toInt() != 0
+            else -> null
+        }
+    }
+}
+
+interface HomeAssistantApi {
+    @GET("api/states")
+    suspend fun getStates(): List<EntityState>
+
+    @POST("api/services/{domain}/{service}")
+    suspend fun callService(
+        @Path("domain") domain: String,
+        @Path("service") service: String,
+        @Body payload: Map<String, Any>
+    ): Response<okhttp3.ResponseBody>
+}

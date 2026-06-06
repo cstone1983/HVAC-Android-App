@@ -1,0 +1,6 @@
+{
+  "name": "HVAC Controller",
+  "description": "Standalone HVAC home controller linking to Home Assistant climate, schedule state, and water heaters.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
