@@ -51,6 +51,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     val actionFeedback: StateFlow<String?> = _actionFeedback.asStateFlow()
 
     private var syncJob: Job? = null
+    private var consecutiveFailureCount = 0
 
     init {
         val savedUrl = sharedPrefs.getString("ha_url", null)
@@ -140,8 +141,32 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     suspend fun fetchStates() {
+        var responseList: List<com.example.api.EntityState>? = null
+        var lastException: Exception? = null
+        val maxAttempts = 3
+
+        for (attempt in 1..maxAttempts) {
+            try {
+                responseList = HomeAssistantClient.service.getStates()
+                break
+            } catch (e: Exception) {
+                lastException = e
+                if (attempt < maxAttempts) {
+                    delay(3000) // quiet reconnection wait
+                }
+            }
+        }
+
+        if (responseList == null) {
+            consecutiveFailureCount++
+            val current = _uiState.value
+            if (current !is HvacUiState.Success || consecutiveFailureCount >= 3) {
+                _uiState.value = HvacUiState.Error("Connectivity error: Reconnection failed. ${lastException?.localizedMessage ?: "Unknown error"}")
+            }
+            return
+        }
+
         try {
-            val responseList = HomeAssistantClient.service.getStates()
             val statesMap = responseList.associateBy { it.entity_id }
 
             // 1. Global settings parsing
@@ -332,6 +357,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 covers = parsedCovers,
                 lastUpdated = System.currentTimeMillis()
             )
+            consecutiveFailureCount = 0
         } catch (e: Exception) {
             _uiState.value = HvacUiState.Error("Connectivity error: Check connection setup. ${e.localizedMessage}")
         }
