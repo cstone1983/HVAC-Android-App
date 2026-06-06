@@ -869,7 +869,7 @@ fun GlobalSettingsQuickControl(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "HOUSE SCHEDULE",
                         fontSize = 9.sp,
@@ -930,7 +930,7 @@ fun GlobalSettingsQuickControl(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "GLOBAL SEASON",
                         fontSize = 9.sp,
@@ -1316,7 +1316,7 @@ fun ZoneCardItem(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text(
                                             text = label,
@@ -1624,7 +1624,8 @@ fun PresetTempRow(
             text = label,
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
-            color = tint
+            color = tint,
+            modifier = Modifier.weight(1f)
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -1882,7 +1883,10 @@ fun AuxiliariesTab(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Garage,
                             contentDescription = null,
@@ -1933,6 +1937,8 @@ fun UpdatesTab(
 ) {
     val context = LocalContext.current
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val layoutVersion by viewModel.layoutVersion.collectAsStateWithLifecycle()
+    val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
 
     val currentVersion = remember {
         try {
@@ -1972,7 +1978,7 @@ fun UpdatesTab(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 "GITHUB REPOSITORY UPDATE PROVISION",
                                 fontSize = 9.sp,
@@ -2006,7 +2012,7 @@ fun UpdatesTab(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 "INSTALLED APP VERSION",
                                 fontSize = 9.sp,
@@ -2039,6 +2045,200 @@ fun UpdatesTab(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("CHECK NOW", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "DYNAMIC LAYOUT & CONTENT SPECIFICATION",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Dynamic Container Engine",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.Dashboard,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.4f),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        "The main viewport of the system dynamically maps states to dynamic UI controls defined in raw JSON from GitHub. Updates do not require application recompilation.",
+                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = 0.62f),
+                        lineHeight = 16.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (layoutUpdateAvailable != null) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32).copy(alpha = 0.15f)),
+                            border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.25f)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = Color(0xFF81C784),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "New layout specification available: v$layoutUpdateAvailable",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFE8F5E9)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                    } else {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.03f)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.4f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "Layout config matches latest specification version",
+                                    fontSize = 10.sp,
+                                    color = Color.White.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "ACTIVE SPEC VERSION",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                "v$layoutVersion",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF4CAF50)
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (layoutVersion != "1.0.0") {
+                                Button(
+                                    onClick = {
+                                        viewModel.resetLayoutToDefault()
+                                        android.widget.Toast.makeText(context, "Layout design restored to local defaults!", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFD32F2F).copy(alpha = 0.12f),
+                                        contentColor = Color(0xFFEF5350)
+                                    ),
+                                    border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.2f)),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("RESTORE DEFAULT", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (layoutUpdateAvailable != null) {
+                                        viewModel.downloadAndApplyLayoutUpdate { success, msg ->
+                                            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                                        }
+                                    } else {
+                                        viewModel.checkForLayoutUpdates()
+                                        android.widget.Toast.makeText(context, "Checking for fresh specifications...", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (layoutUpdateAvailable != null) Color(0xFF2E7D32) else Color.White.copy(alpha = 0.08f),
+                                    contentColor = Color.White
+                                ),
+                                border = BorderStroke(1.dp, if (layoutUpdateAvailable != null) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.1f)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                if (layoutUpdateAvailable != null) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDownload,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("UPDATE LAYOUT", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("CHECK LAYOUT", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     }
                 }

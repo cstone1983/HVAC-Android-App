@@ -1,5 +1,64 @@
 package com.example.model
 
+import com.squareup.moshi.JsonClass
+
+@JsonClass(generateAdapter = true)
+data class HvacLayoutConfig(
+    val version: String,
+    val roomSensors: List<RoomSensorConfig>,
+    val zones: List<ClimateZoneConfig>,
+    val lights: List<LightControlConfig>,
+    val switches: List<SwitchControlConfig>,
+    val covers: List<CoverControlConfig>
+)
+
+@JsonClass(generateAdapter = true)
+data class RoomSensorConfig(
+    val id: String,
+    val name: String,
+    val stateId: String,
+    val attributeName: String? = null,
+    val unit: String = "°F"
+)
+
+@JsonClass(generateAdapter = true)
+data class PresetsConfig(
+    val day: String,
+    val night: String,
+    val away: String
+)
+
+@JsonClass(generateAdapter = true)
+data class ClimateZoneConfig(
+    val key: String,
+    val name: String,
+    val climateEntityId: String,
+    val autoEntityId: String,
+    val overrideEntityId: String,
+    val tiltEntityId: String,
+    val fanEntityId: String,
+    val presetsHeat: PresetsConfig,
+    val presetsCool: PresetsConfig
+)
+
+@JsonClass(generateAdapter = true)
+data class LightControlConfig(
+    val entityId: String,
+    val name: String
+)
+
+@JsonClass(generateAdapter = true)
+data class SwitchControlConfig(
+    val entityId: String,
+    val name: String
+)
+
+@JsonClass(generateAdapter = true)
+data class CoverControlConfig(
+    val entityId: String,
+    val name: String
+)
+
 data class RoomSensor(
     val id: String,
     val name: String,

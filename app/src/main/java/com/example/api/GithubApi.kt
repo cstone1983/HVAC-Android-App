@@ -14,6 +14,9 @@ interface GithubApi {
     @GET("repos/cstone1983/HVAC-Android-App/releases")
     suspend fun getReleases(): Response<List<GithubRelease>>
 
+    @GET("https://raw.githubusercontent.com/cstone1983/HVAC-Android-App/main/layout_config.json")
+    suspend fun getLayoutConfig(): Response<com.example.model.HvacLayoutConfig>
+
     @Streaming
     @GET
     suspend fun downloadFile(@Url fileUrl: String): Response<ResponseBody>

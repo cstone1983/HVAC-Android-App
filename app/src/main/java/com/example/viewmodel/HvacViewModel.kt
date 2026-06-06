@@ -38,6 +38,17 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     private val sharedPrefs = application.getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
 
+    private val moshiLocal = com.squareup.moshi.Moshi.Builder()
+        .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
+        .build()
+    private val layoutConfigAdapter = moshiLocal.adapter(com.example.model.HvacLayoutConfig::class.java)
+
+    private val _layoutVersion = MutableStateFlow(sharedPrefs.getString("layout_version", "1.0.0") ?: "1.0.0")
+    val layoutVersion: StateFlow<String> = _layoutVersion.asStateFlow()
+
+    private val _layoutUpdateAvailable = MutableStateFlow<String?>(null)
+    val layoutUpdateAvailable: StateFlow<String?> = _layoutUpdateAvailable.asStateFlow()
+
     private val _forceScreenOn = MutableStateFlow(sharedPrefs.getBoolean("force_screen_on", true))
     val forceScreenOn: StateFlow<Boolean> = _forceScreenOn.asStateFlow()
 
@@ -195,95 +206,28 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 globalHvacMode = globalHvacMode
             )
 
-            // 2. Room sensors mapping
-            val templateSensors = listOf(
-                RoomSensor("living_room", "LIVING", "sensor.living_room_temperature"),
-                RoomSensor("dining_room", "DINING", "climate.hp_dining_room", "current_temperature"),
-                RoomSensor("upstairs", "UPSTAIRS", "climate.upstairs", "current_temperature"),
-                RoomSensor("bedroom", "BEDROOM", "sensor.bedroom_temperature"),
-                RoomSensor("basement", "BASEMENT", "climate.basement_thermostat", "current_temperature")
-            )
-            val parsedSensors = templateSensors.map { sensor ->
+            // 2. Room sensors mapping parsed from active configuration dynamically
+            val activeConfig = getActiveLayoutConfig()
+
+            val parsedSensors = activeConfig.roomSensors.map { sensor ->
                 val stateNode = statesMap[sensor.stateId]
                 val value = if (sensor.attributeName != null) {
                     stateNode?.getDoubleAttribute(sensor.attributeName)
                 } else {
                     stateNode?.state?.toDoubleOrNull()
                 }
-                sensor.copy(temp = value)
+                RoomSensor(
+                    id = sensor.id,
+                    name = sensor.name,
+                    stateId = sensor.stateId,
+                    attributeName = sensor.attributeName,
+                    temp = value,
+                    unit = sensor.unit
+                )
             }
 
-            // 3. Climate Zones mapping
-            val templateZones = listOf(
-                ClimateZone(
-                    key = "main_level",
-                    name = "Main Level",
-                    climateEntityId = "climate.hp_living_room",
-                    autoEntityId = "input_boolean.zone_enable_main_level",
-                    overrideEntityId = "input_boolean.override_main_level",
-                    tiltEntityId = "input_select.main_level_tilt_mode",
-                    fanEntityId = "input_select.main_level_fan_mode",
-                    presetsHeat = Presets("input_number.main_level_day_temp", "input_number.main_level_night_temp", "input_number.main_level_away_temp"),
-                    presetsCool = Presets("input_number.main_level_day_cool", "input_number.main_level_night_cool", "input_number.main_level_away_cool")
-                ),
-                ClimateZone(
-                    key = "anthony",
-                    name = "Anthony",
-                    climateEntityId = "climate.hp_anthony",
-                    autoEntityId = "input_boolean.zone_enable_anthony",
-                    overrideEntityId = "input_boolean.override_anthony",
-                    tiltEntityId = "input_select.anthony_tilt_mode",
-                    fanEntityId = "input_select.anthony_fan_mode",
-                    presetsHeat = Presets("input_number.anthony_day_temp", "input_number.anthony_night_temp", "input_number.anthony_away_temp"),
-                    presetsCool = Presets("input_number.anthony_day_cool", "input_number.anthony_night_cool", "input_number.anthony_away_cool")
-                ),
-                ClimateZone(
-                    key = "autumn",
-                    name = "Autumn",
-                    climateEntityId = "climate.hp_autumn",
-                    autoEntityId = "input_boolean.zone_enable_autumn",
-                    overrideEntityId = "input_boolean.override_autumn",
-                    tiltEntityId = "input_select.autumn_tilt_mode",
-                    fanEntityId = "input_select.autumn_fan_mode",
-                    presetsHeat = Presets("input_number.autumn_day_temp", "input_number.autumn_night_temp", "input_number.autumn_away_temp"),
-                    presetsCool = Presets("input_number.autumn_day_cool", "input_number.autumn_night_cool", "input_number.autumn_away_cool")
-                ),
-                ClimateZone(
-                    key = "bedroom_1",
-                    name = "Master 1",
-                    climateEntityId = "climate.hp_bedroom",
-                    autoEntityId = "input_boolean.zone_enable_bedroom_1",
-                    overrideEntityId = "input_boolean.override_bedroom_1",
-                    tiltEntityId = "input_select.bedroom_1_tilt_mode",
-                    fanEntityId = "input_select.bedroom_1_fan_mode",
-                    presetsHeat = Presets("input_number.bedroom_1_day_temp", "input_number.bedroom_1_night_temp", "input_number.bedroom_1_away_temp"),
-                    presetsCool = Presets("input_number.bedroom_1_day_cool", "input_number.bedroom_1_night_cool", "input_number.bedroom_1_away_cool")
-                ),
-                ClimateZone(
-                    key = "bedroom_2",
-                    name = "Master 2",
-                    climateEntityId = "climate.hp_bedroom_2",
-                    autoEntityId = "input_boolean.zone_enable_bedroom_2",
-                    overrideEntityId = "input_boolean.override_bedroom_2",
-                    tiltEntityId = "input_select.bedroom_2_tilt_mode",
-                    fanEntityId = "input_select.bedroom_2_fan_mode",
-                    presetsHeat = Presets("input_number.bedroom_2_day_temp", "input_number.bedroom_2_night_temp", "input_number.bedroom_2_away_temp"),
-                    presetsCool = Presets("input_number.bedroom_2_day_cool", "input_number.bedroom_2_night_cool", "input_number.bedroom_2_away_cool")
-                ),
-                ClimateZone(
-                    key = "basement",
-                    name = "Basement",
-                    climateEntityId = "climate.hp_basement",
-                    autoEntityId = "input_boolean.zone_enable_basement",
-                    overrideEntityId = "input_boolean.override_basement",
-                    tiltEntityId = "input_select.basement_tilt_mode",
-                    fanEntityId = "input_select.basement_fan_mode",
-                    presetsHeat = Presets("input_number.basement_day_temp", "input_number.basement_night_temp", "input_number.basement_away_temp"),
-                    presetsCool = Presets("input_number.basement_day_cool", "input_number.basement_night_cool", "input_number.basement_away_cool")
-                )
-            )
-
-            val parsedZones = templateZones.map { zone ->
+            // 3. Climate Zones mapping parsed from active configuration dynamically
+            val parsedZones = activeConfig.zones.map { zone ->
                 val climate = statesMap[zone.climateEntityId]
                 val auto = statesMap[zone.autoEntityId]
                 val override = statesMap[zone.overrideEntityId]
@@ -301,7 +245,30 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 val vOpts = tilt?.getListAttribute("options")
                 val fOpts = fan?.getListAttribute("options")
 
-                zone.copy(
+                ClimateZone(
+                    key = zone.key,
+                    name = zone.name,
+                    climateEntityId = zone.climateEntityId,
+                    autoEntityId = zone.autoEntityId,
+                    overrideEntityId = zone.overrideEntityId,
+                    tiltEntityId = zone.tiltEntityId,
+                    fanEntityId = zone.fanEntityId,
+                    presetsHeat = Presets(
+                        day = zone.presetsHeat.day,
+                        night = zone.presetsHeat.night,
+                        away = zone.presetsHeat.away,
+                        dayValue = hDay,
+                        nightValue = hNight,
+                        awayValue = hAway
+                    ),
+                    presetsCool = Presets(
+                        day = zone.presetsCool.day,
+                        night = zone.presetsCool.night,
+                        away = zone.presetsCool.away,
+                        dayValue = cDay,
+                        nightValue = cNight,
+                        awayValue = cAway
+                    ),
                     currentTemp = climate?.getDoubleAttribute("current_temperature"),
                     targetTemp = climate?.getDoubleAttribute("temperature") ?: climate?.state?.toDoubleOrNull(),
                     currentHvacMode = climate?.state ?: "off",
@@ -309,59 +276,40 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     overrideOn = override?.state?.lowercase() == "on",
                     vaneMode = tilt?.state ?: "Auto",
                     fanMode = fan?.state ?: "Auto",
-                    vaneOptions = if (!vOpts.isNullOrEmpty()) vOpts else zone.vaneOptions,
-                    fanOptions = if (!fOpts.isNullOrEmpty()) fOpts else zone.fanOptions,
-                    presetsHeat = zone.presetsHeat.copy(
-                        dayValue = hDay,
-                        nightValue = hNight,
-                        awayValue = hAway
-                    ),
-                    presetsCool = zone.presetsCool.copy(
-                        dayValue = cDay,
-                        nightValue = cNight,
-                        awayValue = cAway
-                    )
+                    vaneOptions = if (!vOpts.isNullOrEmpty()) vOpts else listOf("Auto", "Swing", "1", "2", "3", "4", "5"),
+                    fanOptions = if (!fOpts.isNullOrEmpty()) fOpts else listOf("Auto", "Quiet", "Low", "High")
                 )
             }
 
-            // 4. Lights mapping
-            val templateLights = listOf(
-                LightControl("light.kitchen_main_lights", "Kitchen"),
-                LightControl("light.living_room_sconces", "Living Sconces"),
-                LightControl("light.dining_room_main_lights", "Dining"),
-                LightControl("light.stairs_main_lights", "Stairs"),
-                LightControl("light.exterior_sconces", "Exterior Sconces"),
-                LightControl("light.porch_light", "Porch Side"),
-                LightControl("light.porch_stairway_1", "Porch Stair 1")
-            )
-            val parsedLights = templateLights.map { light ->
+            // 4. Lights mapping parsed from active configuration dynamically
+            val parsedLights = activeConfig.lights.map { light ->
                 val node = statesMap[light.entityId]
-                light.copy(
+                LightControl(
+                    entityId = light.entityId,
+                    name = light.name,
                     isOn = node?.state?.lowercase() == "on",
                     brightness = node?.getDoubleAttribute("brightness")?.toInt()
                 )
             }
 
-            // 5. Switches mapping
-            val templateSwitches = listOf(
-                SwitchControl("switch.shelly1_e8db84d7217d", "Garage Left"),
-                SwitchControl("switch.shellyplus1_b8d61a8a78b0_switch_0", "Workshop"),
-                SwitchControl("switch.exterior_backyard_flood", "Exterior Flood"),
-                SwitchControl("switch.porch_led_strip", "Porch LED"),
-                SwitchControl("switch.mudroom_wall_led", "Mudroom LED")
-            )
-            val parsedSwitches = templateSwitches.map { sm ->
+            // 5. Switches mapping parsed from active configuration dynamically
+            val parsedSwitches = activeConfig.switches.map { sm ->
                 val node = statesMap[sm.entityId]
-                sm.copy(isOn = node?.state?.lowercase() == "on")
+                SwitchControl(
+                    entityId = sm.entityId,
+                    name = sm.name,
+                    isOn = node?.state?.lowercase() == "on"
+                )
             }
 
-            // 6. Covers mapping
-            val templateCovers = listOf(
-                CoverControl("cover.konnected_d332ec_garage_door", "Garage South")
-            )
-            val parsedCovers = templateCovers.map { cv ->
+            // 6. Covers mapping parsed from active configuration dynamically
+            val parsedCovers = activeConfig.covers.map { cv ->
                 val node = statesMap[cv.entityId]
-                cv.copy(state = node?.state ?: "closed")
+                CoverControl(
+                    entityId = cv.entityId,
+                    name = cv.name,
+                    state = node?.state ?: "closed"
+                )
             }
 
             _uiState.value = HvacUiState.Success(
@@ -504,6 +452,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun checkForUpdates(currentVersion: String) {
         _updateState.value = UpdateState.Checking
         viewModelScope.launch {
+            checkForLayoutUpdates()
             try {
                 var release: com.example.model.GithubRelease? = null
                 
@@ -710,6 +659,177 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         return false
+    }
+
+    fun getActiveLayoutConfig(): com.example.model.HvacLayoutConfig {
+        val savedJson = sharedPrefs.getString("layout_config_json", null)
+        if (!savedJson.isNullOrBlank()) {
+            try {
+                val config = layoutConfigAdapter.fromJson(savedJson)
+                if (config != null) return config
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        return getBuiltInDefaultLayoutConfig()
+    }
+
+    fun getBuiltInDefaultLayoutConfig(): com.example.model.HvacLayoutConfig {
+        return com.example.model.HvacLayoutConfig(
+            version = "1.0.0",
+            roomSensors = listOf(
+                com.example.model.RoomSensorConfig("living_room", "LIVING", "sensor.living_room_temperature"),
+                com.example.model.RoomSensorConfig("dining_room", "DINING", "climate.hp_dining_room", "current_temperature"),
+                com.example.model.RoomSensorConfig("upstairs", "UPSTAIRS", "climate.upstairs", "current_temperature"),
+                com.example.model.RoomSensorConfig("bedroom", "BEDROOM", "sensor.bedroom_temperature"),
+                com.example.model.RoomSensorConfig("basement", "BASEMENT", "climate.basement_thermostat", "current_temperature")
+            ),
+            zones = listOf(
+                com.example.model.ClimateZoneConfig(
+                    key = "main_level",
+                    name = "Main Level",
+                    climateEntityId = "climate.hp_living_room",
+                    autoEntityId = "input_boolean.zone_enable_main_level",
+                    overrideEntityId = "input_boolean.override_main_level",
+                    tiltEntityId = "input_select.main_level_tilt_mode",
+                    fanEntityId = "input_select.main_level_fan_mode",
+                    presetsHeat = com.example.model.PresetsConfig("input_number.main_level_day_temp", "input_number.main_level_night_temp", "input_number.main_level_away_temp"),
+                    presetsCool = com.example.model.PresetsConfig("input_number.main_level_day_cool", "input_number.main_level_night_cool", "input_number.main_level_away_cool")
+                ),
+                com.example.model.ClimateZoneConfig(
+                    key = "anthony",
+                    name = "Anthony",
+                    climateEntityId = "climate.hp_anthony",
+                    autoEntityId = "input_boolean.zone_enable_anthony",
+                    overrideEntityId = "input_boolean.override_anthony",
+                    tiltEntityId = "input_select.anthony_tilt_mode",
+                    fanEntityId = "input_select.anthony_fan_mode",
+                    presetsHeat = com.example.model.PresetsConfig("input_number.anthony_day_temp", "input_number.anthony_night_temp", "input_number.anthony_away_temp"),
+                    presetsCool = com.example.model.PresetsConfig("input_number.anthony_day_cool", "input_number.anthony_night_cool", "input_number.anthony_away_cool")
+                ),
+                com.example.model.ClimateZoneConfig(
+                    key = "autumn",
+                    name = "Autumn",
+                    climateEntityId = "climate.hp_autumn",
+                    autoEntityId = "input_boolean.zone_enable_autumn",
+                    overrideEntityId = "input_boolean.override_autumn",
+                    tiltEntityId = "input_select.autumn_tilt_mode",
+                    fanEntityId = "input_select.autumn_fan_mode",
+                    presetsHeat = com.example.model.PresetsConfig("input_number.autumn_day_temp", "input_number.autumn_night_temp", "input_number.autumn_away_temp"),
+                    presetsCool = com.example.model.PresetsConfig("input_number.autumn_day_cool", "input_number.autumn_night_cool", "input_number.autumn_away_cool")
+                ),
+                com.example.model.ClimateZoneConfig(
+                    key = "bedroom_1",
+                    name = "Master 1",
+                    climateEntityId = "climate.hp_bedroom",
+                    autoEntityId = "input_boolean.zone_enable_bedroom_1",
+                    overrideEntityId = "input_boolean.override_bedroom_1",
+                    tiltEntityId = "input_select.bedroom_1_tilt_mode",
+                    fanEntityId = "input_select.bedroom_1_fan_mode",
+                    presetsHeat = com.example.model.PresetsConfig("input_number.bedroom_1_day_temp", "input_number.bedroom_1_night_temp", "input_number.bedroom_1_away_temp"),
+                    presetsCool = com.example.model.PresetsConfig("input_number.bedroom_1_day_cool", "input_number.bedroom_1_night_cool", "input_number.bedroom_1_away_cool")
+                ),
+                com.example.model.ClimateZoneConfig(
+                    key = "bedroom_2",
+                    name = "Master 2",
+                    climateEntityId = "climate.hp_bedroom_2",
+                    autoEntityId = "input_boolean.zone_enable_bedroom_2",
+                    overrideEntityId = "input_boolean.override_bedroom_2",
+                    tiltEntityId = "input_select.bedroom_2_tilt_mode",
+                    fanEntityId = "input_select.bedroom_2_fan_mode",
+                    presetsHeat = com.example.model.PresetsConfig("input_number.bedroom_2_day_temp", "input_number.bedroom_2_night_temp", "input_number.bedroom_2_away_temp"),
+                    presetsCool = com.example.model.PresetsConfig("input_number.bedroom_2_day_cool", "input_number.bedroom_2_night_cool", "input_number.bedroom_2_away_cool")
+                ),
+                com.example.model.ClimateZoneConfig(
+                    key = "basement",
+                    name = "Basement",
+                    climateEntityId = "climate.hp_basement",
+                    autoEntityId = "input_boolean.zone_enable_basement",
+                    overrideEntityId = "input_boolean.override_basement",
+                    tiltEntityId = "input_select.basement_tilt_mode",
+                    fanEntityId = "input_select.basement_fan_mode",
+                    presetsHeat = com.example.model.PresetsConfig("input_number.basement_day_temp", "input_number.basement_night_temp", "input_number.basement_away_temp"),
+                    presetsCool = com.example.model.PresetsConfig("input_number.basement_day_cool", "input_number.basement_night_cool", "input_number.basement_away_cool")
+                )
+            ),
+            lights = listOf(
+                com.example.model.LightControlConfig("light.kitchen_main_lights", "Kitchen"),
+                com.example.model.LightControlConfig("light.living_room_sconces", "Living Sconces"),
+                com.example.model.LightControlConfig("light.dining_room_main_lights", "Dining"),
+                com.example.model.LightControlConfig("light.stairs_main_lights", "Stairs"),
+                com.example.model.LightControlConfig("light.exterior_sconces", "Exterior Sconces"),
+                com.example.model.LightControlConfig("light.porch_light", "Porch Side"),
+                com.example.model.LightControlConfig("light.porch_stairway_1", "Porch Stair 1")
+            ),
+            switches = listOf(
+                com.example.model.SwitchControlConfig("switch.shelly1_e8db84d7217d", "Garage Left"),
+                com.example.model.SwitchControlConfig("switch.shellyplus1_b8d61a8a78b0_switch_0", "Workshop"),
+                com.example.model.SwitchControlConfig("switch.exterior_backyard_flood", "Exterior Flood"),
+                com.example.model.SwitchControlConfig("switch.porch_led_strip", "Porch LED"),
+                com.example.model.SwitchControlConfig("switch.mudroom_wall_led", "Mudroom LED")
+            ),
+            covers = listOf(
+                com.example.model.CoverControlConfig("cover.konnected_d332ec_garage_door", "Garage South")
+            )
+        )
+    }
+
+    fun checkForLayoutUpdates() {
+        viewModelScope.launch {
+            try {
+                val response = com.example.api.GithubClient.service.getLayoutConfig()
+                if (response.isSuccessful && response.body() != null) {
+                    val remoteConfig = response.body()!!
+                    val remoteVersion = remoteConfig.version
+                    val currentVersion = _layoutVersion.value
+                    if (isNewerVersion(remoteVersion, currentVersion)) {
+                        _layoutUpdateAvailable.value = remoteVersion
+                    } else {
+                        _layoutUpdateAvailable.value = null
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun downloadAndApplyLayoutUpdate(onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val response = com.example.api.GithubClient.service.getLayoutConfig()
+                if (response.isSuccessful && response.body() != null) {
+                    val remoteConfig = response.body()!!
+                    val remoteJson = layoutConfigAdapter.toJson(remoteConfig)
+                    sharedPrefs.edit()
+                        .putString("layout_config_json", remoteJson)
+                        .putString("layout_version", remoteConfig.version)
+                        .apply()
+                    _layoutVersion.value = remoteConfig.version
+                    _layoutUpdateAvailable.value = null
+                    _actionFeedback.value = "Layout design updated dynamically to v${remoteConfig.version}!"
+                    fetchStates()
+                    onComplete(true, "Successfully updated to layout design v${remoteConfig.version}")
+                } else {
+                    onComplete(false, "Failed to download layout config (HTTP ${response.code()})")
+                }
+            } catch (e: Exception) {
+                onComplete(false, "Error: ${e.localizedMessage ?: "Unknown failure"}")
+            }
+        }
+    }
+
+    fun resetLayoutToDefault() {
+        sharedPrefs.edit()
+            .remove("layout_config_json")
+            .putString("layout_version", "1.0.0")
+            .apply()
+        _layoutVersion.value = "1.0.0"
+        _layoutUpdateAvailable.value = null
+        _actionFeedback.value = "Layout restored to factory default configuration (v1.0.0)"
+        viewModelScope.launch {
+            fetchStates()
+        }
     }
 
     override fun onCleared() {
