@@ -1,0 +1,207 @@
+{
+  "version": "1.0.1",
+  "roomSensors": [
+    {
+      "id": "living_room",
+      "name": "LIVING",
+      "stateId": "sensor.living_room_temperature"
+    },
+    {
+      "id": "dining_room",
+      "name": "DINING",
+      "stateId": "climate.hp_dining_room",
+      "attributeName": "current_temperature"
+    },
+    {
+      "id": "upstairs",
+      "name": "UPSTAIRS",
+      "stateId": "climate.upstairs",
+      "attributeName": "current_temperature"
+    },
+    {
+      "id": "bedroom",
+      "name": "BEDROOM",
+      "stateId": "sensor.bedroom_temperature"
+    },
+    {
+      "id": "basement",
+      "name": "BASEMENT",
+      "stateId": "climate.basement_thermostat",
+      "attributeName": "current_temperature"
+    }
+  ],
+  "zones": [
+    {
+      "key": "main_level",
+      "name": "Main Level",
+      "climateEntityId": "climate.hp_living_room",
+      "autoEntityId": "input_boolean.zone_enable_main_level",
+      "overrideEntityId": "input_boolean.override_main_level",
+      "tiltEntityId": "input_select.main_level_tilt_mode",
+      "fanEntityId": "input_select.main_level_fan_mode",
+      "presetsHeat": {
+        "day": "input_number.main_level_day_temp",
+        "night": "input_number.main_level_night_temp",
+        "away": "input_number.main_level_away_temp"
+      },
+      "presetsCool": {
+        "day": "input_number.main_level_day_cool",
+        "night": "input_number.main_level_night_cool",
+        "away": "input_number.main_level_away_cool"
+      }
+    },
+    {
+      "key": "anthony",
+      "name": "Anthony",
+      "climateEntityId": "climate.hp_anthony",
+      "autoEntityId": "input_boolean.zone_enable_anthony",
+      "overrideEntityId": "input_boolean.override_anthony",
+      "tiltEntityId": "input_select.anthony_tilt_mode",
+      "fanEntityId": "input_select.anthony_fan_mode",
+      "presetsHeat": {
+        "day": "input_number.anthony_day_temp",
+        "night": "input_number.anthony_night_temp",
+        "away": "input_number.anthony_away_temp"
+      },
+      "presetsCool": {
+        "day": "input_number.anthony_day_cool",
+        "night": "input_number.anthony_night_cool",
+        "away": "input_number.anthony_away_cool"
+      }
+    },
+    {
+      "key": "autumn",
+      "name": "Autumn",
+      "climateEntityId": "climate.hp_autumn",
+      "autoEntityId": "input_boolean.zone_enable_autumn",
+      "overrideEntityId": "input_boolean.override_autumn",
+      "tiltEntityId": "input_select.autumn_tilt_mode",
+      "fanEntityId": "input_select.autumn_fan_mode",
+      "presetsHeat": {
+        "day": "input_number.autumn_day_temp",
+        "night": "input_number.autumn_night_temp",
+        "away": "input_number.autumn_away_temp"
+      },
+      "presetsCool": {
+        "day": "input_number.autumn_day_cool",
+        "night": "input_number.autumn_night_cool",
+        "away": "input_number.autumn_away_cool"
+      }
+    },
+    {
+      "key": "bedroom_1",
+      "name": "Master 1",
+      "climateEntityId": "climate.hp_bedroom",
+      "autoEntityId": "input_boolean.zone_enable_bedroom_1",
+      "overrideEntityId": "input_boolean.override_bedroom_1",
+      "tiltEntityId": "input_select.bedroom_1_tilt_mode",
+      "fanEntityId": "input_select.bedroom_1_fan_mode",
+      "presetsHeat": {
+        "day": "input_number.bedroom_1_day_temp",
+        "night": "input_number.bedroom_1_night_temp",
+        "away": "input_number.bedroom_1_away_temp"
+      },
+      "presetsCool": {
+        "day": "input_number.bedroom_1_day_cool",
+        "night": "input_number.bedroom_1_night_cool",
+        "away": "input_number.bedroom_1_away_cool"
+      }
+    },
+    {
+      "key": "bedroom_2",
+      "name": "Master 2",
+      "climateEntityId": "climate.hp_bedroom_2",
+      "autoEntityId": "input_boolean.zone_enable_bedroom_2",
+      "overrideEntityId": "input_boolean.override_bedroom_2",
+      "tiltEntityId": "input_select.bedroom_2_tilt_mode",
+      "fanEntityId": "input_select.bedroom_2_fan_mode",
+      "presetsHeat": {
+        "day": "input_number.bedroom_2_day_temp",
+        "night": "input_number.bedroom_2_night_temp",
+        "away": "input_number.bedroom_2_away_temp"
+      },
+      "presetsCool": {
+        "day": "input_number.bedroom_2_day_cool",
+        "night": "input_number.bedroom_2_night_cool",
+        "away": "input_number.bedroom_2_away_cool"
+      }
+    },
+    {
+      "key": "basement",
+      "name": "Basement",
+      "climateEntityId": "climate.hp_basement",
+      "autoEntityId": "input_boolean.zone_enable_basement",
+      "overrideEntityId": "input_boolean.override_basement",
+      "tiltEntityId": "input_select.basement_tilt_mode",
+      "fanEntityId": "input_select.basement_fan_mode",
+      "presetsHeat": {
+        "day": "input_number.basement_day_temp",
+        "night": "input_number.basement_night_temp",
+        "away": "input_number.basement_away_temp"
+      },
+      "presetsCool": {
+        "day": "input_number.basement_day_cool",
+        "night": "input_number.basement_away_cool",
+        "away": "input_number.basement_away_cool"
+      }
+    }
+  ],
+  "lights": [
+    {
+      "entityId": "light.kitchen_main_lights",
+      "name": "Kitchen"
+    },
+    {
+      "entityId": "light.living_room_sconces",
+      "name": "Living Sconces"
+    },
+    {
+      "entityId": "light.dining_room_main_lights",
+      "name": "Dining"
+    },
+    {
+      "entityId": "light.stairs_main_lights",
+      "name": "Stairs"
+    },
+    {
+      "entityId": "light.exterior_sconces",
+      "name": "Exterior Sconces"
+    },
+    {
+      "entityId": "light.porch_light",
+      "name": "Porch Side"
+    },
+    {
+      "entityId": "light.porch_stairway_1",
+      "name": "Porch Stair 1"
+    }
+  ],
+  "switches": [
+    {
+      "entityId": "switch.shelly1_e8db84d7217d",
+      "name": "Garage Left"
+    },
+    {
+      "entityId": "switch.shellyplus1_b8d61a8a78b0_switch_0",
+      "name": "Workshop"
+    },
+    {
+      "entityId": "switch.exterior_backyard_flood",
+      "name": "Exterior Flood"
+    },
+    {
+      "entityId": "switch.porch_led_strip",
+      "name": "Porch LED"
+    },
+    {
+      "entityId": "switch.mudroom_wall_led",
+      "name": "Mudroom LED"
+    }
+  ],
+  "covers": [
+    {
+      "entityId": "cover.konnected_d332ec_garage_door",
+      "name": "Garage South"
+    }
+  ]
+}
