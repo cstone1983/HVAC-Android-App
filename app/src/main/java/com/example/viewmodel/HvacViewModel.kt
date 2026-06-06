@@ -481,6 +481,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
+    private var pendingReleaseId: Long = 0L
+    private var pendingAssetSize: Long = 0L
+    private var pendingAssetUrl: String = ""
+
     fun checkForUpdates(currentVersion: String) {
         _updateState.value = UpdateState.Checking
         viewModelScope.launch {
@@ -499,23 +503,40 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 if (release != null) {
-                    val latestTag = release.tagName.trim().removePrefix("v")
-                    val currentClean = currentVersion.trim().removePrefix("v")
+                    val latestTag = release.tagName.trim().removePrefix("v").trim()
+                    val currentClean = currentVersion.trim().removePrefix("v").trim()
 
-                    if (isNewerVersion(latestTag, currentClean)) {
-                        val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk") }
-                        if (apkAsset != null) {
-                            _updateState.value = UpdateState.UpdateAvailable(
-                                version = release.tagName,
-                                releaseNotes = release.body ?: "No release notes available.",
-                                downloadUrl = apkAsset.browserDownloadUrl,
-                                size = apkAsset.size
-                            )
-                        } else {
-                            _updateState.value = UpdateState.Error("No APK found in the latest release assets.")
-                        }
+                    val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk") }
+                    val hasVersionChange = latestTag != currentClean
+
+                    // Retrieve stored details of the last downloaded/installed update to detect same-tag re-releases
+                    val lastDlReleaseId = sharedPrefs.getLong("last_dl_release_id", 0L)
+                    val lastDlAssetSize = sharedPrefs.getLong("last_dl_asset_size", 0L)
+                    val lastDlAssetUrl = sharedPrefs.getString("last_dl_asset_url", "") ?: ""
+
+                    val hasAssetChange = apkAsset != null && (
+                        (release.id != null && release.id != lastDlReleaseId) ||
+                        (apkAsset.size != lastDlAssetSize) ||
+                        (apkAsset.browserDownloadUrl != lastDlAssetUrl)
+                    )
+
+                    if (apkAsset != null && (hasVersionChange || hasAssetChange)) {
+                        pendingReleaseId = release.id ?: 0L
+                        pendingAssetSize = apkAsset.size
+                        pendingAssetUrl = apkAsset.browserDownloadUrl
+
+                        _updateState.value = UpdateState.UpdateAvailable(
+                            version = release.tagName,
+                            releaseNotes = release.body ?: "No release notes available.",
+                            downloadUrl = apkAsset.browserDownloadUrl,
+                            size = apkAsset.size
+                        )
                     } else {
-                        _updateState.value = UpdateState.UpToDate
+                        if (apkAsset == null) {
+                            _updateState.value = UpdateState.Error("No APK found in the latest release assets.")
+                        } else {
+                            _updateState.value = UpdateState.UpToDate
+                        }
                     }
                 } else {
                     _updateState.value = UpdateState.NoReleases
@@ -574,6 +595,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                                 }
                             }
                         }
+
+                        sharedPrefs.edit()
+                            .putLong("last_dl_release_id", pendingReleaseId)
+                            .putLong("last_dl_asset_size", pendingAssetSize)
+                            .putString("last_dl_asset_url", pendingAssetUrl)
+                            .apply()
 
                         _updateState.value = UpdateState.Success(destinationFile.absolutePath)
                         _actionFeedback.value = "Update downloaded successfully."

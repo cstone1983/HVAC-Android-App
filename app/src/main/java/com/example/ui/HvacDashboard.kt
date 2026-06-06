@@ -1496,6 +1496,73 @@ fun AuxiliariesTab(
 
         item {
             Text(
+                "AUXILIARY POWER CONTROL",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black,
+                color = Color.White.copy(alpha = 0.5f),
+                letterSpacing = 1.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+
+        item {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                val chunks = state.switches.chunked(2)
+                chunks.forEach { rowSwitches ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        rowSwitches.forEach { switch ->
+                            Card(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("switch_card_${switch.entityId}")
+                                    .clickable { viewModel.toggleSwitch(switch.entityId, switch.isOn, switch.name) },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (switch.isOn) Color(0xFF10B981).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
+                                ),
+                                border = BorderStroke(1.dp, if (switch.isOn) Color(0xFF10B981).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PowerSettingsNew,
+                                        contentDescription = null,
+                                        tint = if (switch.isOn) Color(0xFF10B981) else Color.White.copy(alpha = 0.4f),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(switch.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text(
+                                            text = if (switch.isOn) "ACTIVE" else "POWER OFF",
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (switch.isOn) Color(0xFF10B981) else Color.White.copy(alpha = 0.4f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (rowSwitches.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        item {
+            Text(
                 "GARAGE SECURITY COVERS",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Black,

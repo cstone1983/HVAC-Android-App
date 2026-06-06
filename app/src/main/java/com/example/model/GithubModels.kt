@@ -5,9 +5,11 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class GithubRelease(
+    val id: Long? = null,
     @Json(name = "tag_name") val tagName: String,
     val name: String?,
     val body: String?,
+    @Json(name = "published_at") val publishedAt: String? = null,
     val assets: List<GithubAsset>
 )
 
