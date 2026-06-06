@@ -388,6 +388,8 @@ class HvacViewModel : ViewModel() {
                     } else {
                         _updateState.value = UpdateState.Error("Invalid response body from GitHub releases API.")
                     }
+                } else if (response.code() == 404) {
+                    _updateState.value = UpdateState.NoReleases
                 } else {
                     _updateState.value = UpdateState.Error("GitHub API returned code: ${response.code()}")
                 }
@@ -395,6 +397,15 @@ class HvacViewModel : ViewModel() {
                 _updateState.value = UpdateState.Error("Failed to check for updates: ${e.localizedMessage}")
             }
         }
+    }
+
+    fun simulateUpdate() {
+        _updateState.value = UpdateState.UpdateAvailable(
+            version = "v2.0.4-simulation",
+            releaseNotes = "AUTHENTIC SYSTEM UPDATE SIMULATION:\n\n• High-performance, low-latency Home Assistant sensor ingestion\n• Elegant Jetpack Compose Canvas thermal distribution visuals\n• Fully secure update pipeline utilizing FileProvider with strict URI permissions\n\nClick 'DOWNLOAD UPDATE' below to trigger the download sequence and launch the package manager install window.",
+            downloadUrl = "https://raw.githubusercontent.com/cstone1983/HVAC-Android-App/main/aistudio-repository-template/src/main/res/drawable/ic_launcher_foreground.xml",
+            size = 12480L
+        )
     }
 
     fun downloadUpdateAndInstall(context: Context, downloadUrl: String, fileName: String = "update.apk") {
@@ -503,6 +514,7 @@ class HvacViewModel : ViewModel() {
 sealed interface UpdateState {
     object Idle : UpdateState
     object Checking : UpdateState
+    object NoReleases : UpdateState
     data class UpdateAvailable(val version: String, val releaseNotes: String, val downloadUrl: String, val size: Long) : UpdateState
     object UpToDate : UpdateState
     data class Downloading(val progress: Int, val totalSize: Long, val downloaded: Long) : UpdateState

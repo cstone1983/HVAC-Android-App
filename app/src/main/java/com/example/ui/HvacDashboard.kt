@@ -1594,6 +1594,97 @@ fun UpdatesTab(
                         // Checking update status placeholder
                     }
 
+                    is com.example.viewmodel.UpdateState.NoReleases -> {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(20.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(
+                                                Color(0xFF2196F3).copy(alpha = 0.15f),
+                                                RoundedCornerShape(10.dp)
+                                              ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = null,
+                                            tint = Color(0xFF2196F3),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            "REPOSITORY CONNECTED",
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF2196F3),
+                                            letterSpacing = 0.5.sp
+                                        )
+                                        Text(
+                                            "No published releases found yet",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = "The connection to cstone1983/HVAC-Android-App is active and functional. However, there are no official compiled releases (.apk) published on your GitHub repository. Once you create a Release on GitHub and attach your APK, the app will auto-detect it here.",
+                                    fontSize = 11.sp,
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    lineHeight = 15.sp
+                                )
+
+                                Spacer(modifier = Modifier.height(18.dp))
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        "Want to test the update downloader?",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.7f)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(
+                                        onClick = { viewModel.simulateUpdate() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlayArrow,
+                                            contentDescription = "Simulate",
+                                            tint = Color.Black,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            "RUN UPDATE SIMULATION",
+                                            color = Color.Black,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 11.sp,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     is com.example.viewmodel.UpdateState.Checking -> {
                         Card(
                             modifier = Modifier.fillMaxWidth(),

@@ -44,6 +44,7 @@ interface HomeAssistantApi {
     suspend fun getStates(): List<EntityState>
 
     @POST("api/services/{domain}/{service}")
+    @JvmSuppressWildcards
     suspend fun callService(
         @Path("domain") domain: String,
         @Path("service") service: String,
