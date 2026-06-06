@@ -1888,39 +1888,94 @@ fun UpdatesTab(
                             border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.2f)),
                             shape = RoundedCornerShape(16.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(20.dp).fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .background(
-                                            Color(0xFF10B981).copy(alpha = 0.15f),
-                                            RoundedCornerShape(10.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
+                            Column(modifier = Modifier.padding(18.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = Color(0xFF10B981),
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(
+                                                Color(0xFF10B981).copy(alpha = 0.15f),
+                                                RoundedCornerShape(10.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color(0xFF10B981),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column {
+                                        Text(
+                                            "SYSTEM IS UP TO DATE",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            "You are running version: v$currentVersion",
+                                            fontSize = 11.sp,
+                                            color = Color.White.copy(alpha = 0.6f)
+                                        )
+                                    }
                                 }
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Column {
-                                    Text(
-                                        "SYSTEM IS UP TO DATE",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = Color.White
+
+                                if (state.downloadUrl != null) {
+                                    Spacer(modifier = Modifier.height(18.dp))
+                                    HorizontalDivider(
+                                        color = Color.White.copy(alpha = 0.05f),
+                                        modifier = Modifier.fillMaxWidth()
                                     )
-                                    Text(
-                                        "You are running the latest version: v$currentVersion",
-                                        fontSize = 11.sp,
-                                        color = Color.White.copy(alpha = 0.6f)
-                                    )
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                "WANT TO REINSTALL?",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.White.copy(alpha = 0.4f),
+                                                letterSpacing = 0.5.sp
+                                            )
+                                            Text(
+                                                "Force build re-install (tag ${state.version})",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White.copy(alpha = 0.6f)
+                                            )
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                viewModel.downloadUpdateAndInstall(context, state.downloadUrl)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Refresh,
+                                                contentDescription = "Force reinstall",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                "FORCE REINSTALL",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

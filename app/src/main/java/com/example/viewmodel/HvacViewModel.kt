@@ -490,15 +490,15 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 var release: com.example.model.GithubRelease? = null
-                val response = GithubClient.service.getLatestRelease()
                 
-                if (response.isSuccessful && response.body() != null) {
-                    release = response.body()
+                // Fetch the list of releases first to ensure pre-releases or release drafts are covered
+                val listResponse = GithubClient.service.getReleases()
+                if (listResponse.isSuccessful && !listResponse.body().isNullOrEmpty()) {
+                    release = listResponse.body()!!.first()
                 } else {
-                    // Fallback: Check the releases list endpoint in case latest is empty or it's a pre-release
-                    val listResponse = GithubClient.service.getReleases()
-                    if (listResponse.isSuccessful && !listResponse.body().isNullOrEmpty()) {
-                        release = listResponse.body()!!.first()
+                    val response = GithubClient.service.getLatestRelease()
+                    if (response.isSuccessful && response.body() != null) {
+                        release = response.body()
                     }
                 }
 
@@ -535,7 +535,16 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         if (apkAsset == null) {
                             _updateState.value = UpdateState.Error("No APK found in the latest release assets.")
                         } else {
-                            _updateState.value = UpdateState.UpToDate
+                            // Set pending details even in UpToDate so that force reinstall can use them
+                            pendingReleaseId = release.id ?: 0L
+                            pendingAssetSize = apkAsset.size
+                            pendingAssetUrl = apkAsset.browserDownloadUrl
+
+                            _updateState.value = UpdateState.UpToDate(
+                                version = release.tagName,
+                                downloadUrl = apkAsset.browserDownloadUrl,
+                                size = apkAsset.size
+                            )
                         }
                     }
                 } else {
@@ -698,7 +707,7 @@ sealed interface UpdateState {
     object Checking : UpdateState
     object NoReleases : UpdateState
     data class UpdateAvailable(val version: String, val releaseNotes: String, val downloadUrl: String, val size: Long) : UpdateState
-    object UpToDate : UpdateState
+    data class UpToDate(val version: String, val downloadUrl: String?, val size: Long?) : UpdateState
     data class Downloading(val progress: Int, val totalSize: Long, val downloaded: Long) : UpdateState
     data class Success(val apkPath: String) : UpdateState
     data class Error(val message: String) : UpdateState
