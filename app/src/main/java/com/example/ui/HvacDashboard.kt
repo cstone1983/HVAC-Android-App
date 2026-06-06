@@ -3,6 +3,7 @@ package com.example.ui
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -40,6 +42,7 @@ import android.content.res.Configuration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -69,6 +72,15 @@ fun HvacDashboard(
     val scope = rememberCoroutineScope()
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    var showSettingsDialog by remember { mutableStateOf(false) }
+
+    if (showSettingsDialog) {
+        HvacSettingsDialog(
+            viewModel = viewModel,
+            onDismiss = { showSettingsDialog = false }
+        )
+    }
 
     // Status feedback toast notification
     LaunchedEffect(actionFeedback) {
@@ -145,6 +157,22 @@ fun HvacDashboard(
                             }
                         },
                         actions = {
+                            IconButton(
+                                onClick = { showSettingsDialog = true },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
+                                    .testTag("settings_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = Color.White.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+
                             IconButton(
                                 onClick = { viewModel.logout() },
                                 modifier = Modifier
@@ -285,7 +313,11 @@ fun HvacDashboard(
                     }
 
                     is HvacUiState.Success -> {
-                        HvacDashboardContent(state = state, viewModel = viewModel)
+                        HvacDashboardContent(
+                            state = state,
+                            viewModel = viewModel,
+                            onShowSettings = { showSettingsDialog = true }
+                        )
                     }
                 }
             }
@@ -296,13 +328,22 @@ fun HvacDashboard(
 @Composable
 fun HvacDashboardContent(
     state: HvacUiState.Success,
-    viewModel: HvacViewModel
+    viewModel: HvacViewModel,
+    onShowSettings: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("ZONES & UNITS", "SCHEDULE & MODES", "AUXILIARY POWER", "UPDATES")
+    val tabs = listOf("ZONES & UNITS", "AUXILIARY POWER", "UPDATES")
+
+    var isMenuExpanded by remember { mutableStateOf(true) }
+    val sidePanelWidth by animateDpAsState(targetValue = if (isMenuExpanded) 260.dp else 72.dp, label = "side_panel_width")
+    val tabIcons = listOf(
+        Icons.Default.Layers,
+        Icons.Default.Lightbulb,
+        Icons.Default.CloudDownload
+    )
 
     if (isLandscape) {
         Row(
@@ -310,33 +351,68 @@ fun HvacDashboardContent(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            // Left Side Panel: Deck Controls
+            // Left Side Panel: Deck Controls with collapsible side bar
             Column(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .width(260.dp)
+                    .width(sidePanelWidth)
                     .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(16.dp))
                     .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(16.dp))
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                    .padding(if (isMenuExpanded) 14.dp else 8.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Modern styled Title / Brand
-                    Column {
-                        Text(
-                            "HAVEN",
-                            fontWeight = FontWeight.Black,
-                            letterSpacing = 3.sp,
-                            fontSize = 18.sp,
-                            color = Color.White
-                        )
-                        Text(
-                            "HVAC SYSTEM CONTROLLER",
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.6f),
-                            letterSpacing = 1.sp
-                        )
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Modern styled Title / Brand & Toggle
+                    if (isMenuExpanded) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    "HAVEN",
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 3.sp,
+                                    fontSize = 18.sp,
+                                    color = Color.White
+                                )
+                                Text(
+                                    "HVAC CONTROLLER",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                            IconButton(
+                                onClick = { isMenuExpanded = false },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowLeft,
+                                    contentDescription = "Collapse menu",
+                                    tint = Color.White.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
+                    } else {
+                        IconButton(
+                            onClick = { isMenuExpanded = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Menu,
+                                contentDescription = "Expand menu",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     }
 
                     HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
@@ -344,7 +420,8 @@ fun HvacDashboardContent(
                     // Navigation List
                     Column(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.verticalScroll(rememberScrollState())
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         tabs.forEachIndexed { index, label ->
                             val isSelected = selectedTab == index
@@ -368,31 +445,36 @@ fun HvacDashboardContent(
                                     )
                                     .clickable { selectedTab = index }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = if (isMenuExpanded) Arrangement.Start else Arrangement.Center
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .background(
-                                            if (isSelected) activeColor else Color.White.copy(alpha = 0.3f),
-                                            RoundedCornerShape(3.dp)
-                                        )
+                                Icon(
+                                    imageVector = tabIcons[index],
+                                    contentDescription = label,
+                                    tint = if (isSelected) activeColor else Color.White.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(20.dp)
                                 )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = label,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
-                                    letterSpacing = 1.sp
-                                )
+                                if (isMenuExpanded) {
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = label,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
+                                        letterSpacing = 1.sp
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
                 // Bottom Panel Deck: Connection and User details
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
 
                     // Connection State
@@ -407,65 +489,133 @@ fun HvacDashboardContent(
                         is HvacUiState.Error -> "DISCONNECTED"
                     }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
-                            .clickable {
-                                scope.launch { viewModel.fetchStates() }
+                    if (isMenuExpanded) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                                .clickable {
+                                    scope.launch { viewModel.fetchStates() }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(connectionColor, RoundedCornerShape(4.dp))
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = connectionText,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
                             }
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(connectionColor, RoundedCornerShape(4.dp))
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = connectionText,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.9f)
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Manual Sync Request",
+                                tint = Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.size(12.dp)
                             )
                         }
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Manual Sync Request",
-                            tint = Color.White.copy(alpha = 0.6f),
-                            modifier = Modifier.size(12.dp)
-                        )
-                    }
 
-                    // Logout / User Info
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "OPERATOR: SYSTEM",
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.4f),
-                            letterSpacing = 0.5.sp
-                        )
+                        // Logout / User Info
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "OPERATOR",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.4f),
+                                letterSpacing = 0.5.sp
+                            )
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                IconButton(
+                                    onClick = { onShowSettings() },
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
+                                        .testTag("settings_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Settings",
+                                        tint = Color.White.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = { viewModel.logout() },
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
+                                        .testTag("logout_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ExitToApp,
+                                        contentDescription = "Log out",
+                                        tint = Color.White.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Collapsed Bottom Controls
+                        IconButton(
+                            onClick = { scope.launch { viewModel.fetchStates() } },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(connectionColor.copy(alpha = 0.15f), RoundedCornerShape(18.dp))
+                                .border(BorderStroke(1.dp, connectionColor.copy(alpha = 0.4f)), RoundedCornerShape(18.dp))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "$connectionText (Click to Sync)",
+                                tint = connectionColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { onShowSettings() },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(18.dp))
+                                .testTag("settings_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
 
                         IconButton(
                             onClick = { viewModel.logout() },
                             modifier = Modifier
-                                .size(28.dp)
-                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
+                                .size(36.dp)
+                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(18.dp))
                                 .testTag("logout_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ExitToApp,
                                 contentDescription = "Log out",
                                 tint = Color.White.copy(alpha = 0.8f),
-                                modifier = Modifier.size(12.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
@@ -474,37 +624,107 @@ fun HvacDashboardContent(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Right Column: Main lists
-            Column(
+            // Right Area: Main Lists Column + Side Room Sensors Panel (Tablet Mode)
+            Row(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
             ) {
-                // Room sensors horizontal deck at top of main view
-                RoomSensorsStrip(rooms = state.roomSensors)
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Scrollable main content framed elegantly
-                Box(
+                // Main tab lists
+                Column(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth()
-                        .widthIn(max = 900.dp)
+                        .fillMaxHeight()
                 ) {
-                    AnimatedContent(
-                        targetState = selectedTab,
-                        transitionSpec = {
-                            slideInHorizontally { width -> if (targetState > initialState) width else -width } + fadeIn() togetherWith
-                                    slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
-                        },
-                        label = "tab_swapper_landscape"
-                    ) { currentTab ->
-                        when (currentTab) {
-                            0 -> ClimateZonesTab(state = state, viewModel = viewModel)
-                            1 -> SystemScheduleTab(state = state, viewModel = viewModel)
-                            2 -> AuxiliariesTab(state = state, viewModel = viewModel)
-                            3 -> UpdatesTab(viewModel = viewModel)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        AnimatedContent(
+                            targetState = selectedTab,
+                            transitionSpec = {
+                                slideInHorizontally { width -> if (targetState > initialState) width else -width } + fadeIn() togetherWith
+                                        slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
+                            },
+                            label = "tab_swapper_landscape"
+                        ) { currentTab ->
+                            when (currentTab) {
+                                0 -> ClimateZonesTab(state = state, viewModel = viewModel)
+                                1 -> AuxiliariesTab(state = state, viewModel = viewModel)
+                                2 -> UpdatesTab(viewModel = viewModel)
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Consolidated, minimal right-hand room sensors side panel
+                Column(
+                    modifier = Modifier
+                        .width(130.dp)
+                        .fillMaxHeight()
+                        .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(16.dp))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "TEMPS",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White.copy(alpha = 0.4f),
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.verticalScroll(rememberScrollState())
+                    ) {
+                        state.roomSensors.forEach { room ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.04f)),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        imageVector = when (room.id) {
+                                            "living_room" -> Icons.Default.Weekend
+                                            "bedroom" -> Icons.Default.Bed
+                                            "basement" -> Icons.Default.AcUnit
+                                            else -> Icons.Default.Thermostat
+                                        },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = Color.White.copy(alpha = 0.5f)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = room.name.uppercase(),
+                                        fontSize = 7.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.5f),
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = room.temp?.let { "${it.toInt()}°F" } ?: "--°F",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -560,15 +780,14 @@ fun HvacDashboardContent(
                 targetState = selectedTab,
                 transitionSpec = {
                     slideInHorizontally { width -> if (targetState > initialState) width else -width } + fadeIn() togetherWith
-                            slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
+                                    slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
                 },
                 label = "tab_swapper"
             ) { currentTab ->
                 when (currentTab) {
                     0 -> ClimateZonesTab(state = state, viewModel = viewModel)
-                    1 -> SystemScheduleTab(state = state, viewModel = viewModel)
-                    2 -> AuxiliariesTab(state = state, viewModel = viewModel)
-                    3 -> UpdatesTab(viewModel = viewModel)
+                    1 -> AuxiliariesTab(state = state, viewModel = viewModel)
+                    2 -> UpdatesTab(viewModel = viewModel)
                 }
             }
         }
@@ -641,9 +860,9 @@ fun GlobalSettingsQuickControl(
             .testTag("global_quick_control_card"),
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(14.dp)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(10.dp)) {
             // First row: HOUSE SCHEDULE
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -701,9 +920,9 @@ fun GlobalSettingsQuickControl(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
             HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             // Second row: GLOBAL HVAC MODE
             Row(
@@ -761,6 +980,71 @@ fun GlobalSettingsQuickControl(
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(6.dp))
+            HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Third row: HOT WATER CONTROL
+            Column {
+                Text(
+                    "HOT WATER MODE",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White.copy(alpha = 0.5f),
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        WaterHeaterItem("eco", "ECO", Icons.Default.WaterDrop, Color(0xFF10B981)),
+                        WaterHeaterItem("heat_pump", "HEAT PUMP", Icons.Default.Settings, Color(0xFFF59E0B)),
+                        WaterHeaterItem("high_demand", "BOOST", Icons.Default.Bolt, Color(0xFFEF4444))
+                    ).forEach { item ->
+                        val option = item.option
+                        val label = item.label
+                        val icon = item.icon
+                        val color = item.color
+                        val isSelected = state.globalSettings.waterHeaterMode.lowercase() == option.lowercase()
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("water_heater_btn_${option.lowercase()}")
+                                .clickable { viewModel.selectWaterHeaterMode(option) },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
+                            ),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) color else Color.White.copy(alpha = 0.05f)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    tint = if (isSelected) color else Color.White.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = label,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -777,7 +1061,7 @@ fun ClimateZonesTab(
             .fillMaxSize()
             .testTag("climate_zones_tab"),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
             GlobalSettingsQuickControl(state = state, viewModel = viewModel)
@@ -868,14 +1152,14 @@ fun ZoneCardItem(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onHeaderClick() }
-                    .padding(16.dp),
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
-                        .background(activeColor.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center
+                        .size(36.dp)
+                        .background(activeColor.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                      contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = when (zone.key) {
@@ -886,17 +1170,17 @@ fun ZoneCardItem(
                         },
                         contentDescription = null,
                         tint = activeColor,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = zone.name,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
+                        fontSize = 14.sp,
                         color = Color.White
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -927,14 +1211,14 @@ fun ZoneCardItem(
                         Text(
                             text = zone.currentTemp?.let { "${it.toInt()}" } ?: "--",
                             fontWeight = FontWeight.Light,
-                            fontSize = 24.sp,
+                            fontSize = 20.sp,
                             color = Color.White
                         )
                         Text(
                             text = "°F",
                             fontSize = 11.sp,
                             color = Color.White.copy(alpha = 0.5f),
-                            modifier = Modifier.padding(bottom = 4.dp, start = 1.dp)
+                            modifier = Modifier.padding(bottom = 2.dp, start = 1.dp)
                         )
                     }
                     Text(
@@ -978,7 +1262,7 @@ fun ZoneCardItem(
                     imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
                     tint = Color.White.copy(alpha = 0.4f),
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
@@ -1371,217 +1655,7 @@ fun PresetTempRow(
     }
 }
 
-// ======================== TAB 2: SYSTEM SCHEDULES ========================
-
-@Composable
-fun SystemScheduleTab(
-    state: HvacUiState.Success,
-    viewModel: HvacViewModel
-) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("system_schedule_tab"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "HOUSE SCHEDULE MODE",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White.copy(alpha = 0.5f),
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            Triple("Day", Icons.Default.WbSunny, Color(0xFFF59E0B)),
-                            Triple("Night", Icons.Default.NightsStay, Color(0xFF2196F3)),
-                            Triple("Away", Icons.Default.ExitToApp, Color(0xFF10B981))
-                        ).forEach { (label, icon, color) ->
-                            val isSelected = state.globalSettings.houseSchedule.lowercase() == label.lowercase()
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("schedule_btn_${label.lowercase()}")
-                                    .clickable { viewModel.selectHouseSchedule(label) },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
-                                ),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isSelected) color else Color.White.copy(alpha = 0.05f)
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = null,
-                                        tint = if (isSelected) color else Color.White.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Text(
-                                        text = label.uppercase(),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "GLOBAL SEASONAL MODE",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White.copy(alpha = 0.5f),
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            Triple("heat", Icons.Default.Whatshot, Color(0xFFF59E0B)),
-                            Triple("cool", Icons.Default.AcUnit, Color(0xFF2196F3)),
-                            Triple("off", Icons.Default.PowerSettingsNew, Color(0xFFEF4444))
-                        ).forEach { (label, icon, color) ->
-                            val isSelected = state.globalSettings.globalHvacMode.lowercase() == label.lowercase()
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("global_hvac_btn_${label.lowercase()}")
-                                    .clickable { viewModel.selectGlobalHvacMode(label) },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
-                                ),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isSelected) color else Color.White.copy(alpha = 0.05f)
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(14.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = null,
-                                        tint = if (isSelected) color else Color.White.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Text(
-                                        text = label.uppercase(),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "WATER HEATER OPERATIONAL MODE",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White.copy(alpha = 0.5f),
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(
-                            WaterHeaterItem("eco", "ECO", Icons.Default.WaterDrop, Color(0xFF10B981)),
-                            WaterHeaterItem("heat_pump", "HEAT PUMP", Icons.Default.Settings, Color(0xFFF59E0B)),
-                            WaterHeaterItem("high_demand", "BOOST", Icons.Default.Bolt, Color(0xFFEF4444))
-                        ).forEach { item ->
-                            val option = item.option
-                            val label = item.label
-                            val icon = item.icon
-                            val color = item.color
-                            val isSelected = state.globalSettings.waterHeaterMode.lowercase() == option.lowercase()
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("water_heater_btn_${option.lowercase()}")
-                                    .clickable { viewModel.selectWaterHeaterMode(option) },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
-                                ),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isSelected) color else Color.White.copy(alpha = 0.05f)
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = null,
-                                        tint = if (isSelected) color else Color.White.copy(alpha = 0.5f),
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Text(
-                                        text = label,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// ======================== TAB 3: AUXILIARIES (LIGHTS & POWER) ========================
+// ======================== TAB 2: AUXILIARIES (LIGHTS & POWER) ========================
 
 @Composable
 fun AuxiliariesTab(
@@ -2736,6 +2810,225 @@ fun HvacLoginScreen(
                                 letterSpacing = 1.sp
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HvacSettingsDialog(
+    viewModel: HvacViewModel,
+    onDismiss: () -> Unit
+) {
+    val forceScreenOn by viewModel.forceScreenOn.collectAsState()
+    val darkModeEnabled by viewModel.darkModeEnabled.collectAsState()
+
+    Dialog(
+        onDismissRequest = onDismiss
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)), RoundedCornerShape(24.dp)),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF0C1322) // match HvacBgSlate
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                // Title and Close button Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "SYSTEM PARAMETERS",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 16.sp,
+                            color = Color.White,
+                            letterSpacing = 2.sp
+                        )
+                        Text(
+                            text = "CONFIGURATION & PREFERENCES",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(18.dp))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close dialog",
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                // Feature toggles list
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Toggle 1: Force Screen On
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(16.dp))
+                            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(16.dp))
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(Color(0xFFF59E0B).copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lightbulb,
+                                    contentDescription = null,
+                                    tint = Color(0xFFF59E0B),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = "Force Screen On",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Keeps the screen active at all times",
+                                    fontSize = 10.sp,
+                                    color = Color.White.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = forceScreenOn,
+                            onCheckedChange = { viewModel.setForceScreenOn(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF10B981),
+                                checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.3f),
+                                uncheckedThumbColor = Color(0xFF64748B),
+                                uncheckedTrackColor = Color(0xFF1E293B)
+                            )
+                        )
+                    }
+
+                    // Toggle 2: Dark Mode Theme Accent
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(16.dp))
+                            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(16.dp))
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(Color(0xFF2196F3).copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (darkModeEnabled) Icons.Default.NightsStay else Icons.Default.WbSunny,
+                                    contentDescription = null,
+                                    tint = Color(0xFF2196F3),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = "Dark Mode Theme",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = if (darkModeEnabled) "High contrast night-eye theme active" else "Standard daytime display theme active",
+                                    fontSize = 10.sp,
+                                    color = Color.White.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = darkModeEnabled,
+                            onCheckedChange = { viewModel.setDarkModeEnabled(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF10B981),
+                                checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.3f),
+                                uncheckedThumbColor = Color(0xFF64748B),
+                                uncheckedTrackColor = Color(0xFF1E293B)
+                            )
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                // Metadata block
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "HAVEN CORE VERSION",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = "v2.1.4 build-prod",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    }
+                    Button(
+                        onClick = onDismiss,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White.copy(alpha = 0.1f),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("DONE", fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     }
                 }
             }

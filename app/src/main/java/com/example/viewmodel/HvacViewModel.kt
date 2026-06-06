@@ -38,6 +38,22 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     private val sharedPrefs = application.getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
 
+    private val _forceScreenOn = MutableStateFlow(sharedPrefs.getBoolean("force_screen_on", true))
+    val forceScreenOn: StateFlow<Boolean> = _forceScreenOn.asStateFlow()
+
+    private val _darkModeEnabled = MutableStateFlow(sharedPrefs.getBoolean("dark_mode_enabled", true))
+    val darkModeEnabled: StateFlow<Boolean> = _darkModeEnabled.asStateFlow()
+
+    fun setForceScreenOn(enabled: Boolean) {
+        sharedPrefs.edit().putBoolean("force_screen_on", enabled).apply()
+        _forceScreenOn.value = enabled
+    }
+
+    fun setDarkModeEnabled(enabled: Boolean) {
+        sharedPrefs.edit().putBoolean("dark_mode_enabled", enabled).apply()
+        _darkModeEnabled.value = enabled
+    }
+
     private val _isLoggedIn = MutableStateFlow(false)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
