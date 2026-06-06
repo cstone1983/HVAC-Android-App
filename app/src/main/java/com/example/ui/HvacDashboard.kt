@@ -5,6 +5,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -34,6 +35,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -64,6 +67,8 @@ fun HvacDashboard(
     val actionFeedback by viewModel.actionFeedback.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // Status feedback toast notification
     LaunchedEffect(actionFeedback) {
@@ -119,87 +124,89 @@ fun HvacDashboard(
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                "HAVEN",
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 3.sp,
-                                fontSize = 20.sp,
-                                color = Color.White
-                            )
-                            Text(
-                                "HVAC SYSTEM CONTROLLER",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.6f),
-                                letterSpacing = 1.sp
-                            )
-                        }
-                    },
-                    actions = {
-                        IconButton(
-                            onClick = { viewModel.logout() },
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
-                                .testTag("logout_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ExitToApp,
-                                contentDescription = "Log out",
-                                tint = Color.White.copy(alpha = 0.8f),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        // Connection / sync state node indicator
-                        val connectionColor = when (uiState) {
-                            is HvacUiState.Success -> Color(0xFF10B981) // active green
-                            is HvacUiState.Loading -> Color(0xFFF59E0B) // active yellow
-                            is HvacUiState.Error -> Color(0xFFEF4444)  // inactive red
-                        }
-                        val connectionText = when (uiState) {
-                            is HvacUiState.Success -> "CONNECTED"
-                            is HvacUiState.Loading -> "REFRESHING"
-                            is HvacUiState.Error -> "DISCONNECTED"
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .padding(end = 12.dp)
-                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                                .clickable {
-                                    scope.launch { viewModel.fetchStates() }
-                                }
-                        ) {
-                            Box(
+                if (!isLandscape) {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text(
+                                    "HAVEN",
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 3.sp,
+                                    fontSize = 20.sp,
+                                    color = Color.White
+                                )
+                                Text(
+                                    "HVAC SYSTEM CONTROLLER",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                        },
+                        actions = {
+                            IconButton(
+                                onClick = { viewModel.logout() },
                                 modifier = Modifier
-                                    .size(8.dp)
-                                    .background(connectionColor, RoundedCornerShape(4.dp))
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = connectionText,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Manual Sync Request",
-                                modifier = Modifier.size(12.dp),
-                                tint = Color.White.copy(alpha = 0.8f)
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-                )
+                                    .size(32.dp)
+                                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
+                                    .testTag("logout_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ExitToApp,
+                                    contentDescription = "Log out",
+                                    tint = Color.White.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            // Connection / sync state node indicator
+                            val connectionColor = when (uiState) {
+                                is HvacUiState.Success -> Color(0xFF10B981) // active green
+                                is HvacUiState.Loading -> Color(0xFFF59E0B) // active yellow
+                                is HvacUiState.Error -> Color(0xFFEF4444)  // inactive red
+                            }
+                            val connectionText = when (uiState) {
+                                is HvacUiState.Success -> "CONNECTED"
+                                is HvacUiState.Loading -> "REFRESHING"
+                                is HvacUiState.Error -> "DISCONNECTED"
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .padding(end = 12.dp)
+                                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .clickable {
+                                        scope.launch { viewModel.fetchStates() }
+                                    }
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(connectionColor, RoundedCornerShape(4.dp))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = connectionText,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Manual Sync Request",
+                                    modifier = Modifier.size(12.dp),
+                                    tint = Color.White.copy(alpha = 0.8f)
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                    )
+                }
             }
         ) { innerPadding ->
             Box(
@@ -291,66 +298,278 @@ fun HvacDashboardContent(
     state: HvacUiState.Success,
     viewModel: HvacViewModel
 ) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("ZONES & UNITS", "SCHEDULE & MODES", "AUXILIARY POWER", "UPDATES")
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Horizontal sensors header strip
-        RoomSensorsStrip(rooms = state.roomSensors)
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Custom unified tab row navigation conforming to standard M3 guidelines
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = Color.Transparent,
-            contentColor = Color.White,
-            indicator = { tabPositions ->
-                TabRowDefaults.SecondaryIndicator(
-                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                    color = when (state.globalSettings.globalHvacMode) {
-                        "cool" -> Color(0xFF2196F3)
-                        "off" -> Color(0xFF64748B)
-                        else -> Color(0xFFF59E0B)
-                    }
-                )
-            },
-            divider = {}
+    if (isLandscape) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
-            tabs.forEachIndexed { index, label ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    modifier = Modifier.testTag("nav_tab_$index")
+            // Left Side Panel: Deck Controls
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(260.dp)
+                    .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(16.dp))
+                    .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(16.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Modern styled Title / Brand
+                    Column {
+                        Text(
+                            "HAVEN",
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 3.sp,
+                            fontSize = 18.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            "HVAC SYSTEM CONTROLLER",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.6f),
+                            letterSpacing = 1.sp
+                        )
+                    }
+
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+
+                    // Navigation List
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.verticalScroll(rememberScrollState())
+                    ) {
+                        tabs.forEachIndexed { index, label ->
+                            val isSelected = selectedTab == index
+                            val activeColor = when (state.globalSettings.globalHvacMode) {
+                                "cool" -> Color(0xFF2196F3)
+                                "off" -> Color(0xFF64748B)
+                                else -> Color(0xFFF59E0B)
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("nav_tab_$index")
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (isSelected) activeColor.copy(alpha = 0.15f) else Color.Transparent)
+                                    .border(
+                                        BorderStroke(
+                                            1.dp,
+                                            if (isSelected) activeColor.copy(alpha = 0.4f) else Color.Transparent
+                                        ),
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { selectedTab = index }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .background(
+                                            if (isSelected) activeColor else Color.White.copy(alpha = 0.3f),
+                                            RoundedCornerShape(3.dp)
+                                        )
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = label,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Bottom Panel Deck: Connection and User details
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+
+                    // Connection State
+                    val connectionColor = when (viewModel.uiState.value) {
+                        is HvacUiState.Success -> Color(0xFF10B981)
+                        is HvacUiState.Loading -> Color(0xFFF59E0B)
+                        is HvacUiState.Error -> Color(0xFFEF4444)
+                    }
+                    val connectionText = when (viewModel.uiState.value) {
+                        is HvacUiState.Success -> "CONNECTED"
+                        is HvacUiState.Loading -> "REFRESHING"
+                        is HvacUiState.Error -> "DISCONNECTED"
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                            .clickable {
+                                scope.launch { viewModel.fetchStates() }
+                            }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(connectionColor, RoundedCornerShape(4.dp))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = connectionText,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.9f)
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Manual Sync Request",
+                            tint = Color.White.copy(alpha = 0.6f),
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+
+                    // Logout / User Info
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "OPERATOR: SYSTEM",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 0.5.sp
+                        )
+
+                        IconButton(
+                            onClick = { viewModel.logout() },
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
+                                .testTag("logout_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ExitToApp,
+                                contentDescription = "Log out",
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            // Right Column: Main lists
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+            ) {
+                // Room sensors horizontal deck at top of main view
+                RoomSensorsStrip(rooms = state.roomSensors)
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Scrollable main content framed elegantly
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .widthIn(max = 900.dp)
                 ) {
-                    Text(
-                        text = label,
-                        modifier = Modifier.padding(vertical = 12.dp),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (selectedTab == index) Color.White else Color.White.copy(alpha = 0.5f),
-                        letterSpacing = 1.sp
-                    )
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        transitionSpec = {
+                            slideInHorizontally { width -> if (targetState > initialState) width else -width } + fadeIn() togetherWith
+                                    slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
+                        },
+                        label = "tab_swapper_landscape"
+                    ) { currentTab ->
+                        when (currentTab) {
+                            0 -> ClimateZonesTab(state = state, viewModel = viewModel)
+                            1 -> SystemScheduleTab(state = state, viewModel = viewModel)
+                            2 -> AuxiliariesTab(state = state, viewModel = viewModel)
+                            3 -> UpdatesTab(viewModel = viewModel)
+                        }
+                    }
                 }
             }
         }
+    } else {
+        // Original Portrait Layout preserved exactly
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Horizontal sensors header strip
+            RoomSensorsStrip(rooms = state.roomSensors)
 
-        Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-        // Body content swap based on selected tab containing robust details
-        AnimatedContent(
-            targetState = selectedTab,
-            transitionSpec = {
-                slideInHorizontally { width -> if (targetState > initialState) width else -width } + fadeIn() togetherWith
-                        slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
-            },
-            label = "tab_swapper"
-        ) { currentTab ->
-            when (currentTab) {
-                0 -> ClimateZonesTab(state = state, viewModel = viewModel)
-                1 -> SystemScheduleTab(state = state, viewModel = viewModel)
-                2 -> AuxiliariesTab(state = state, viewModel = viewModel)
-                3 -> UpdatesTab(viewModel = viewModel)
+            // Custom unified tab row navigation conforming to standard M3 guidelines
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color.Transparent,
+                contentColor = Color.White,
+                indicator = { tabPositions ->
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                        color = when (state.globalSettings.globalHvacMode) {
+                            "cool" -> Color(0xFF2196F3)
+                            "off" -> Color(0xFF64748B)
+                            else -> Color(0xFFF59E0B)
+                        }
+                    )
+                },
+                divider = {}
+            ) {
+                tabs.forEachIndexed { index, label ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        modifier = Modifier.testTag("nav_tab_$index")
+                    ) {
+                        Text(
+                            text = label,
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (selectedTab == index) Color.White else Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Body content swap based on selected tab containing robust details
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    slideInHorizontally { width -> if (targetState > initialState) width else -width } + fadeIn() togetherWith
+                            slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
+                },
+                label = "tab_swapper"
+            ) { currentTab ->
+                when (currentTab) {
+                    0 -> ClimateZonesTab(state = state, viewModel = viewModel)
+                    1 -> SystemScheduleTab(state = state, viewModel = viewModel)
+                    2 -> AuxiliariesTab(state = state, viewModel = viewModel)
+                    3 -> UpdatesTab(viewModel = viewModel)
+                }
             }
         }
     }
