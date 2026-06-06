@@ -11,6 +11,9 @@ interface GithubApi {
     @GET("repos/cstone1983/HVAC-Android-App/releases/latest")
     suspend fun getLatestRelease(): Response<GithubRelease>
 
+    @GET("repos/cstone1983/HVAC-Android-App/releases")
+    suspend fun getReleases(): Response<List<GithubRelease>>
+
     @Streaming
     @GET
     suspend fun downloadFile(@Url fileUrl: String): Response<ResponseBody>

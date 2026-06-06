@@ -459,35 +459,40 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         _updateState.value = UpdateState.Checking
         viewModelScope.launch {
             try {
+                var release: com.example.model.GithubRelease? = null
                 val response = GithubClient.service.getLatestRelease()
-                if (response.isSuccessful) {
-                    val release = response.body()
-                    if (release != null) {
-                        val latestTag = release.tagName.trim().removePrefix("v")
-                        val currentClean = currentVersion.trim().removePrefix("v")
+                
+                if (response.isSuccessful && response.body() != null) {
+                    release = response.body()
+                } else {
+                    // Fallback: Check the releases list endpoint in case latest is empty or it's a pre-release
+                    val listResponse = GithubClient.service.getReleases()
+                    if (listResponse.isSuccessful && !listResponse.body().isNullOrEmpty()) {
+                        release = listResponse.body()!!.first()
+                    }
+                }
 
-                        if (isNewerVersion(latestTag, currentClean)) {
-                            val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk") }
-                            if (apkAsset != null) {
-                                _updateState.value = UpdateState.UpdateAvailable(
-                                    version = release.tagName,
-                                    releaseNotes = release.body ?: "No release notes available.",
-                                    downloadUrl = apkAsset.browserDownloadUrl,
-                                    size = apkAsset.size
-                                )
-                            } else {
-                                _updateState.value = UpdateState.Error("No APK found in the latest release assets.")
-                            }
+                if (release != null) {
+                    val latestTag = release.tagName.trim().removePrefix("v")
+                    val currentClean = currentVersion.trim().removePrefix("v")
+
+                    if (isNewerVersion(latestTag, currentClean)) {
+                        val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk") }
+                        if (apkAsset != null) {
+                            _updateState.value = UpdateState.UpdateAvailable(
+                                version = release.tagName,
+                                releaseNotes = release.body ?: "No release notes available.",
+                                downloadUrl = apkAsset.browserDownloadUrl,
+                                size = apkAsset.size
+                            )
                         } else {
-                            _updateState.value = UpdateState.UpToDate
+                            _updateState.value = UpdateState.Error("No APK found in the latest release assets.")
                         }
                     } else {
-                        _updateState.value = UpdateState.Error("Invalid response body from GitHub releases API.")
+                        _updateState.value = UpdateState.UpToDate
                     }
-                } else if (response.code() == 404) {
-                    _updateState.value = UpdateState.NoReleases
                 } else {
-                    _updateState.value = UpdateState.Error("GitHub API returned code: ${response.code()}")
+                    _updateState.value = UpdateState.NoReleases
                 }
             } catch (e: Exception) {
                 _updateState.value = UpdateState.Error("Failed to check for updates: ${e.localizedMessage}")
@@ -592,13 +597,41 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun isNewerVersion(latest: String, current: String): Boolean {
-        val latestParts = latest.split(".").mapNotNull { it.toIntOrNull() }
-        val currentParts = current.split(".").mapNotNull { it.toIntOrNull() }
-        for (i in 0 until minOf(latestParts.size, currentParts.size)) {
-            if (latestParts[i] > currentParts[i]) return true
-            if (latestParts[i] < currentParts[i]) return false
+        val latestClean = latest.trim().removePrefix("v")
+        val currentClean = current.trim().removePrefix("v")
+
+        if (latestClean == currentClean) return false
+
+        // Splitting into components by dots to support sub-versions
+        val latestParts = latestClean.split(".")
+        val currentParts = currentClean.split(".")
+
+        val maxLength = maxOf(latestParts.size, currentParts.size)
+        for (i in 0 until maxLength) {
+            val latestPart = latestParts.getOrNull(i) ?: "0"
+            val currentPart = currentParts.getOrNull(i) ?: "0"
+
+            // Extract numeric prefix from each part safely, e.g. "4b4" -> 4, "12-alpha" -> 12
+            val latestNum = latestPart.takeWhile { it.isDigit() }.toIntOrNull() ?: 0
+            val currentNum = currentPart.takeWhile { it.isDigit() }.toIntOrNull() ?: 0
+
+            if (latestNum > currentNum) return true
+            if (latestNum < currentNum) return false
+
+            // Compare non-numeric suffixes if numeric parts match
+            val latestSuffix = latestPart.dropWhile { it.isDigit() }
+            val currentSuffix = currentPart.dropWhile { it.isDigit() }
+
+            if (latestSuffix != currentSuffix) {
+                // Releases without suffixes are newer than pre-releases (e.g. "1.0" > "1.0-alpha")
+                if (latestSuffix.isEmpty() && currentSuffix.isNotEmpty()) return true
+                if (latestSuffix.isNotEmpty() && currentSuffix.isEmpty()) return false
+                val cmp = latestSuffix.compareTo(currentSuffix)
+                if (cmp > 0) return true
+                if (cmp < 0) return false
+            }
         }
-        return latestParts.size > currentParts.size
+        return false
     }
 
     override fun onCleared() {
