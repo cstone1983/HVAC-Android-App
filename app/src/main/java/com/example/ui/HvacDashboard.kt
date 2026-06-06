@@ -14,6 +14,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -52,6 +58,8 @@ fun HvacDashboard(
     viewModel: HvacViewModel,
     modifier: Modifier = Modifier
 ) {
+    val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
+
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val actionFeedback by viewModel.actionFeedback.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -81,6 +89,15 @@ fun HvacDashboard(
         "Day" -> Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF1E293B)))
         "Night" -> Brush.verticalGradient(listOf(Color(0xFF020617), Color(0xFF0F172A)))
         else -> Brush.verticalGradient(listOf(Color(0xFF050505), Color(0xFF111827)))
+    }
+
+    if (!isLoggedIn) {
+        HvacLoginScreen(
+            viewModel = viewModel,
+            glowColor = Color(0xFF2196F3).copy(alpha = 0.12f),
+            bgGradient = Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF1E293B)))
+        )
+        return
     }
 
     Box(
@@ -122,6 +139,22 @@ fun HvacDashboard(
                         }
                     },
                     actions = {
+                        IconButton(
+                            onClick = { viewModel.logout() },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
+                                .testTag("logout_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ExitToApp,
+                                contentDescription = "Log out",
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+
                         // Connection / sync state node indicator
                         val connectionColor = when (uiState) {
                             is HvacUiState.Success -> Color(0xFF10B981) // active green
@@ -693,6 +726,35 @@ fun ZoneCardItem(
                     )
                 }
 
+                IconButton(
+                    onClick = {
+                        viewModel.toggleZonePower(zone.climateEntityId, zone.currentHvacMode, globalHvacMode, zone.name)
+                    },
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .size(36.dp)
+                        .background(
+                            if (zone.currentHvacMode.lowercase() != "off") {
+                                activeColor.copy(alpha = 0.15f)
+                            } else {
+                                Color.White.copy(alpha = 0.04f)
+                            },
+                            RoundedCornerShape(10.dp)
+                        )
+                        .testTag("zone_power_button_${zone.key}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PowerSettingsNew,
+                        contentDescription = "Toggle Power",
+                        tint = if (zone.currentHvacMode.lowercase() != "off") {
+                            activeColor
+                        } else {
+                            Color.White.copy(alpha = 0.35f)
+                        },
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
                 Icon(
                     imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                     contentDescription = null,
@@ -714,131 +776,169 @@ fun ZoneCardItem(
                 ) {
                     HorizontalDivider(color = Color.White.copy(alpha = 0.05f), modifier = Modifier.padding(bottom = 16.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
+                    val blockPresets = if (globalHvacMode == "cool") zone.presetsCool else zone.presetsHeat
+                    val presetLabelType = if (globalHvacMode == "cool") "Cool" else "Heat"
+
+                    Text(
+                        text = "SCHEDULE SETPOINTS ($presetLabelType Mode)",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White.copy(alpha = 0.5f),
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    listOf(
+                        Triple("DAY", blockPresets.dayValue, activeScheduleState == "Day"),
+                        Triple("NIGHT", blockPresets.nightValue, activeScheduleState == "Night"),
+                        Triple("AWAY", blockPresets.awayValue, activeScheduleState == "Away")
+                    ).forEach { (label, value, isActive) ->
                         Card(
-                            modifier = Modifier.weight(1.2f),
-                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isActive) activeColor.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.02f)
+                            ),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isActive) activeColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.06f)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(
-                                    "THERMOSTAT SETPOINT",
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color.White.copy(alpha = 0.5f),
-                                    letterSpacing = 1.sp
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = if (isActive) activeColor else Color.White.copy(alpha = 0.8f),
+                                            letterSpacing = 0.5.sp
+                                        )
+                                        if (isActive) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(activeColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    "ACTIVE",
+                                                    fontSize = 7.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = activeColor,
+                                                    letterSpacing = 0.5.sp
+                                                )
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = if (isActive) "Following active schedule preset" else "Scheduled fallback value",
+                                        fontSize = 8.sp,
+                                        color = Color.White.copy(alpha = if (isActive) 0.6f else 0.4f)
+                                    )
+                                }
+
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
+                                    horizontalArrangement = Arrangement.End
                                 ) {
                                     IconButton(
                                         onClick = {
-                                            val current = zone.targetTemp
-                                            if (current != null) {
-                                                viewModel.setTargetTemperature(zone.climateEntityId, current - 1.0, zone.name)
+                                            value?.let { currentVal ->
+                                                val newVal = currentVal - 1.0
+                                                val entityId = when (label) {
+                                                    "DAY" -> blockPresets.day
+                                                    "NIGHT" -> blockPresets.night
+                                                    else -> blockPresets.away
+                                                }
+                                                viewModel.setPresetTemperature(entityId, newVal, "${zone.name} $label $presetLabelType")
+                                                if (isActive) {
+                                                    viewModel.setTargetTemperature(zone.climateEntityId, newVal, zone.name)
+                                                }
                                             }
                                         },
                                         modifier = Modifier
-                                            .size(36.dp)
-                                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
-                                            .testTag("stepper_dec_${zone.key}")
+                                            .size(30.dp)
+                                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
                                     ) {
-                                        Icon(Icons.Default.Remove, contentDescription = "Decrease Target", tint = Color.White, modifier = Modifier.size(16.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.Remove,
+                                            contentDescription = "decrease preset",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(12.dp)
+                                        )
                                     }
 
                                     Spacer(modifier = Modifier.width(10.dp))
 
                                     Text(
-                                        text = zone.targetTemp?.let { "${it.toInt()}°" } ?: "--°",
-                                        fontSize = 28.sp,
-                                        fontWeight = FontWeight.Light,
-                                        color = activeColor
+                                        text = value?.let { "${it.toInt()}°" } ?: "--°",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isActive) activeColor else Color.White
                                     )
 
                                     Spacer(modifier = Modifier.width(10.dp))
 
                                     IconButton(
                                         onClick = {
-                                            val current = zone.targetTemp
-                                            if (current != null) {
-                                                viewModel.setTargetTemperature(zone.climateEntityId, current + 1.0, zone.name)
+                                            value?.let { currentVal ->
+                                                val newVal = currentVal + 1.0
+                                                val entityId = when (label) {
+                                                    "DAY" -> blockPresets.day
+                                                    "NIGHT" -> blockPresets.night
+                                                    else -> blockPresets.away
+                                                }
+                                                viewModel.setPresetTemperature(entityId, newVal, "${zone.name} $label $presetLabelType")
+                                                if (isActive) {
+                                                    viewModel.setTargetTemperature(zone.climateEntityId, newVal, zone.name)
+                                                }
                                             }
                                         },
                                         modifier = Modifier
-                                            .size(36.dp)
-                                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(10.dp))
-                                            .testTag("stepper_inc_${zone.key}")
+                                            .size(30.dp)
+                                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
                                     ) {
-                                        Icon(Icons.Default.Add, contentDescription = "Increase Target", tint = Color.White, modifier = Modifier.size(16.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "increase preset",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(12.dp)
+                                        )
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    "Direct override",
-                                    fontSize = 8.sp,
-                                    color = Color.White.copy(alpha = 0.4f),
-                                    fontWeight = FontWeight.Bold
-                                )
                             }
                         }
+                    }
 
-                        Card(
-                            modifier = Modifier.weight(1f),
-                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f))
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .padding(12.dp)
-                                    .fillMaxWidth()
-                            ) {
-                                Text(
-                                    "SCHEDULE PRESETS",
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color.White.copy(alpha = 0.5f),
-                                    letterSpacing = 1.sp,
-                                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                val blockPresets = if (globalHvacMode == "cool") zone.presetsCool else zone.presetsHeat
-                                val presetLabelType = if (globalHvacMode == "cool") "Cool" else "Heat"
-
-                                PresetTempRow(
-                                    label = "DAY",
-                                    value = blockPresets.dayValue,
-                                    tint = if (activeScheduleState == "Day") activeColor else Color.White.copy(alpha = 0.6f),
-                                    onAdjust = { newVal ->
-                                        viewModel.setPresetTemperature(blockPresets.day, newVal, "${zone.name} Day $presetLabelType")
-                                    }
-                                )
-                                PresetTempRow(
-                                    label = "NIGHT",
-                                    value = blockPresets.nightValue,
-                                    tint = if (activeScheduleState == "Night") activeColor else Color.White.copy(alpha = 0.6f),
-                                    onAdjust = { newVal ->
-                                        viewModel.setPresetTemperature(blockPresets.night, newVal, "${zone.name} Night $presetLabelType")
-                                    }
-                                )
-                                PresetTempRow(
-                                    label = "AWAY",
-                                    value = blockPresets.awayValue,
-                                    tint = if (activeScheduleState == "Away") activeColor else Color.White.copy(alpha = 0.6f),
-                                    onAdjust = { newVal ->
-                                        viewModel.setPresetTemperature(blockPresets.away, newVal, "${zone.name} Away $presetLabelType")
-                                    }
-                                )
-                            }
-                        }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "DIRECT CLIMATE TARGET",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            "Currently set to: ${zone.targetTemp?.toInt() ?: "--"}°F",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.5f)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -930,24 +1030,25 @@ fun ZoneCardItem(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Vane Direction", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.6f))
                             Spacer(modifier = Modifier.height(4.dp))
+                            val vaneScrollState = rememberScrollState()
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
-                                    .padding(4.dp),
-                                horizontalArrangement = Arrangement.SpaceAround
+                                    .padding(4.dp)
+                                    .horizontalScroll(vaneScrollState),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                listOf("Auto", "Swing", "Up", "Down").forEach { mode ->
+                                zone.vaneOptions.forEach { mode ->
                                     val isSelected = zone.vaneMode.lowercase() == mode.lowercase()
                                     Box(
                                         modifier = Modifier
-                                            .weight(1f)
                                             .clip(RoundedCornerShape(6.dp))
                                             .background(if (isSelected) activeColor else Color.Transparent)
                                             .clickable {
                                                 viewModel.selectVaneMode(zone.tiltEntityId, mode, zone.name)
                                             }
-                                            .padding(vertical = 6.dp),
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
@@ -964,24 +1065,25 @@ fun ZoneCardItem(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Fan Power", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.6f))
                             Spacer(modifier = Modifier.height(4.dp))
+                            val fanScrollState = rememberScrollState()
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
-                                    .padding(4.dp),
-                                horizontalArrangement = Arrangement.SpaceAround
+                                    .padding(4.dp)
+                                    .horizontalScroll(fanScrollState),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                listOf("Auto", "Quiet", "Low", "High").forEach { speed ->
+                                zone.fanOptions.forEach { speed ->
                                     val isSelected = zone.fanMode.lowercase() == speed.lowercase()
                                     Box(
                                         modifier = Modifier
-                                            .weight(1f)
                                             .clip(RoundedCornerShape(6.dp))
                                             .background(if (isSelected) activeColor else Color.Transparent)
                                             .clickable {
                                                 viewModel.selectFanMode(zone.fanEntityId, speed, zone.name)
                                             }
-                                            .padding(vertical = 6.dp),
+                                            .padding(horizontal = 10.dp, vertical = 6.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
@@ -2073,6 +2175,225 @@ fun UpdatesTab(
                                     Text("RETRY CHECK", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HvacLoginScreen(
+    viewModel: HvacViewModel,
+    glowColor: Color,
+    bgGradient: Brush
+) {
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val loginError by viewModel.loginErrorMessage.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isConnecting = uiState is HvacUiState.Loading
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(bgGradient)
+            .drawBehind {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(glowColor, Color.Transparent),
+                        center = center,
+                        radius = size.width * 0.85f
+                    ),
+                    radius = size.width * 0.85f,
+                    center = center
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            // Icon / Header
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .background(Color(0xFF10B981).copy(alpha = 0.15f), RoundedCornerShape(20.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Weekend,
+                    contentDescription = null,
+                    tint = Color(0xFF10B981),
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                "HAVEN",
+                fontWeight = FontWeight.Black,
+                letterSpacing = 4.sp,
+                fontSize = 24.sp,
+                color = Color.White
+            )
+
+            Text(
+                "HVAC SYSTEM CONTROLLER",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF10B981),
+                letterSpacing = 1.5.sp
+            )
+
+            Spacer(modifier = Modifier.height(36.dp))
+
+            // Form container Card
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp)
+                ) {
+                    Text(
+                        "SECURE SYSTEM LOGIN",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White.copy(alpha = 0.7f),
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    // Username input
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it },
+                        label = { Text("Username", color = Color.White.copy(alpha = 0.4f)) },
+                        placeholder = { Text("admin", color = Color.White.copy(alpha = 0.2f)) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedIndicatorColor = Color(0xFF10B981),
+                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("username_input"),
+                        leadingIcon = {
+                            Icon(Icons.Default.Person, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Password input
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("Password", color = Color.White.copy(alpha = 0.4f)) },
+                        placeholder = { Text("••••••••", color = Color.White.copy(alpha = 0.2f)) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedIndicatorColor = Color(0xFF10B981),
+                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("password_input"),
+                        leadingIcon = {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Guide / Instructions
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.04f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = Color(0xFF2196F3),
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .padding(top = 1.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Enter your Home Assistant username and password credentials. The configured server address is managed securely in the background.",
+                                fontSize = 9.sp,
+                                color = Color.White.copy(alpha = 0.5f),
+                                lineHeight = 12.sp
+                            )
+                        }
+                    }
+
+                    if (loginError != null) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color.Red.copy(alpha = 0.1f)),
+                            border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = loginError!!,
+                                color = Color(0xFFEF4444),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Buttons
+                    Button(
+                        onClick = { viewModel.login(username, password) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        if (isConnecting) {
+                            CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("CONNECTING...", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                        } else {
+                            Text(
+                                "LOG IN",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 11.sp,
+                                color = Color.Black,
+                                letterSpacing = 1.sp
+                            )
                         }
                     }
                 }

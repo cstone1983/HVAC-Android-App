@@ -1,6 +1,7 @@
 package com.example.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.api.HomeAssistantClient
 import com.example.api.GithubClient
@@ -33,7 +34,15 @@ sealed interface HvacUiState {
     data class Error(val message: String) : HvacUiState
 }
 
-class HvacViewModel : ViewModel() {
+class HvacViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val sharedPrefs = application.getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
+
+    private val _isLoggedIn = MutableStateFlow(false)
+    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
+
+    private val _loginErrorMessage = MutableStateFlow<String?>(null)
+    val loginErrorMessage: StateFlow<String?> = _loginErrorMessage.asStateFlow()
 
     private val _uiState = MutableStateFlow<HvacUiState>(HvacUiState.Loading)
     val uiState: StateFlow<HvacUiState> = _uiState.asStateFlow()
@@ -44,7 +53,76 @@ class HvacViewModel : ViewModel() {
     private var syncJob: Job? = null
 
     init {
-        startSync()
+        val savedUrl = sharedPrefs.getString("ha_url", null)
+        val savedToken = sharedPrefs.getString("ha_token", null)
+        val hasSession = sharedPrefs.getBoolean("logged_in", false)
+
+        if (hasSession && !savedUrl.isNullOrEmpty() && !savedToken.isNullOrEmpty()) {
+            HomeAssistantClient.initialize(savedUrl, savedToken)
+            _isLoggedIn.value = true
+            startSync()
+        } else {
+            _isLoggedIn.value = false
+        }
+    }
+
+    fun login(username: String, password: String) {
+        viewModelScope.launch {
+            _loginErrorMessage.value = null
+            if (username.isBlank() || password.isBlank()) {
+                _loginErrorMessage.value = "Username and password cannot be empty."
+                return@launch
+            }
+            try {
+                // Get pre-configured background server address and token
+                val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+                val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" }
+
+                // Fallback option in case they were previously stored in sharedPrefs
+                val savedUrl = sharedPrefs.getString("ha_url", null)
+                val savedToken = sharedPrefs.getString("ha_token", null)
+
+                val targetUrl = if (!savedUrl.isNullOrEmpty()) savedUrl else buildUrl
+                val targetToken = if (!savedToken.isNullOrEmpty()) savedToken else buildToken
+
+                if (targetUrl.isEmpty() || targetToken.isEmpty()) {
+                    _loginErrorMessage.value = "Configuration error: Missing background Server Address or Token configuration."
+                    return@launch
+                }
+
+                // Trim trailing slash and format helper
+                val formattedUrl = HomeAssistantClient.formatBaseUrl(targetUrl)
+                val tempService = HomeAssistantClient.createService(formattedUrl, targetToken)
+                val states = tempService.getStates()
+                if (states.isNotEmpty()) {
+                    sharedPrefs.edit()
+                        .putString("ha_url", formattedUrl)
+                        .putString("ha_token", targetToken)
+                        .putString("ha_username", username)
+                        .putBoolean("logged_in", true)
+                        .apply()
+
+                    HomeAssistantClient.initialize(formattedUrl, targetToken)
+                    _isLoggedIn.value = true
+                    _loginErrorMessage.value = null
+                    startSync()
+                } else {
+                    _loginErrorMessage.value = "Validation failed: No entities found."
+                }
+            } catch (e: Exception) {
+                _loginErrorMessage.value = "Connection failed: ${e.localizedMessage ?: "Unknown error"}"
+            }
+        }
+    }
+
+    fun logout() {
+        sharedPrefs.edit()
+            .putBoolean("logged_in", false)
+            .apply()
+
+        _isLoggedIn.value = false
+        syncJob?.cancel()
+        _uiState.value = HvacUiState.Loading
     }
 
     fun startSync() {
@@ -179,6 +257,9 @@ class HvacViewModel : ViewModel() {
                 val cNight = statesMap[zone.presetsCool.night]?.state?.toDoubleOrNull()
                 val cAway = statesMap[zone.presetsCool.away]?.state?.toDoubleOrNull()
 
+                val vOpts = tilt?.getListAttribute("options")
+                val fOpts = fan?.getListAttribute("options")
+
                 zone.copy(
                     currentTemp = climate?.getDoubleAttribute("current_temperature"),
                     targetTemp = climate?.getDoubleAttribute("temperature") ?: climate?.state?.toDoubleOrNull(),
@@ -187,6 +268,8 @@ class HvacViewModel : ViewModel() {
                     overrideOn = override?.state?.lowercase() == "on",
                     vaneMode = tilt?.state ?: "Auto",
                     fanMode = fan?.state ?: "Auto",
+                    vaneOptions = if (!vOpts.isNullOrEmpty()) vOpts else zone.vaneOptions,
+                    fanOptions = if (!fOpts.isNullOrEmpty()) fOpts else zone.fanOptions,
                     presetsHeat = zone.presetsHeat.copy(
                         dayValue = hDay,
                         nightValue = hNight,
@@ -309,6 +392,19 @@ class HvacViewModel : ViewModel() {
             "entity_id" to numberEntityId,
             "value" to value
         ), "Adjusting preset $name to ${value.toInt()}°F")
+    }
+
+    fun toggleZonePower(climateEntityId: String, currentHvacMode: String, globalHvacMode: String, name: String) {
+        val isOff = currentHvacMode.lowercase() == "off"
+        val targetMode = if (isOff) {
+            if (globalHvacMode.lowercase() == "cool") "cool" else "heat"
+        } else {
+            "off"
+        }
+        callServiceWithOptimisticFeedback("climate", "set_hvac_mode", mapOf(
+            "entity_id" to climateEntityId,
+            "hvac_mode" to targetMode
+        ), "$name power: ${targetMode.uppercase()}")
     }
 
     fun toggleLight(entityId: String, currentOn: Boolean, name: String) {

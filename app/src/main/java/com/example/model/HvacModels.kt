@@ -36,7 +36,9 @@ data class ClimateZone(
     val autoOn: Boolean = false,
     val overrideOn: Boolean = false,
     val vaneMode: String = "Auto",
-    val fanMode: String = "Auto"
+    val fanMode: String = "Auto",
+    val vaneOptions: List<String> = listOf("Auto", "Swing", "1", "2", "3", "4", "5"),
+    val fanOptions: List<String> = listOf("Auto", "Quiet", "Low", "High")
 )
 
 data class GlobalSettings(

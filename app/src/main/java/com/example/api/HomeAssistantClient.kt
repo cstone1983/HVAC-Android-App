@@ -51,17 +51,36 @@ object HomeAssistantClient {
             .create(HomeAssistantApi::class.java)
     }
 
-    val service: HomeAssistantApi by lazy {
-        val url = try {
-            BuildConfig.HA_URL
-        } catch (e: Exception) {
-            "https://localhost/"
-        }
-        val token = try {
-            BuildConfig.HA_TOKEN
-        } catch (e: Exception) {
-            ""
-        }
-        createService(url, token)
+    @Volatile
+    private var activeService: HomeAssistantApi? = null
+
+    fun initialize(url: String, token: String) {
+        activeService = createService(url, token)
     }
+
+    val service: HomeAssistantApi
+        get() {
+            var s = activeService
+            if (s == null) {
+                synchronized(this) {
+                    s = activeService
+                    if (s == null) {
+                        val buildUrl = try {
+                            BuildConfig.HA_URL
+                        } catch (e: Exception) {
+                            ""
+                        }
+                        val buildToken = try {
+                            BuildConfig.HA_TOKEN
+                        } catch (e: Exception) {
+                            ""
+                        }
+                        val finalUrl = if (buildUrl.isNotEmpty()) buildUrl else "https://localhost/"
+                        s = createService(finalUrl, buildToken)
+                        activeService = s
+                    }
+                }
+            }
+            return s!!
+        }
 }

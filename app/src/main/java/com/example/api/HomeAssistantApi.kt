@@ -37,6 +37,14 @@ data class EntityState(
             else -> null
         }
     }
+
+    fun getListAttribute(key: String): List<String>? {
+        val value = attributes?.get(key) ?: return null
+        if (value is List<*>) {
+            return value.mapNotNull { it?.toString() }
+        }
+        return null
+    }
 }
 
 interface HomeAssistantApi {
