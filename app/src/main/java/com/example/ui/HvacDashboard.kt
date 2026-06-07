@@ -154,6 +154,7 @@ fun HvacDashboard(
     val themeConfig = layoutConfig.theme ?: HvacThemeConfig()
     val cardCornerStyle by viewModel.cardCornerStyle.collectAsStateWithLifecycle()
     val cardOpacity by viewModel.cardOpacity.collectAsStateWithLifecycle()
+    val backgroundDesign by viewModel.backgroundDesign.collectAsStateWithLifecycle()
 
     val rawGlowColor = parseHexColor(themeConfig.glowColorHex, Color(0xFF2196F3))
     val glowColorFactor = themeConfig.glowAlpha ?: 0.12f
@@ -213,15 +214,101 @@ fun HvacDashboard(
                     .fillMaxSize()
                     .background(bgGradient)
                     .drawBehind {
-                        drawCircle(
-                            brush = Brush.radialGradient(
-                                colors = listOf(glowColor, Color.Transparent),
-                                center = center,
-                                radius = size.width * 0.85f
-                            ),
-                            radius = size.width * 0.85f,
-                            center = center
-                        )
+                        when (backgroundDesign) {
+                            "grid" -> {
+                                val gridSpacing = 44.dp.toPx()
+                                val lineColor = hvacThemeColors.coolColor.copy(alpha = 0.05f)
+                                var x = 0f
+                                while (x < size.width) {
+                                    drawLine(color = lineColor, start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x, size.height), strokeWidth = 1.dp.toPx())
+                                    x += gridSpacing
+                                }
+                                var y = 0f
+                                while (y < size.height) {
+                                    drawLine(color = lineColor, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 1.dp.toPx())
+                                    y += gridSpacing
+                                }
+                            }
+                            "nebula" -> {
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(hvacThemeColors.heatColor.copy(alpha = 0.08f), Color.Transparent),
+                                        center = androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.25f),
+                                        radius = size.width * 0.7f
+                                    ),
+                                    radius = size.width * 0.7f,
+                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.25f)
+                                )
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(hvacThemeColors.coolColor.copy(alpha = 0.1f), Color.Transparent),
+                                        center = androidx.compose.ui.geometry.Offset(size.width * 0.85f, size.height * 0.75f),
+                                        radius = size.width * 0.7f
+                                    ),
+                                    radius = size.width * 0.7f,
+                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.85f, size.height * 0.75f)
+                                )
+                            }
+                            "aurora" -> {
+                                val waveColor1 = hvacThemeColors.coolColor.copy(alpha = 0.08f)
+                                val waveColor2 = hvacThemeColors.ecoColor.copy(alpha = 0.08f)
+                                
+                                val path1 = androidx.compose.ui.graphics.Path().apply {
+                                    moveTo(0f, size.height * 0.45f)
+                                    cubicTo(
+                                        size.width * 0.25f, size.height * 0.25f,
+                                        size.width * 0.75f, size.height * 0.65f,
+                                        size.width, size.height * 0.35f
+                                    )
+                                    lineTo(size.width, size.height)
+                                    lineTo(0f, size.height)
+                                    close()
+                                }
+                                drawPath(
+                                    path = path1,
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(waveColor1, Color.Transparent),
+                                        startY = size.height * 0.35f,
+                                        endY = size.height
+                                    )
+                                )
+                                
+                                val path2 = androidx.compose.ui.graphics.Path().apply {
+                                    moveTo(0f, size.height * 0.25f)
+                                    cubicTo(
+                                        size.width * 0.35f, size.height * 0.55f,
+                                        size.width * 0.65f, size.height * 0.15f,
+                                        size.width, size.height * 0.55f
+                                    )
+                                    lineTo(size.width, size.height)
+                                    lineTo(0f, size.height)
+                                    close()
+                                }
+                                drawPath(
+                                    path = path2,
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(waveColor2, Color.Transparent),
+                                        startY = size.height * 0.15f,
+                                        endY = size.height
+                                    )
+                                )
+                            }
+                            "minimal" -> {
+                                // Strictly dual-tone minimal gradient, do not draw secondary items
+                            }
+                            else -> {
+                                // radial_glow (Default)
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(glowColor, Color.Transparent),
+                                        center = center,
+                                        radius = size.width * 0.85f
+                                    ),
+                                    radius = size.width * 0.85f,
+                                    center = center
+                                )
+                            }
+                        }
                     }
             ) {
         Scaffold(
@@ -4574,6 +4661,71 @@ fun HvacSettingsDialog(
                                     inactiveTrackColor = Color.White.copy(alpha = 0.1f)
                                 )
                             )
+                        }
+                    }
+
+                    // 2.5 BACKGROUND PATTERN & ART
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "BACKGROUND STYLE & AMBIENT ART",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.7f),
+                            letterSpacing = 0.5.sp
+                        )
+
+                        val activeDesign by viewModel.backgroundDesign.collectAsState()
+                        val designOptions = listOf(
+                            Triple("radial_glow", "RADIAL GLOW", "Pulsing soft center glow"),
+                            Triple("grid", "SYSTEM GRID", "Technical sci-fi vectors"),
+                            Triple("nebula", "NEBULA BLENDS", "Overlapping color spheres"),
+                            Triple("aurora", "AURORA SHEEN", "Shimmering geometric curtains"),
+                            Triple("minimal", "SLATE SOLID", "Clean fluid linear backdrop")
+                        )
+
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth().height(56.dp)
+                        ) {
+                            items(designOptions) { (key, title, desc) ->
+                                val isChosen = activeDesign == key
+                                Card(
+                                    modifier = Modifier
+                                        .width(150.dp)
+                                        .fillMaxHeight()
+                                        .clickable { viewModel.setBackgroundDesign(key) }
+                                        .testTag("bg_design_${key}"),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isChosen) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.02f)
+                                    ),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isChosen) theme.coolColor else Color.White.copy(alpha = 0.05f)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(6.dp).fillMaxSize(),
+                                        verticalArrangement = Arrangement.Center,
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = title,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 9.sp,
+                                            color = if (isChosen) theme.coolColor else Color.White
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = desc,
+                                            fontSize = 7.sp,
+                                            color = Color.White.copy(alpha = 0.4f),
+                                            lineHeight = 8.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 

@@ -71,6 +71,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         _cardOpacity.value = opacity
     }
 
+    private val _backgroundDesign = MutableStateFlow(sharedPrefs.getString("background_design", "radial_glow") ?: "radial_glow")
+    val backgroundDesign: StateFlow<String> = _backgroundDesign.asStateFlow()
+
+    fun setBackgroundDesign(design: String) {
+        sharedPrefs.edit().putString("background_design", design).apply()
+        _backgroundDesign.value = design
+    }
+
     private val _layoutConfig = MutableStateFlow(getActiveLayoutConfig())
     val layoutConfig: StateFlow<com.example.model.HvacLayoutConfig> = kotlinx.coroutines.flow.combine(
         _layoutConfig,
@@ -663,7 +671,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                val latestSimulatedVersion = "v2.2.1"
+                val latestSimulatedVersion = "v2.2.2"
                 if (release == null || isTargetOlderThan(release.tagName, latestSimulatedVersion)) {
                     release = com.example.model.GithubRelease(
                         id = 99999L,
