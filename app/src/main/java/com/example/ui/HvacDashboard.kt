@@ -59,6 +59,45 @@ private data class WaterHeaterItem(
     val color: Color
 )
 
+fun parseHexColor(hex: String?, fallback: Color): Color {
+    if (hex.isNullOrBlank()) return fallback
+    return try {
+        val cleanHex = hex.trim().removePrefix("#")
+        if (cleanHex.length == 6) {
+            Color(android.graphics.Color.parseColor("#$cleanHex"))
+        } else if (cleanHex.length == 8) {
+            Color(android.graphics.Color.parseColor("#$cleanHex"))
+        } else {
+            fallback
+        }
+    } catch (e: Exception) {
+        fallback
+    }
+}
+
+fun getIconByName(name: String?): ImageVector {
+    return when (name?.lowercase()?.trim()) {
+        "layers" -> Icons.Default.Layers
+        "lightbulb" -> Icons.Default.Lightbulb
+        "cloud_download", "download", "update" -> Icons.Default.CloudDownload
+        "settings", "gear" -> Icons.Default.Settings
+        "home" -> Icons.Default.Home
+        "flashlight", "flash", "power" -> Icons.Default.FlashlightOn
+        "thermostat", "temp", "temperature" -> Icons.Default.Thermostat
+        "weekend", "couch" -> Icons.Default.Weekend
+        "bed", "bedroom" -> Icons.Default.Bed
+        "view_quilt", "dashboard" -> Icons.Default.ViewQuilt
+        "light", "brightness" -> Icons.Default.Brightness5
+        "bolt", "electricity", "switch" -> Icons.Default.PowerSettingsNew
+        "garage", "door" -> Icons.Default.Garage
+        "menu" -> Icons.Default.Menu
+        "warning" -> Icons.Default.Warning
+        "refresh" -> Icons.Default.Refresh
+        "exit" -> Icons.Default.ExitToApp
+        else -> Icons.Default.Layers
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HvacDashboard(
@@ -83,37 +122,41 @@ fun HvacDashboard(
         )
     }
 
-    // Status feedback toast notification
-    LaunchedEffect(actionFeedback) {
-        actionFeedback?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
-            viewModel.clearFeedback()
-        }
-    }
-
     // Dynamic state background color mapping matching home assistant transitions
+    val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
+    val themeConfig = layoutConfig.theme ?: HvacThemeConfig()
+
+    val rawGlowColor = parseHexColor(themeConfig.glowColorHex, Color(0xFF2196F3))
+    val glowColorFactor = themeConfig.glowAlpha ?: 0.12f
+
     val scheduleState = when (val state = uiState) {
         is HvacUiState.Success -> state.globalSettings.houseSchedule
         else -> "Day"
     }
 
     val glowColor = when (scheduleState) {
-        "Day" -> Color(0xFF2196F3).copy(alpha = 0.12f)
-        "Night" -> Color(0xFFF59E0B).copy(alpha = 0.08f)
+        "Day" -> rawGlowColor.copy(alpha = glowColorFactor)
+        "Night" -> parseHexColor(themeConfig.accentColorHex, Color(0xFFF59E0B)).copy(alpha = 0.08f)
         else -> Color(0xFF10B981).copy(alpha = 0.1f)
     }
 
-    val bgGradient = when (scheduleState) {
-        "Day" -> Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF1E293B)))
-        "Night" -> Brush.verticalGradient(listOf(Color(0xFF020617), Color(0xFF0F172A)))
-        else -> Brush.verticalGradient(listOf(Color(0xFF050505), Color(0xFF111827)))
+    val bgStartColor = when (scheduleState) {
+        "Day" -> parseHexColor(themeConfig.bgStartColorHex, Color(0xFF0F172A))
+        "Night" -> parseHexColor(themeConfig.bgStartColorHex, Color(0xFF020617))
+        else -> parseHexColor(themeConfig.bgStartColorHex, Color(0xFF050505))
     }
+    val bgEndColor = when (scheduleState) {
+        "Day" -> parseHexColor(themeConfig.bgEndColorHex, Color(0xFF1E293B))
+        "Night" -> parseHexColor(themeConfig.bgEndColorHex, Color(0xFF0F172A))
+        else -> parseHexColor(themeConfig.bgEndColorHex, Color(0xFF111827))
+    }
+    val bgGradient = Brush.verticalGradient(listOf(bgStartColor, bgEndColor))
 
     if (!isLoggedIn) {
         HvacLoginScreen(
             viewModel = viewModel,
-            glowColor = Color(0xFF2196F3).copy(alpha = 0.12f),
-            bgGradient = Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF1E293B)))
+            glowColor = glowColor,
+            bgGradient = bgGradient
         )
         return
     }
@@ -142,14 +185,14 @@ fun HvacDashboard(
                         title = {
                             Column {
                                 Text(
-                                    "HAVEN",
+                                    layoutConfig.appTitle ?: "HAVEN",
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 3.sp,
                                     fontSize = 20.sp,
                                     color = Color.White
                                 )
                                 Text(
-                                    "HVAC SYSTEM CONTROLLER",
+                                    layoutConfig.appSubtitle ?: "HVAC SYSTEM CONTROLLER",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White.copy(alpha = 0.6f),
@@ -337,6 +380,443 @@ fun HvacDashboard(
 }
 
 @Composable
+fun DynamicTabContent(
+    tab: TabConfig,
+    state: HvacUiState.Success,
+    viewModel: HvacViewModel
+) {
+    val context = LocalContext.current
+    val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
+    var activeZoneDetail by remember { mutableStateOf<ClimateZone?>(null) }
+    
+    if (activeZoneDetail != null) {
+        val currentZoneStatus = state.zones.find { it.key == activeZoneDetail?.key } ?: activeZoneDetail!!
+        ZoneDetailPopup(
+            zone = currentZoneStatus,
+            globalHvacMode = state.globalSettings.globalHvacMode,
+            lastNonOffHvacMode = state.globalSettings.lastNonOffHvacMode,
+            activeScheduleState = state.globalSettings.houseSchedule,
+            onDismiss = { activeZoneDetail = null },
+            viewModel = viewModel
+        )
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("tab_content_${tab.id}"),
+        contentPadding = PaddingValues(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Safe check for update available
+        if (layoutUpdateAvailable != null && (tab.sections.contains("zones") || tab.sections.contains("updates"))) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .clickable {
+                            viewModel.downloadAndApplyLayoutUpdate { success, msg ->
+                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        .testTag("zones_layout_update_banner_dynamic"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF10B981).copy(alpha = 0.15f)
+                    ),
+                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = null,
+                            tint = Color(0xFF34D399),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "LAYOUT SPECIFICATION UPDATE AVAILABLE",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF34D399),
+                                letterSpacing = 0.8.sp
+                            )
+                            Text(
+                                "Changes to layout_config.json detected on GitHub. Tap here to apply instantly!",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.9f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        tab.sections.forEach { section ->
+            when (section.lowercase().trim()) {
+                "sensors" -> {
+                    item {
+                        Column {
+                            Text(
+                                "ROOM SENSORS STATUS",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 1.sp,
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp)
+                            )
+                            RoomSensorsStrip(rooms = state.roomSensors)
+                        }
+                    }
+                }
+                "zones" -> {
+                    item {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            GlobalSettingsQuickControl(state = state, viewModel = viewModel)
+                        }
+                    }
+
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Layers,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "${state.zones.size} ACTIVE ZONE CONTROLLERS",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.7f),
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+
+                    val chunkedZones = state.zones.chunked(2)
+                    items(chunkedZones) { pair ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            pair.forEach { zone ->
+                                Box(modifier = Modifier.weight(1f)) {
+                                    ConsolidatedZoneCard(
+                                        zone = zone,
+                                        onClick = { activeZoneDetail = zone },
+                                        viewModel = viewModel
+                                    )
+                                }
+                            }
+                            if (pair.size < 2) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+                "lights" -> {
+                    val interiorLights = state.lights.filter { !it.entityId.contains("exterior") && !it.entityId.contains("porch") }
+                    val exteriorItems = state.lights.filter { it.entityId.contains("exterior") || it.entityId.contains("porch") }
+                    
+                    if (interiorLights.isNotEmpty()) {
+                        item {
+                            Text(
+                                "INTERIOR LIGHTING",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 1.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+
+                        item {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                modifier = Modifier
+                                    .height(if (interiorLights.size <= 2) 75.dp else 150.dp)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(interiorLights) { light ->
+                                    Card(
+                                        modifier = Modifier
+                                            .testTag("light_card_${light.entityId}")
+                                            .clickable { viewModel.toggleLight(light.entityId, light.isOn, light.name) },
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (light.isOn) Color(0xFFF59E0B).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
+                                        ),
+                                        border = BorderStroke(1.dp, if (light.isOn) Color(0xFFF59E0B).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Lightbulb,
+                                                contentDescription = null,
+                                                tint = if (light.isOn) Color(0xFFF59E0B) else Color.White.copy(alpha = 0.4f),
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column {
+                                                Text(light.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                Text(
+                                                    text = if (light.isOn) "ACTIVE" else "POWER OFF",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (light.isOn) Color(0xFFF59E0B) else Color.White.copy(alpha = 0.4f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (exteriorItems.isNotEmpty()) {
+                        item {
+                            Text(
+                                "EXTERIOR PERIMETER & POWER",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 1.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+
+                        item {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                modifier = Modifier
+                                    .height(if (exteriorItems.size <= 2) 105.dp else 210.dp)
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(exteriorItems) { light ->
+                                    Card(
+                                        modifier = Modifier
+                                            .testTag("exterior_card_${light.entityId}")
+                                            .clickable { viewModel.toggleLight(light.entityId, light.isOn, light.name) },
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (light.isOn) Color(0xFF2196F3).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
+                                        ),
+                                        border = BorderStroke(1.dp, if (light.isOn) Color(0xFF2196F3).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.FlashlightOn,
+                                                contentDescription = null,
+                                                tint = if (light.isOn) Color(0xFF2196F3) else Color.White.copy(alpha = 0.4f),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column {
+                                                Text(light.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                Text(
+                                                    text = if (light.isOn) "ACTIVE" else "POWER OFF",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (light.isOn) Color(0xFF2196F3) else Color.White.copy(alpha = 0.4f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                "switches" -> {
+                    if (state.switches.isNotEmpty()) {
+                        item {
+                            Text(
+                                "AUXILIARY POWER CONTROL",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 1.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+
+                        item {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                val chunks = state.switches.chunked(2)
+                                chunks.forEach { rowSwitches ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        rowSwitches.forEach { switch ->
+                                            Card(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .testTag("switch_card_${switch.entityId}")
+                                                    .clickable { viewModel.toggleSwitch(switch.entityId, switch.isOn, switch.name) },
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = if (switch.isOn) Color(0xFF10B981).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
+                                                ),
+                                                border = BorderStroke(1.dp, if (switch.isOn) Color(0xFF10B981).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(12.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.PowerSettingsNew,
+                                                        contentDescription = null,
+                                                        tint = if (switch.isOn) Color(0xFF10B981) else Color.White.copy(alpha = 0.4f),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Column {
+                                                        Text(switch.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                                        Text(
+                                                            text = if (switch.isOn) "ACTIVE" else "POWER OFF",
+                                                            fontSize = 8.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (switch.isOn) Color(0xFF10B981) else Color.White.copy(alpha = 0.4f)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (rowSwitches.size == 1) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                "covers" -> {
+                    if (state.covers.isNotEmpty()) {
+                        item {
+                            Text(
+                                "GARAGE SECURITY COVERS",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 1.sp,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+
+                        items(state.covers) { cover ->
+                            val isOpen = cover.state.lowercase() == "open" || cover.state.lowercase() == "opening"
+                            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isOpen) Color(0xFFEF4444).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.05f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Garage,
+                                                contentDescription = null,
+                                                tint = if (isOpen) Color(0xFFEF4444) else Color(0xFF10B981),
+                                                modifier = Modifier.size(28.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column {
+                                                Text(cover.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
+                                                Text(
+                                                    text = cover.state.uppercase(),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = if (isOpen) Color(0xFFEF4444) else Color(0xFF10B981),
+                                                    letterSpacing = 0.5.sp
+                                                )
+                                            }
+                                        }
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = { viewModel.controlCover(cover.entityId, "open", cover.name) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)),
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                            ) {
+                                                Text("OPEN", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                            Button(
+                                                onClick = { viewModel.controlCover(cover.entityId, "close", cover.name) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)),
+                                                shape = RoundedCornerShape(8.dp),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                            ) {
+                                                Text("CLOSE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                "updates" -> {
+                    item {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            UpdatesTab(viewModel = viewModel)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun HvacDashboardContent(
     state: HvacUiState.Success,
     viewModel: HvacViewModel,
@@ -346,15 +826,18 @@ fun HvacDashboardContent(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(0) }
-    val tabs = listOf("ZONES & UNITS", "AUXILIARY POWER", "UPDATES")
+    
+    val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
+    val rawTabs = layoutConfig.tabs ?: emptyList()
+    
+    val activeTabs = if (rawTabs.isNotEmpty()) rawTabs else listOf(
+        TabConfig("zones", "ZONES & UNITS", "layers", listOf("sensors", "zones")),
+        TabConfig("aux", "AUXILIARY POWER", "lightbulb", listOf("lights", "switches", "covers")),
+        TabConfig("updates", "UPDATES", "cloud_download", listOf("updates"))
+    )
 
     var isMenuExpanded by remember { mutableStateOf(true) }
     val sidePanelWidth by animateDpAsState(targetValue = if (isMenuExpanded) 260.dp else 72.dp, label = "side_panel_width")
-    val tabIcons = listOf(
-        Icons.Default.Layers,
-        Icons.Default.Lightbulb,
-        Icons.Default.CloudDownload
-    )
 
     if (isLandscape) {
         Row(
@@ -387,14 +870,14 @@ fun HvacDashboardContent(
                         ) {
                             Column {
                                 Text(
-                                    "HAVEN",
+                                    layoutConfig.appTitle ?: "HAVEN",
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 3.sp,
                                     fontSize = 18.sp,
                                     color = Color.White
                                 )
                                 Text(
-                                    "HVAC CONTROLLER",
+                                    layoutConfig.appSubtitle ?: "HVAC CONTROLLER",
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White.copy(alpha = 0.6f),
@@ -434,7 +917,7 @@ fun HvacDashboardContent(
                         modifier = Modifier.verticalScroll(rememberScrollState()),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        tabs.forEachIndexed { index, label ->
+                        activeTabs.forEachIndexed { index, tabConfig ->
                             val isSelected = selectedTab == index
                             val activeColor = when (state.globalSettings.globalHvacMode) {
                                 "cool" -> Color(0xFF2196F3)
@@ -460,15 +943,15 @@ fun HvacDashboardContent(
                                 horizontalArrangement = if (isMenuExpanded) Arrangement.Start else Arrangement.Center
                             ) {
                                 Icon(
-                                    imageVector = tabIcons[index],
-                                    contentDescription = label,
+                                    imageVector = getIconByName(tabConfig.icon),
+                                    contentDescription = tabConfig.title,
                                     tint = if (isSelected) activeColor else Color.White.copy(alpha = 0.5f),
                                     modifier = Modifier.size(20.dp)
                                 )
                                 if (isMenuExpanded) {
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Text(
-                                        text = label,
+                                        text = tabConfig.title,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Black,
                                         color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
@@ -667,11 +1150,10 @@ fun HvacDashboardContent(
                                         slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
                             },
                             label = "tab_swapper_landscape"
-                        ) { currentTab ->
-                            when (currentTab) {
-                                0 -> ClimateZonesTab(state = state, viewModel = viewModel)
-                                1 -> AuxiliariesTab(state = state, viewModel = viewModel)
-                                2 -> UpdatesTab(viewModel = viewModel)
+                        ) { currentTabIdx ->
+                            val currentTab = activeTabs.getOrNull(currentTabIdx)
+                            if (currentTab != null) {
+                                DynamicTabContent(tab = currentTab, state = state, viewModel = viewModel)
                             }
                         }
                     }
@@ -774,14 +1256,14 @@ fun HvacDashboardContent(
                 },
                 divider = {}
             ) {
-                tabs.forEachIndexed { index, label ->
+                activeTabs.forEachIndexed { index, tabConfig ->
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
                         modifier = Modifier.testTag("nav_tab_$index")
                     ) {
                         Text(
-                            text = label,
+                            text = tabConfig.title,
                             modifier = Modifier.padding(vertical = 12.dp),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -802,11 +1284,10 @@ fun HvacDashboardContent(
                                     slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
                 },
                 label = "tab_swapper"
-            ) { currentTab ->
-                when (currentTab) {
-                    0 -> ClimateZonesTab(state = state, viewModel = viewModel)
-                    1 -> AuxiliariesTab(state = state, viewModel = viewModel)
-                    2 -> UpdatesTab(viewModel = viewModel)
+            ) { currentTabIdx ->
+                val currentTab = activeTabs.getOrNull(currentTabIdx)
+                if (currentTab != null) {
+                    DynamicTabContent(tab = currentTab, state = state, viewModel = viewModel)
                 }
             }
         }

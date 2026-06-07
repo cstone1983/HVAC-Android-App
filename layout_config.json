@@ -1,5 +1,36 @@
 {
-  "version": "1.0.1",
+  "version": "1.0.2",
+  "appTitle": "HAVEN",
+  "appSubtitle": "DYNAMIC SYSTEM DECK",
+  "theme": {
+    "accentColorHex": "#10B981",
+    "coolColorHex": "#6366F1",
+    "offColorHex": "#475569",
+    "bgStartColorHex": "#0A0D14",
+    "bgEndColorHex": "#121824",
+    "glowColorHex": "#10B981",
+    "glowAlpha": 0.15
+  },
+  "tabs": [
+    {
+      "id": "zones",
+      "title": "ROOM SENSORS & CLIMATE",
+      "icon": "layers",
+      "sections": ["sensors", "zones"]
+    },
+    {
+      "id": "aux",
+      "title": "AUXILIARY ELECTRIC GRID",
+      "icon": "lightbulb",
+      "sections": ["lights", "switches", "covers"]
+    },
+    {
+      "id": "updates",
+      "title": "SYSTEM DISPATCH",
+      "icon": "cloud_download",
+      "sections": ["updates"]
+    }
+  ],
   "roomSensors": [
     {
       "id": "living_room",

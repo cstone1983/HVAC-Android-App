@@ -3,13 +3,40 @@ package com.example.model
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
+data class HvacThemeConfig(
+    val accentColorHex: String? = "#F59E0B",
+    val coolColorHex: String? = "#2196F3",
+    val offColorHex: String? = "#64748B",
+    val bgStartColorHex: String? = "#0F172A",
+    val bgEndColorHex: String? = "#1E293B",
+    val glowColorHex: String? = "#2196F3",
+    val glowAlpha: Float? = 0.12f
+)
+
+@JsonClass(generateAdapter = true)
+data class TabConfig(
+    val id: String,
+    val title: String,
+    val icon: String,
+    val sections: List<String>
+)
+
+@JsonClass(generateAdapter = true)
 data class HvacLayoutConfig(
     val version: String,
     val roomSensors: List<RoomSensorConfig>,
     val zones: List<ClimateZoneConfig>,
     val lights: List<LightControlConfig>,
     val switches: List<SwitchControlConfig>,
-    val covers: List<CoverControlConfig>
+    val covers: List<CoverControlConfig>,
+    val appTitle: String? = "HAVEN",
+    val appSubtitle: String? = "HVAC SYSTEM CONTROLLER",
+    val theme: HvacThemeConfig? = HvacThemeConfig(),
+    val tabs: List<TabConfig>? = listOf(
+        TabConfig("zones", "ZONES & UNITS", "layers", listOf("sensors", "zones")),
+        TabConfig("aux", "AUXILIARY POWER", "lightbulb", listOf("lights", "switches", "covers")),
+        TabConfig("updates", "UPDATES", "cloud_download", listOf("updates"))
+    )
 )
 
 @JsonClass(generateAdapter = true)

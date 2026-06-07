@@ -46,6 +46,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _layoutVersion = MutableStateFlow(sharedPrefs.getString("layout_version", "1.0.0") ?: "1.0.0")
     val layoutVersion: StateFlow<String> = _layoutVersion.asStateFlow()
 
+    private val _layoutConfig = MutableStateFlow(getActiveLayoutConfig())
+    val layoutConfig: StateFlow<com.example.model.HvacLayoutConfig> = _layoutConfig.asStateFlow()
+
     private val _layoutUpdateAvailable = MutableStateFlow<String?>(null)
     val layoutUpdateAvailable: StateFlow<String?> = _layoutUpdateAvailable.asStateFlow()
 
@@ -506,6 +509,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         ), "$name Core trigger activated")
     }
 
+    fun controlCover(entityId: String, state: String, name: String) {
+        val service = if (state == "open" || state == "opening") "open_cover" else "close_cover"
+        callServiceWithOptimisticFeedback("cover", service, mapOf(
+            "entity_id" to entityId
+        ), "$name $state command dispatch")
+    }
+
     // Clean service orchestrator
     private fun callServiceWithOptimisticFeedback(
         domain: String,
@@ -920,6 +930,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         .putString("layout_version", remoteConfig.version)
                         .apply()
                     _layoutVersion.value = remoteConfig.version
+                    _layoutConfig.value = remoteConfig
                     _layoutUpdateAvailable.value = null
                     _actionFeedback.value = "Layout design updated dynamically to v${remoteConfig.version}!"
                     fetchStates()
@@ -944,6 +955,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             .putString("layout_version", defaultVersion)
             .apply()
         _layoutVersion.value = defaultVersion
+        _layoutConfig.value = getBuiltInDefaultLayoutConfig()
         _layoutUpdateAvailable.value = null
         _actionFeedback.value = "Layout restored to factory default configuration (v$defaultVersion)"
         viewModelScope.launch {
