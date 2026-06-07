@@ -1164,24 +1164,22 @@ fun ConsolidatedZoneCard(
                 Color.White.copy(alpha = 0.06f)
             }
         ),
-        shape = RoundedCornerShape(14.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp)
+                .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            // First Row: Icon and Power Status Indicator
+            // Row 1: Icon + Name & Status Badge
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .background(activeColor.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
                 ) {
                     Icon(
                         imageVector = when (zone.key) {
@@ -1192,89 +1190,75 @@ fun ConsolidatedZoneCard(
                         },
                         contentDescription = null,
                         tint = activeColor,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = zone.name,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
                 Box(
                     modifier = Modifier
                         .background(
-                            if (zone.autoOn) Color(0xFF10B981).copy(alpha = 0.1f) else Color(0xFFEF4444).copy(alpha = 0.1f),
+                            if (zone.autoOn) Color(0xFF10B981).copy(alpha = 0.12f) else Color(0xFFEF4444).copy(alpha = 0.12f),
                             RoundedCornerShape(4.dp)
                         )
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
                 ) {
                     Text(
                         text = if (zone.autoOn) "AUTO" else "HOLD",
                         fontSize = 7.sp,
                         fontWeight = FontWeight.Black,
                         color = if (zone.autoOn) Color(0xFF10B981) else Color(0xFFEF4444),
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.2.sp
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // Zone Name
-            Text(
-                text = zone.name,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            // State and Mode Label
-            Text(
-                text = zone.currentHvacMode.uppercase(),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Black,
-                color = activeColor,
-                letterSpacing = 0.5.sp
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-            HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Temps Row
+            // Row 2: Status Mode + Current & Target Temps side-by-side
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Current Temp
-                Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = zone.currentHvacMode.uppercase(),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Black,
+                    color = activeColor,
+                    letterSpacing = 0.5.sp
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Current Temp
                     Text(
-                        text = zone.currentTemp?.let { "${it.toInt()}" } ?: "--",
-                        fontWeight = FontWeight.Light,
-                        fontSize = 22.sp,
+                        text = zone.currentTemp?.let { "${it.toInt()}°" } ?: "--°",
+                        fontWeight = FontWeight.Normal,
+                        fontSize = 15.sp,
                         color = Color.White
                     )
+                    
                     Text(
-                        text = "°F",
+                        text = " / ",
                         fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(bottom = 2.dp, start = 1.dp)
+                        color = Color.White.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 2.dp)
                     )
-                }
 
-                // Target Temp
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "TARGET",
-                        fontSize = 7.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White.copy(alpha = 0.4f),
-                        letterSpacing = 0.5.sp
-                    )
+                    // Target Temp
                     Text(
                         text = "${zone.targetTemp?.toInt() ?: "--"}°",
-                        fontSize = 13.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = activeColor
                     )
