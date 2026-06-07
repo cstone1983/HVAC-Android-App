@@ -679,7 +679,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         assets = listOf(
                             com.example.model.GithubAsset(
                                 name = "update.apk",
-                                browserDownloadUrl = "https://raw.githubusercontent.com/cstone1983/HVAC-Android-App/main/aistudio-repository-template/src/main/res/drawable/ic_launcher_foreground.xml",
+                                browserDownloadUrl = "https://raw.githubusercontent.com/${_githubRepo.value}/${_githubBranch.value}/app/src/main/res/drawable/ic_launcher_foreground.xml",
                                 size = 24580L
                             )
                         )
@@ -744,7 +744,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         _updateState.value = UpdateState.UpdateAvailable(
             version = "v2.0.4-simulation",
             releaseNotes = "AUTHENTIC SYSTEM UPDATE SIMULATION:\n\n• High-performance, low-latency Home Assistant sensor ingestion\n• Elegant Jetpack Compose Canvas thermal distribution visuals\n• Fully secure update pipeline utilizing FileProvider with strict URI permissions\n\nClick 'DOWNLOAD UPDATE' below to trigger the download sequence and launch the package manager install window.",
-            downloadUrl = "https://raw.githubusercontent.com/cstone1983/HVAC-Android-App/main/aistudio-repository-template/src/main/res/drawable/ic_launcher_foreground.xml",
+            downloadUrl = "https://raw.githubusercontent.com/${_githubRepo.value}/${_githubBranch.value}/app/src/main/res/drawable/ic_launcher_foreground.xml",
             size = 12480L
         )
     }

@@ -18,16 +18,20 @@ object GithubClient {
 
     val service: GithubApi by lazy {
         val authInterceptor = Interceptor { chain ->
-            val requestBuilder = chain.request().newBuilder()
+            val request = chain.request()
+            val requestBuilder = request.newBuilder()
                 .header("User-Agent", "HVAC-Android-App-Updater")
-                .header("Accept", "application/vnd.github.v3+json")
                 .header("Cache-Control", "no-cache, no-store, must-revalidate")
                 .header("Pragma", "no-cache")
                 .header("Expires", "0")
 
-            tokenProvider?.invoke()?.let { token ->
-                if (token.isNotBlank()) {
-                    requestBuilder.header("Authorization", "token $token")
+            val url = request.url.toString()
+            if (url.contains("api.github.com")) {
+                requestBuilder.header("Accept", "application/vnd.github.v3+json")
+                tokenProvider?.invoke()?.let { token ->
+                    if (token.isNotBlank()) {
+                        requestBuilder.header("Authorization", "token $token")
+                    }
                 }
             }
 
