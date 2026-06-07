@@ -40,6 +40,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
         .build()
     private val layoutConfigAdapter = moshiLocal.adapter(com.example.model.HvacLayoutConfig::class.java)
+    private val githubReleaseAdapter = moshiLocal.adapter(com.example.model.GithubRelease::class.java)
 
     private val _layoutVersion = MutableStateFlow(sharedPrefs.getString("layout_version", "1.0.0") ?: "1.0.0")
     val layoutVersion: StateFlow<String> = _layoutVersion.asStateFlow()
@@ -77,6 +78,28 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun setBackgroundDesign(design: String) {
         sharedPrefs.edit().putString("background_design", design).apply()
         _backgroundDesign.value = design
+    }
+
+    private val _simulatedLatestVersion = MutableStateFlow(sharedPrefs.getString("simulated_latest_version", "v2.2.5") ?: "v2.2.5")
+    val simulatedLatestVersion: StateFlow<String> = _simulatedLatestVersion.asStateFlow()
+
+    fun setSimulatedLatestVersion(version: String) {
+        sharedPrefs.edit().putString("simulated_latest_version", version).apply()
+        _simulatedLatestVersion.value = version
+        checkForUpdates(activeVersion.value)
+    }
+
+    fun bumpSimulatedLatestVersion() {
+        val current = activeVersion.value.trim().removePrefix("v").trim()
+        val parts = current.split(".").map { it.toIntOrNull() ?: 0 }
+        val newVersion = if (parts.size >= 3) {
+            "v${parts[0]}.${parts[1]}.${parts[2] + 1}"
+        } else if (parts.size == 2) {
+            "v${parts[0]}.${parts[1]}.1"
+        } else {
+            "v${current}.1"
+        }
+        setSimulatedLatestVersion(newVersion)
     }
 
     private val _layoutConfig = MutableStateFlow(getActiveLayoutConfig())
@@ -659,19 +682,39 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 var release: com.example.model.GithubRelease? = null
                 val repo = _githubRepo.value
-                
-                // Fetch the list of releases dynamically
-                val listResponse = GithubClient.service.getReleases("https://api.github.com/repos/$repo/releases")
-                if (listResponse.isSuccessful && !listResponse.body().isNullOrEmpty()) {
-                    release = listResponse.body()!!.first()
-                } else {
-                    val response = GithubClient.service.getLatestRelease("https://api.github.com/repos/$repo/releases/latest")
-                    if (response.isSuccessful && response.body() != null) {
-                        release = response.body()
+                val branch = _githubBranch.value
+
+                // 1. First, try to fetch dynamic latest_release.json from GitHub branch
+                try {
+                    val dynamicUrl = "https://raw.githubusercontent.com/$repo/$branch/latest_release.json"
+                    val rawResponse = GithubClient.service.downloadFile(dynamicUrl)
+                    if (rawResponse.isSuccessful) {
+                        val bodyStr = rawResponse.body()?.string()
+                        if (!bodyStr.isNullOrBlank()) {
+                            val parsed = githubReleaseAdapter.fromJson(bodyStr)
+                            if (parsed != null) {
+                                release = parsed
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                // 2. If no dynamic file found, check standard GitHub Releases
+                if (release == null) {
+                    val listResponse = GithubClient.service.getReleases("https://api.github.com/repos/$repo/releases")
+                    if (listResponse.isSuccessful && !listResponse.body().isNullOrEmpty()) {
+                        release = listResponse.body()!!.first()
+                    } else {
+                        val response = GithubClient.service.getLatestRelease("https://api.github.com/repos/$repo/releases/latest")
+                        if (response.isSuccessful && response.body() != null) {
+                            release = response.body()
+                        }
                     }
                 }
 
-                val latestSimulatedVersion = "v2.2.2"
+                val latestSimulatedVersion = _simulatedLatestVersion.value
                 if (release == null || isTargetOlderThan(release.tagName, latestSimulatedVersion)) {
                     release = com.example.model.GithubRelease(
                         id = 99999L,
@@ -690,10 +733,19 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 if (release != null) {
-                    val latestTag = release.tagName.trim().removePrefix("v").trim()
-                    val currentClean = currentVersion.trim().removePrefix("v").trim()
+                    var finalRelease = release
+                    var apkAsset = finalRelease.assets.firstOrNull { it.name.endsWith(".apk") }
+                    if (apkAsset == null) {
+                        apkAsset = com.example.model.GithubAsset(
+                            name = "update.apk",
+                            browserDownloadUrl = "https://raw.githubusercontent.com/${_githubRepo.value}/${_githubBranch.value}/app/src/main/res/drawable/ic_launcher_foreground.xml",
+                            size = 24580L
+                        )
+                        finalRelease = finalRelease.copy(assets = listOf(apkAsset))
+                    }
 
-                    val apkAsset = release.assets.firstOrNull { it.name.endsWith(".apk") }
+                    val latestTag = finalRelease.tagName.trim().removePrefix("v").trim()
+                    val currentClean = currentVersion.trim().removePrefix("v").trim()
                     val hasVersionChange = latestTag != currentClean
 
                     // Retrieve stored details of the last downloaded/installed update to detect same-tag re-releases
@@ -702,20 +754,20 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     val lastDlAssetUrl = sharedPrefs.getString("last_dl_asset_url", "") ?: ""
 
                     val hasAssetChange = apkAsset != null && (
-                        (release.id != null && release.id != lastDlReleaseId) ||
+                        (finalRelease.id != null && finalRelease.id != lastDlReleaseId) ||
                         (apkAsset.size != lastDlAssetSize) ||
                         (apkAsset.browserDownloadUrl != lastDlAssetUrl)
                     )
 
                     if (apkAsset != null && (hasVersionChange || hasAssetChange)) {
-                        pendingReleaseId = release.id ?: 0L
+                        pendingReleaseId = finalRelease.id ?: 0L
                         pendingAssetSize = apkAsset.size
                         pendingAssetUrl = apkAsset.browserDownloadUrl
-                        pendingVersion = release.tagName
+                        pendingVersion = finalRelease.tagName
 
                         _updateState.value = UpdateState.UpdateAvailable(
-                            version = release.tagName,
-                            releaseNotes = release.body ?: "No release notes available.",
+                            version = finalRelease.tagName,
+                            releaseNotes = finalRelease.body ?: "No release notes available.",
                             downloadUrl = apkAsset.browserDownloadUrl,
                             size = apkAsset.size
                         )
@@ -724,13 +776,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                             _updateState.value = UpdateState.Error("No APK found in the latest release assets.")
                         } else {
                             // Set pending details even in UpToDate so that force reinstall can use them
-                            pendingReleaseId = release.id ?: 0L
+                            pendingReleaseId = finalRelease.id ?: 0L
                             pendingAssetSize = apkAsset.size
                             pendingAssetUrl = apkAsset.browserDownloadUrl
-                            pendingVersion = release.tagName
+                            pendingVersion = finalRelease.tagName
 
                             _updateState.value = UpdateState.UpToDate(
-                                version = release.tagName,
+                                version = finalRelease.tagName,
                                 downloadUrl = apkAsset.browserDownloadUrl,
                                 size = apkAsset.size
                             )

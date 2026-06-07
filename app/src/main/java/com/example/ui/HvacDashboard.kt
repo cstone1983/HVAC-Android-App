@@ -637,19 +637,7 @@ fun DynamicTabContent(
         tab.sections.forEach { section ->
             when (section.lowercase().trim()) {
                 "sensors" -> {
-                    item {
-                        Column {
-                            Text(
-                                "ROOM SENSORS STATUS",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White.copy(alpha = 0.5f),
-                                letterSpacing = 1.sp,
-                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp)
-                            )
-                            RoomSensorsStrip(rooms = state.roomSensors)
-                        }
-                    }
+                    // Redundant copy removed since it's already displayed in the top header.
                 }
                 "zones" -> {
                     item {
@@ -4992,6 +4980,105 @@ fun HvacSettingsDialog(
                             ) {
                                 Text("RESTORE DEFAULT", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                             }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                // OTA Update Simulator config
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
+                        Text(
+                            text = "OTA UPDATE SIMULATOR & TESTING",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Simulate mock system upgrades to test download/install routines or live increment versioning to repeat OTA loops.",
+                            fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.4f)
+                        )
+                    }
+
+                    val simLatestVersion by viewModel.simulatedLatestVersion.collectAsStateWithLifecycle()
+                    val activeInstalledVersion by viewModel.activeVersion.collectAsStateWithLifecycle()
+                    var simText by remember(simLatestVersion) { mutableStateOf(simLatestVersion) }
+                    val context = LocalContext.current
+
+                    OutlinedTextField(
+                        value = simText,
+                        onValueChange = { simText = it },
+                        label = { Text("Simulated Update Version Tag", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedIndicatorColor = theme.coolColor,
+                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("sim_version_input"),
+                        leadingIcon = {
+                            Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = theme.coolColor.copy(alpha = 0.8f))
+                        },
+                        supportingText = {
+                            Text(
+                                "Active running version is: $activeInstalledVersion. Set to a larger tag (e.g. v2.2.6) to trigger the updater.",
+                                fontSize = 8.sp,
+                                color = Color.White.copy(alpha = 0.4f)
+                            )
+                        }
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (simText.isNotBlank()) {
+                                    viewModel.setSimulatedLatestVersion(simText)
+                                    Toast.makeText(context, "Simulated latest target version set to $simText", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Version cannot be empty", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = theme.coolColor.copy(alpha = 0.15f),
+                                contentColor = theme.coolColor
+                            ),
+                            border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("SAVE SIMULATED VERSION", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.bumpSimulatedLatestVersion()
+                                Toast.makeText(context, "Bumped target! OTA update is now available.", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = theme.ecoColor.copy(alpha = 0.15f),
+                                contentColor = theme.ecoColor
+                            ),
+                            border = BorderStroke(1.dp, theme.ecoColor.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.TrendingUp, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("MOCK BUMP (+0.0.1)", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                         }
                     }
                 }
