@@ -862,7 +862,7 @@ fun GlobalSettingsQuickControl(
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
         shape = RoundedCornerShape(14.dp)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             // First row: HOUSE SCHEDULE
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -890,7 +890,10 @@ fun GlobalSettingsQuickControl(
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     listOf(
                         Triple("Day", Icons.Default.WbSunny, Color(0xFFF59E0B)),
                         Triple("Night", Icons.Default.NightsStay, Color(0xFF2196F3)),
@@ -899,8 +902,8 @@ fun GlobalSettingsQuickControl(
                         val isSelected = state.globalSettings.houseSchedule.lowercase() == label.lowercase()
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(
                                     if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
                                 )
@@ -911,7 +914,7 @@ fun GlobalSettingsQuickControl(
                             Icon(
                                 imageVector = icon,
                                 contentDescription = "Set schedule to $label",
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(20.dp),
                                 tint = if (isSelected) color else Color.White.copy(alpha = 0.5f)
                             )
                         }
@@ -919,9 +922,9 @@ fun GlobalSettingsQuickControl(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Second row: GLOBAL HVAC MODE
             Row(
@@ -950,7 +953,10 @@ fun GlobalSettingsQuickControl(
                     )
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     listOf(
                         Triple("heat", Icons.Default.Whatshot, Color(0xFFF59E0B)),
                         Triple("cool", Icons.Default.AcUnit, Color(0xFF2196F3)),
@@ -959,8 +965,8 @@ fun GlobalSettingsQuickControl(
                         val isSelected = state.globalSettings.globalHvacMode.lowercase() == label.lowercase()
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(
                                     if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
                                 )
@@ -971,7 +977,7 @@ fun GlobalSettingsQuickControl(
                             Icon(
                                 imageVector = icon,
                                 contentDescription = "Set global mode to $label",
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(20.dp),
                                 tint = if (isSelected) color else Color.White.copy(alpha = 0.5f)
                             )
                         }
@@ -979,9 +985,9 @@ fun GlobalSettingsQuickControl(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Third row: HOT WATER CONTROL
             Column {

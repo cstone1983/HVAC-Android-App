@@ -81,6 +81,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var consecutiveFailureCount = 0
 
     init {
+        _layoutVersion.value = getActiveLayoutConfig().version
         val savedUrl = sharedPrefs.getString("ha_url", null)
         val savedToken = sharedPrefs.getString("ha_token", null)
         val hasSession = sharedPrefs.getBoolean("logged_in", false)
@@ -675,6 +676,17 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun getBuiltInDefaultLayoutConfig(): com.example.model.HvacLayoutConfig {
+        try {
+            val jsonString = getApplication<Application>().assets.open("layout_config.json").bufferedReader().use { it.readText() }
+            val config = layoutConfigAdapter.fromJson(jsonString)
+            if (config != null) return config
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return getBuiltInDefaultLayoutConfigFallback()
+    }
+
+    fun getBuiltInDefaultLayoutConfigFallback(): com.example.model.HvacLayoutConfig {
         return com.example.model.HvacLayoutConfig(
             version = "1.0.0",
             roomSensors = listOf(
@@ -820,13 +832,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resetLayoutToDefault() {
+        val defaultVersion = getBuiltInDefaultLayoutConfig().version
         sharedPrefs.edit()
             .remove("layout_config_json")
-            .putString("layout_version", "1.0.0")
+            .putString("layout_version", defaultVersion)
             .apply()
-        _layoutVersion.value = "1.0.0"
+        _layoutVersion.value = defaultVersion
         _layoutUpdateAvailable.value = null
-        _actionFeedback.value = "Layout restored to factory default configuration (v1.0.0)"
+        _actionFeedback.value = "Layout restored to factory default configuration (v$defaultVersion)"
         viewModelScope.launch {
             fetchStates()
         }
