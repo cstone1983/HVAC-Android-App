@@ -897,23 +897,22 @@ fun GlobalSettingsQuickControl(
                         Triple("Away", Icons.Default.ExitToApp, Color(0xFF10B981))
                     ).forEach { (label, icon, color) ->
                         val isSelected = state.globalSettings.houseSchedule.lowercase() == label.lowercase()
-                        IconButton(
-                            onClick = { viewModel.selectHouseSchedule(label) },
+                        Box(
                             modifier = Modifier
                                 .size(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(
-                                    if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f),
-                                    RoundedCornerShape(10.dp)
+                                    if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
                                 )
+                                .clickable { viewModel.selectHouseSchedule(label) }
                                 .testTag("main_schedule_btn_${label.lowercase()}"),
-                            colors = IconButtonDefaults.iconButtonColors(
-                                contentColor = if (isSelected) color else Color.White.copy(alpha = 0.5f)
-                            )
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = icon,
                                 contentDescription = "Set schedule to $label",
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(18.dp),
+                                tint = if (isSelected) color else Color.White.copy(alpha = 0.5f)
                             )
                         }
                     }
@@ -958,23 +957,22 @@ fun GlobalSettingsQuickControl(
                         Triple("off", Icons.Default.PowerSettingsNew, Color(0xFFEF4444))
                     ).forEach { (label, icon, color) ->
                         val isSelected = state.globalSettings.globalHvacMode.lowercase() == label.lowercase()
-                        IconButton(
-                            onClick = { viewModel.selectGlobalHvacMode(label) },
+                        Box(
                             modifier = Modifier
                                 .size(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(
-                                    if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f),
-                                    RoundedCornerShape(10.dp)
+                                    if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
                                 )
+                                .clickable { viewModel.selectGlobalHvacMode(label) }
                                 .testTag("main_hvac_mode_btn_${label.lowercase()}"),
-                            colors = IconButtonDefaults.iconButtonColors(
-                                contentColor = if (isSelected) color else Color.White.copy(alpha = 0.5f)
-                            )
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = icon,
                                 contentDescription = "Set global mode to $label",
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(18.dp),
+                                tint = if (isSelected) color else Color.White.copy(alpha = 0.5f)
                             )
                         }
                     }
@@ -1353,24 +1351,27 @@ fun ZoneCardItem(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.End
                                 ) {
-                                    IconButton(
-                                        onClick = {
-                                            value?.let { currentVal ->
-                                                val newVal = currentVal - 1.0
-                                                val entityId = when (label) {
-                                                    "DAY" -> blockPresets.day
-                                                    "NIGHT" -> blockPresets.night
-                                                    else -> blockPresets.away
-                                                }
-                                                viewModel.setPresetTemperature(entityId, newVal, "${zone.name} $label $presetLabelType")
-                                                if (isActive) {
-                                                    viewModel.setTargetTemperature(zone.climateEntityId, newVal, zone.name)
-                                                }
-                                            }
-                                        },
+                                    Box(
                                         modifier = Modifier
                                             .size(30.dp)
-                                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.White.copy(alpha = 0.05f))
+                                            .clickable {
+                                                value?.let { currentVal ->
+                                                    val newVal = currentVal - 1.0
+                                                    val entityId = when (label) {
+                                                        "DAY" -> blockPresets.day
+                                                        "NIGHT" -> blockPresets.night
+                                                        else -> blockPresets.away
+                                                    }
+                                                    viewModel.setPresetTemperature(entityId, newVal, "${zone.name} $label $presetLabelType")
+                                                    if (isActive) {
+                                                        viewModel.setTargetTemperature(zone.climateEntityId, newVal, zone.name)
+                                                    }
+                                                }
+                                             }
+                                             .testTag("preset_decrease_${label.lowercase()}_${zone.key}"),
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Remove,
@@ -1391,24 +1392,27 @@ fun ZoneCardItem(
 
                                     Spacer(modifier = Modifier.width(10.dp))
 
-                                    IconButton(
-                                        onClick = {
-                                            value?.let { currentVal ->
-                                                val newVal = currentVal + 1.0
-                                                val entityId = when (label) {
-                                                    "DAY" -> blockPresets.day
-                                                    "NIGHT" -> blockPresets.night
-                                                    else -> blockPresets.away
-                                                }
-                                                viewModel.setPresetTemperature(entityId, newVal, "${zone.name} $label $presetLabelType")
-                                                if (isActive) {
-                                                    viewModel.setTargetTemperature(zone.climateEntityId, newVal, zone.name)
-                                                }
-                                            }
-                                        },
+                                    Box(
                                         modifier = Modifier
                                             .size(30.dp)
-                                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color.White.copy(alpha = 0.05f))
+                                            .clickable {
+                                                value?.let { currentVal ->
+                                                    val newVal = currentVal + 1.0
+                                                    val entityId = when (label) {
+                                                        "DAY" -> blockPresets.day
+                                                        "NIGHT" -> blockPresets.night
+                                                        else -> blockPresets.away
+                                                    }
+                                                    viewModel.setPresetTemperature(entityId, newVal, "${zone.name} $label $presetLabelType")
+                                                    if (isActive) {
+                                                        viewModel.setTargetTemperature(zone.climateEntityId, newVal, zone.name)
+                                                    }
+                                                }
+                                             }
+                                             .testTag("preset_increase_${label.lowercase()}_${zone.key}"),
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Add,
