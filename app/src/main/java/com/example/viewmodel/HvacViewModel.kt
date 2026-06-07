@@ -1303,6 +1303,29 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         return false
     }
 
+    fun simulateSoftwareUpdateDetected() {
+        val mockSha = java.util.UUID.randomUUID().toString().replace("-", "").take(40)
+        val version = "v${(3..9).random()}.${(0..9).random()}.${(0..9).random()}"
+        pendingVersion = "$version-${mockSha.take(7)}"
+        pendingSoftwareCommit = mockSha
+        pendingAssetUrl = "https://raw.githubusercontent.com/${_githubRepo.value}/${_githubBranch.value}/app/src/main/res/drawable/ic_launcher_foreground.xml"
+        pendingAssetSize = 2048L
+
+        _updateState.value = UpdateState.UpdateAvailable(
+            version = pendingVersion,
+            releaseNotes = "SIMULATED INTERACTIVE BUILD DETECTOR SUCCESS\n\nCommit Details:\n• SHA: $mockSha\n• Branch: ${_githubBranch.value}\n\n• Triggered instantly via test harness! Click 'DOWNLOAD & INSTALL UPDATE' to execute full pipeline flow simulation.",
+            downloadUrl = pendingAssetUrl,
+            size = pendingAssetSize
+        )
+    }
+
+    fun simulateLayoutUpdateDetected() {
+        val version = "v${(2..9).random()}.${(0..9).random()}.${(0..9).random()}"
+        val randomSha = java.util.UUID.randomUUID().toString().replace("-", "").take(7)
+        _layoutUpdateAvailable.value = "$version ($randomSha)"
+        _actionFeedback.value = "Simulated design layout $version ($randomSha) available!"
+    }
+
     override fun onCleared() {
         syncJob?.cancel()
         super.onCleared()

@@ -4077,6 +4077,104 @@ fun UpdatesTab(
                 }
             }
         }
+
+        // DEVELOPMENT & UPDATE SIMULATOR CARD
+        Card(
+            colors = CardDefaults.cardColors(containerColor = theme.coolColor.copy(alpha = 0.05f)),
+            border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.25f)),
+            shape = hvacCardShape(16),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "DEVELOPMENT & UPDATE SIMULATOR",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = theme.coolColor,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Interactive Update Test Harness",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.BugReport,
+                        contentDescription = null,
+                        tint = theme.coolColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = theme.coolColor.copy(alpha = 0.15f))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "Verify real-time delivery pipelines without deploying physical changes to your GitHub branch. Running simulation mimics standard download & install packages dynamically.",
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.65f),
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            viewModel.simulateSoftwareUpdateDetected()
+                            android.widget.Toast.makeText(context, "Software update simulation triggered!", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = theme.coolColor.copy(alpha = 0.15f),
+                            contentColor = Color.White
+                        ),
+                        border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("MOCK CORE PUSH", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            viewModel.simulateLayoutUpdateDetected()
+                            android.widget.Toast.makeText(context, "Layout specification update simulation triggered!", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = theme.coolColor.copy(alpha = 0.15f),
+                            contentColor = Color.White
+                        ),
+                        border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("MOCK LAYOUT PUSH", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }
 
