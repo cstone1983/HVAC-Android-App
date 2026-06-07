@@ -8,9 +8,7 @@ import com.example.api.GithubClient
 import com.example.model.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
@@ -46,8 +44,44 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _layoutVersion = MutableStateFlow(sharedPrefs.getString("layout_version", "1.0.0") ?: "1.0.0")
     val layoutVersion: StateFlow<String> = _layoutVersion.asStateFlow()
 
+    private val _selectedThemePreset = MutableStateFlow(sharedPrefs.getString("selected_theme_preset", "dynamic") ?: "dynamic")
+    val selectedThemePreset: StateFlow<String> = _selectedThemePreset.asStateFlow()
+
+    fun setSelectedThemePreset(presetId: String) {
+        sharedPrefs.edit().putString("selected_theme_preset", presetId).apply()
+        _selectedThemePreset.value = presetId
+    }
+
     private val _layoutConfig = MutableStateFlow(getActiveLayoutConfig())
-    val layoutConfig: StateFlow<com.example.model.HvacLayoutConfig> = _layoutConfig.asStateFlow()
+    val layoutConfig: StateFlow<com.example.model.HvacLayoutConfig> = kotlinx.coroutines.flow.combine(
+        _layoutConfig,
+        _selectedThemePreset
+    ) { config, presetId ->
+        if (presetId == "dynamic") {
+            config
+        } else {
+            val preset = com.example.ui.theme.HvacThemePresetsList.find { it.id == presetId }
+            if (preset != null) {
+                config.copy(
+                    theme = com.example.model.HvacThemeConfig(
+                        accentColorHex = preset.accentColorHex,
+                        coolColorHex = preset.coolColorHex,
+                        offColorHex = preset.offColorHex,
+                        bgStartColorHex = preset.bgStartColorHex,
+                        bgEndColorHex = preset.bgEndColorHex,
+                        glowColorHex = preset.glowColorHex,
+                        glowAlpha = preset.glowAlpha
+                    )
+                )
+            } else {
+                config
+            }
+        }
+    }.stateIn(
+        viewModelScope,
+        kotlinx.coroutines.flow.SharingStarted.Eagerly,
+        _layoutConfig.value
+    )
 
     private val _layoutUpdateAvailable = MutableStateFlow<String?>(null)
     val layoutUpdateAvailable: StateFlow<String?> = _layoutUpdateAvailable.asStateFlow()

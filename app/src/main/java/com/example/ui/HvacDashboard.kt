@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.*
+import com.example.ui.theme.*
 import com.example.viewmodel.HvacUiState
 import com.example.viewmodel.HvacViewModel
 import kotlinx.coroutines.launch
@@ -115,13 +116,6 @@ fun HvacDashboard(
 
     var showSettingsDialog by remember { mutableStateOf(false) }
 
-    if (showSettingsDialog) {
-        HvacSettingsDialog(
-            viewModel = viewModel,
-            onDismiss = { showSettingsDialog = false }
-        )
-    }
-
     // Dynamic state background color mapping matching home assistant transitions
     val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
     val themeConfig = layoutConfig.theme ?: HvacThemeConfig()
@@ -152,31 +146,47 @@ fun HvacDashboard(
     }
     val bgGradient = Brush.verticalGradient(listOf(bgStartColor, bgEndColor))
 
-    if (!isLoggedIn) {
-        HvacLoginScreen(
-            viewModel = viewModel,
-            glowColor = glowColor,
-            bgGradient = bgGradient
-        )
-        return
-    }
+    val hvacThemeColors = HvacThemeColors(
+        heatColor = parseHexColor(themeConfig.accentColorHex, Color(0xFFF59E0B)),
+        coolColor = parseHexColor(themeConfig.coolColorHex, Color(0xFF2196F3)),
+        offColor = parseHexColor(themeConfig.offColorHex, Color(0xFF64748B)),
+        bgStart = bgStartColor,
+        bgEnd = bgEndColor,
+        glowColor = glowColor,
+        glowAlpha = glowColorFactor
+    )
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(bgGradient)
-            .drawBehind {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(glowColor, Color.Transparent),
-                        center = center,
-                        radius = size.width * 0.85f
-                    ),
-                    radius = size.width * 0.85f,
-                    center = center
-                )
-            }
-    ) {
+    CompositionLocalProvider(LocalHvacTheme provides hvacThemeColors) {
+        if (showSettingsDialog) {
+            HvacSettingsDialog(
+                viewModel = viewModel,
+                onDismiss = { showSettingsDialog = false }
+            )
+        }
+
+        if (!isLoggedIn) {
+            HvacLoginScreen(
+                viewModel = viewModel,
+                glowColor = glowColor,
+                bgGradient = bgGradient
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(bgGradient)
+                    .drawBehind {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(glowColor, Color.Transparent),
+                                center = center,
+                                radius = size.width * 0.85f
+                            ),
+                            radius = size.width * 0.85f,
+                            center = center
+                        )
+                    }
+            ) {
         Scaffold(
             containerColor = Color.Transparent,
             topBar = {
@@ -378,6 +388,8 @@ fun HvacDashboard(
         }
     }
 }
+}
+}
 
 @Composable
 fun DynamicTabContent(
@@ -386,6 +398,7 @@ fun DynamicTabContent(
     viewModel: HvacViewModel
 ) {
     val context = LocalContext.current
+    val theme = LocalHvacTheme.current
     val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
     var activeZoneDetail by remember { mutableStateOf<ClimateZone?>(null) }
     
@@ -560,9 +573,9 @@ fun DynamicTabContent(
                                             .testTag("light_card_${light.entityId}")
                                             .clickable { viewModel.toggleLight(light.entityId, light.isOn, light.name) },
                                         colors = CardDefaults.cardColors(
-                                            containerColor = if (light.isOn) Color(0xFFF59E0B).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
+                                            containerColor = if (light.isOn) theme.heatColor.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
                                         ),
-                                        border = BorderStroke(1.dp, if (light.isOn) Color(0xFFF59E0B).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
+                                        border = BorderStroke(1.dp, if (light.isOn) theme.heatColor.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
                                     ) {
                                         Row(
                                             modifier = Modifier
@@ -573,7 +586,7 @@ fun DynamicTabContent(
                                             Icon(
                                                 imageVector = Icons.Default.Lightbulb,
                                                 contentDescription = null,
-                                                tint = if (light.isOn) Color(0xFFF59E0B) else Color.White.copy(alpha = 0.4f),
+                                                tint = if (light.isOn) theme.heatColor else Color.White.copy(alpha = 0.4f),
                                                 modifier = Modifier.size(24.dp)
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
@@ -583,7 +596,7 @@ fun DynamicTabContent(
                                                     text = if (light.isOn) "ACTIVE" else "POWER OFF",
                                                     fontSize = 8.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = if (light.isOn) Color(0xFFF59E0B) else Color.White.copy(alpha = 0.4f)
+                                                    color = if (light.isOn) theme.heatColor else Color.White.copy(alpha = 0.4f)
                                                 )
                                             }
                                         }
@@ -621,9 +634,9 @@ fun DynamicTabContent(
                                             .testTag("exterior_card_${light.entityId}")
                                             .clickable { viewModel.toggleLight(light.entityId, light.isOn, light.name) },
                                         colors = CardDefaults.cardColors(
-                                            containerColor = if (light.isOn) Color(0xFF2196F3).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
+                                            containerColor = if (light.isOn) theme.coolColor.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
                                         ),
-                                        border = BorderStroke(1.dp, if (light.isOn) Color(0xFF2196F3).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
+                                        border = BorderStroke(1.dp, if (light.isOn) theme.coolColor.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
                                     ) {
                                         Row(
                                             modifier = Modifier
@@ -634,7 +647,7 @@ fun DynamicTabContent(
                                             Icon(
                                                 imageVector = Icons.Default.FlashlightOn,
                                                 contentDescription = null,
-                                                tint = if (light.isOn) Color(0xFF2196F3) else Color.White.copy(alpha = 0.4f),
+                                                tint = if (light.isOn) theme.coolColor else Color.White.copy(alpha = 0.4f),
                                                 modifier = Modifier.size(20.dp)
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
@@ -644,7 +657,7 @@ fun DynamicTabContent(
                                                     text = if (light.isOn) "ACTIVE" else "POWER OFF",
                                                     fontSize = 8.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = if (light.isOn) Color(0xFF2196F3) else Color.White.copy(alpha = 0.4f)
+                                                    color = if (light.isOn) theme.coolColor else Color.White.copy(alpha = 0.4f)
                                                 )
                                             }
                                         }
@@ -1685,11 +1698,12 @@ fun ConsolidatedZoneCard(
     onClick: () -> Unit,
     viewModel: HvacViewModel
 ) {
+    val theme = LocalHvacTheme.current
     val activeColor = when (zone.currentHvacMode.lowercase()) {
-        "heat" -> Color(0xFFF59E0B)
-        "cool" -> Color(0xFF2196F3)
-        "off" -> Color(0xFF64748B)
-        else -> Color(0xFFF59E0B)
+        "heat" -> theme.heatColor
+        "cool" -> theme.coolColor
+        "off" -> theme.offColor
+        else -> theme.heatColor
     }
 
     Card(
@@ -1699,7 +1713,7 @@ fun ConsolidatedZoneCard(
             .testTag("zone_card_${zone.key}"),
         colors = CardDefaults.cardColors(
             containerColor = if (zone.overrideOn) {
-                Color(0xFFF59E0B).copy(alpha = 0.08f)
+                theme.heatColor.copy(alpha = 0.08f)
             } else {
                 Color.White.copy(alpha = 0.03f)
             }
@@ -1707,9 +1721,9 @@ fun ConsolidatedZoneCard(
         border = BorderStroke(
             1.dp,
             if (zone.overrideOn) {
-                Color(0xFFF59E0B).copy(alpha = 0.5f)
+                theme.heatColor.copy(alpha = 0.5f)
             } else if (!zone.autoOn) {
-                Color(0xFFEF4444).copy(alpha = 0.3f)
+                theme.boostColor.copy(alpha = 0.3f)
             } else {
                 Color.White.copy(alpha = 0.06f)
             }
@@ -4003,6 +4017,107 @@ fun HvacSettingsDialog(
                                 uncheckedTrackColor = Color(0xFF1E293B)
                             )
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Theme Preset Selection Panel
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
+                        Text(
+                            text = "SYSTEM VISUAL THEME CONTROLS",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Select any premium preset theme engine below to update the deck visual cue",
+                            color = Color.White.copy(alpha = 0.4f),
+                            fontSize = 10.sp
+                        )
+                    }
+
+                    val activeThemePreset by viewModel.selectedThemePreset.collectAsState()
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth().height(104.dp),
+                        contentPadding = PaddingValues(vertical = 4.dp)
+                    ) {
+                        items(HvacThemePresetsList) { preset ->
+                            val isSelected = activeThemePreset == preset.id
+                            val presetAccentColor = parseHexColor(preset.accentColorHex, Color.White)
+                            val presetBgStart = parseHexColor(preset.bgStartColorHex, Color.Black)
+                            val presetBgEnd = parseHexColor(preset.bgEndColorHex, Color.DarkGray)
+                            val presetCoolColor = parseHexColor(preset.coolColorHex, Color.White)
+
+                            Card(
+                                modifier = Modifier
+                                    .width(180.dp)
+                                    .fillMaxHeight()
+                                    .clickable { viewModel.setSelectedThemePreset(preset.id) }
+                                    .testTag("theme_preset_${preset.id}"),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isSelected) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.02f)
+                                ),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSelected) presetAccentColor else Color.White.copy(alpha = 0.05f)
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp).fillMaxSize(),
+                                    verticalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = preset.name.uppercase(),
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 9.sp,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        // Visual dot representing the theme colors
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .background(presetAccentColor, CircleShape)
+                                            )
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .background(presetCoolColor, CircleShape)
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = preset.description,
+                                        fontSize = 8.sp,
+                                        color = Color.White.copy(alpha = 0.5f),
+                                        lineHeight = 10.sp,
+                                        maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
