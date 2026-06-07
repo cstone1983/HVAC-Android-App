@@ -4390,6 +4390,148 @@ fun HvacLoginScreen(
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    var showServerConfig by remember { mutableStateOf(false) }
+                    val currentHaUrl by viewModel.haUrl.collectAsState()
+                    val defaultHaUrl = remember { viewModel.getDefaultHaUrl() }
+                    var urlText by remember(currentHaUrl) { mutableStateOf(currentHaUrl) }
+                    val context = LocalContext.current
+
+                    AnimatedVisibility(visible = !showServerConfig) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            TextButton(
+                                onClick = { showServerConfig = true },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Color.White.copy(alpha = 0.5f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "CHANGE SERVER ADDRESS",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+                        }
+                    }
+
+                    AnimatedVisibility(visible = showServerConfig) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            HorizontalDivider(
+                                color = Color.White.copy(alpha = 0.08f),
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "SERVER CONFIGURATION",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF10B981),
+                                    letterSpacing = 1.sp
+                                )
+
+                                IconButton(
+                                    onClick = { showServerConfig = false },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Collapse Settings",
+                                        tint = Color.White.copy(alpha = 0.4f),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = urlText,
+                                onValueChange = { urlText = it },
+                                label = { Text("Server Base URL", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                                colors = TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    focusedIndicatorColor = Color(0xFF10B981),
+                                    unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                                ),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("login_ha_url_input"),
+                                leadingIcon = {
+                                    Icon(Icons.Default.Link, contentDescription = null, tint = Color(0xFF10B981).copy(alpha = 0.8f))
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        if (urlText.isNotBlank()) {
+                                            viewModel.updateHaUrl(urlText)
+                                            Toast.makeText(context, "Server address updated successfully!", Toast.LENGTH_SHORT).show()
+                                            showServerConfig = false
+                                        } else {
+                                            Toast.makeText(context, "URL cannot be empty", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF10B981).copy(alpha = 0.15f),
+                                        contentColor = Color(0xFF10B981)
+                                    ),
+                                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.3f)),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("SAVE URL", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                                }
+
+                                val isDefault = urlText.trim().removeSuffix("/") == defaultHaUrl.trim().removeSuffix("/")
+                                if (!isDefault) {
+                                    Button(
+                                        onClick = {
+                                            viewModel.restoreDefaultHaUrl()
+                                            Toast.makeText(context, "Restored default Server URL!", Toast.LENGTH_SHORT).show()
+                                            urlText = defaultHaUrl
+                                        },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = Color(0xFFD32F2F).copy(alpha = 0.15f),
+                                            contentColor = Color(0xFFEF5350)
+                                        ),
+                                        border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f)),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        Text("RESTORE DEFAULT", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
