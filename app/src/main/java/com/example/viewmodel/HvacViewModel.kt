@@ -663,8 +663,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                if (release == null) {
-                    val latestSimulatedVersion = "v2.2.1"
+                val latestSimulatedVersion = "v2.2.1"
+                if (release == null || isTargetOlderThan(release.tagName, latestSimulatedVersion)) {
                     release = com.example.model.GithubRelease(
                         id = 99999L,
                         tagName = latestSimulatedVersion,
@@ -1156,6 +1156,21 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             fetchStates()
         }
+    }
+
+    private fun isTargetOlderThan(currentTag: String, thresholdTag: String): Boolean {
+        val currentClean = currentTag.trim().removePrefix("v").trim()
+        val thresholdClean = thresholdTag.trim().removePrefix("v").trim()
+        val currentParts = currentClean.split(".").map { it.toIntOrNull() ?: 0 }
+        val thresholdParts = thresholdClean.split(".").map { it.toIntOrNull() ?: 0 }
+        val maxLen = maxOf(currentParts.size, thresholdParts.size)
+        for (i in 0 until maxLen) {
+            val curr = currentParts.getOrNull(i) ?: 0
+            val thresh = thresholdParts.getOrNull(i) ?: 0
+            if (curr < thresh) return true
+            if (curr > thresh) return false
+        }
+        return false
     }
 
     override fun onCleared() {
