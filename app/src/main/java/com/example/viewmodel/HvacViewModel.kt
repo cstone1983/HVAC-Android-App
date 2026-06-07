@@ -664,7 +664,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 if (release == null) {
-                    val latestSimulatedVersion = "v2.1.9"
+                    val latestSimulatedVersion = "v2.2.1"
                     release = com.example.model.GithubRelease(
                         id = 99999L,
                         tagName = latestSimulatedVersion,
