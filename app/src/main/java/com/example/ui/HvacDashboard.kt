@@ -1,5 +1,7 @@
 package com.example.ui
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
@@ -2688,938 +2690,406 @@ fun UpdatesTab(
     viewModel: HvacViewModel
 ) {
     val context = LocalContext.current
-    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val theme = LocalHvacTheme.current
     val layoutVersion by viewModel.layoutVersion.collectAsStateWithLifecycle()
     val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
     val layoutUpdateError by viewModel.layoutUpdateError.collectAsStateWithLifecycle()
     val githubRepo by viewModel.githubRepo.collectAsStateWithLifecycle()
     val githubBranch by viewModel.githubBranch.collectAsStateWithLifecycle()
 
-    val currentVersion = remember {
-        try {
-            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            packageInfo.versionName ?: "1.0"
-        } catch (e: Exception) {
-            "1.0"
-        }
-    }
-
     LaunchedEffect(Unit) {
-        if (updateState is com.example.viewmodel.UpdateState.Idle) {
-            viewModel.checkForUpdates(currentVersion)
-        }
+        viewModel.checkForLayoutUpdates()
     }
 
-    LazyColumn(
+    Column(
         modifier = Modifier
-            .fillMaxSize()
-            .testTag("updates_tab"),
-        contentPadding = PaddingValues(16.dp),
+            .fillMaxWidth()
+            .testTag("updates_tab")
+            .padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-                shape = RoundedCornerShape(16.dp)
+        // GITHUB CONNECTION & SPECIFICATION PATH
+        Card(
+            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+            border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+            shape = hvacCardShape(16)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "GITHUB REPOSITORY UPDATE PROVISION",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White.copy(alpha = 0.5f),
-                                letterSpacing = 1.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "cstone1983/HVAC-Android-App",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-
-                        Icon(
-                            imageVector = Icons.Default.CloudDownload,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.4f),
-                            modifier = Modifier.size(28.dp)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "DYNAMIC DISPATCH SOURCE",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            githubRepo,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Icon(
+                        imageVector = Icons.Default.CloudDownload,
+                        contentDescription = null,
+                        tint = theme.coolColor,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = "Specification updates allow dynamic control configuration without full app compilation. The layout configuration is served directly from GitHub.",
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.7f),
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Code,
+                        contentDescription = null,
+                        tint = theme.coolColor,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Source Branch: $githubBranch",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.8f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // EXTERNAL URL LINKS FOR SPECIFICATIONS
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Button(
+                        onClick = {
+                            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/$githubRepo/blob/$githubBranch/layout_config.json"))
+                            context.startActivity(webIntent)
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = Icons.Default.Launch,
+                            contentDescription = "Open file link",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("VIEW ON GITHUB", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+
+                    Button(
+                        onClick = {
+                            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://raw.githubusercontent.com/$githubRepo/$githubBranch/layout_config.json"))
+                            context.startActivity(webIntent)
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Launch,
+                            contentDescription = "Open raw link",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("VIEW RAW JSON", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+        }
+
+        // LAYOUT SPECIFICATION UPDATE CARD
+        Card(
+            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+            border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+            shape = hvacCardShape(16)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "DYNAMIC LAYOUT ENGINE",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "Layout Specification Version",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.Dashboard,
+                        contentDescription = null,
+                        tint = theme.heatColor,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // CURRENT VERSION ROW
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "ACTIVE SCHEMA VERSION",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            "v$layoutVersion",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = theme.ecoColor
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            viewModel.checkForLayoutUpdates()
+                            android.widget.Toast.makeText(context, "Checking for latest schemas...", android.widget.Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White.copy(alpha = 0.08f),
+                            contentColor = Color.White
+                        ),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh",
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("CHECK NOW", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Error State Display
+                if (layoutUpdateError != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFD32F2F).copy(alpha = 0.12f)),
+                        border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = Color(0xFFEF5350),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    "SPECIFICATION PARSING FAILURE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFFEF5350),
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "INSTALLED APP VERSION",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White.copy(alpha = 0.5f),
-                                letterSpacing = 1.sp
+                                text = layoutUpdateError!!,
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.9f)
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Button(
+                                onClick = { viewModel.clearLayoutUpdateError() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f)),
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.align(Alignment.End)
+                            ) {
+                                Text("CLEAR", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+                    }
+                }
+
+                // Update Status Display
+                if (layoutUpdateAvailable != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.12f)),
+                        border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = theme.ecoColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            val displayText = if (layoutUpdateAvailable == layoutVersion) {
+                                "Layout draft changes detected on branch (v$layoutUpdateAvailable)"
+                            } else {
+                                "New design layout version available: v$layoutUpdateAvailable"
+                            }
                             Text(
-                                "v$currentVersion",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF2196F3)
+                                displayText,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFE8F5E9)
                             )
                         }
+                    }
+                } else if (layoutUpdateError == null) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.04f)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = theme.ecoColor.copy(alpha = 0.6f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "Config is fully up to date with core layout specification",
+                                fontSize = 10.sp,
+                                color = Color.White.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                }
 
+                // CONTROLSROW
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (layoutVersion != "1.0.0") {
                         Button(
-                            onClick = { viewModel.checkForUpdates(currentVersion) },
+                            onClick = {
+                                viewModel.resetLayoutToDefault()
+                                android.widget.Toast.makeText(context, "Specification restored to local default layout!", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.White.copy(alpha = 0.08f),
-                                contentColor = Color.White
+                                containerColor = Color(0xFFD32F2F).copy(alpha = 0.12f),
+                                contentColor = Color(0xFFEF5350)
                             ),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+                            border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.2f)),
                             shape = RoundedCornerShape(10.dp)
                         ) {
+                            Text("RESTORE DEFAULT", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            if (layoutUpdateAvailable != null) {
+                                viewModel.downloadAndApplyLayoutUpdate { success, msg ->
+                                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            } else {
+                                viewModel.checkForLayoutUpdates()
+                                android.widget.Toast.makeText(context, "Scanning branch specification...", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (layoutUpdateAvailable != null) theme.ecoColor else Color.White.copy(alpha = 0.08f),
+                            contentColor = if (layoutUpdateAvailable != null) Color.Black else Color.White
+                        ),
+                        border = BorderStroke(1.dp, if (layoutUpdateAvailable != null) theme.ecoColor else Color.White.copy(alpha = 0.1f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        if (layoutUpdateAvailable != null) {
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = Color.Black
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("PULL UPDATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        } else {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("CHECK NOW", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "DYNAMIC LAYOUT & CONTENT SPECIFICATION",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White.copy(alpha = 0.5f),
-                                letterSpacing = 1.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "Dynamic Container Engine",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.Default.Dashboard,
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.4f),
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        "The main viewport of the system dynamically maps states to dynamic UI controls defined in raw JSON from GitHub. Updates do not require application recompilation.",
-                        fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.62f),
-                        lineHeight = 16.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
-                            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Code,
-                            contentDescription = null,
-                            tint = Color(0xFF2196F3),
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Connected Connection Source: github.com/$githubRepo ($githubBranch)",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.7f)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    if (layoutUpdateError != null) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFD32F2F).copy(alpha = 0.15f)),
-                            border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.25f)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = Color(0xFFEF5350),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        "SPECIFICATION PARSING FAILURE",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color(0xFFEF5350),
-                                        letterSpacing = 0.5.sp
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = layoutUpdateError!!,
-                                    fontSize = 11.sp,
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Button(
-                                    onClick = { viewModel.clearLayoutUpdateError() },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f)),
-                                    shape = RoundedCornerShape(6.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    modifier = Modifier.align(Alignment.End)
-                                ) {
-                                    Text("CLEAR", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(14.dp))
-                    }
-
-                    if (layoutUpdateAvailable != null) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF2E7D32).copy(alpha = 0.15f)),
-                            border = BorderStroke(1.dp, Color(0xFF4CAF50).copy(alpha = 0.25f)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Info,
-                                    contentDescription = null,
-                                    tint = Color(0xFF81C784),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                val displayText = if (layoutUpdateAvailable == layoutVersion) {
-                                    "Layout config changes detected on GitHub (v$layoutUpdateAvailable)"
-                                } else {
-                                    "New layout specification available: v$layoutUpdateAvailable"
-                                }
-                                Text(
-                                    displayText,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFE8F5E9)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(14.dp))
-                    } else {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.03f)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Info,
-                                    contentDescription = null,
-                                    tint = Color.White.copy(alpha = 0.4f),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "Layout config matches latest specification version",
-                                    fontSize = 10.sp,
-                                    color = Color.White.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(14.dp))
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "ACTIVE SPEC VERSION",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White.copy(alpha = 0.5f),
-                                letterSpacing = 1.sp
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                "v$layoutVersion",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF4CAF50)
-                            )
-                        }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (layoutVersion != "1.0.0") {
-                                Button(
-                                    onClick = {
-                                        viewModel.resetLayoutToDefault()
-                                        android.widget.Toast.makeText(context, "Layout design restored to local defaults!", android.widget.Toast.LENGTH_SHORT).show()
-                                    },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFD32F2F).copy(alpha = 0.12f),
-                                        contentColor = Color(0xFFEF5350)
-                                    ),
-                                    border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.2f)),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Text("RESTORE DEFAULT", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            Button(
-                                onClick = {
-                                    if (layoutUpdateAvailable != null) {
-                                        viewModel.downloadAndApplyLayoutUpdate { success, msg ->
-                                            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
-                                        }
-                                    } else {
-                                        viewModel.checkForLayoutUpdates()
-                                        android.widget.Toast.makeText(context, "Checking for fresh specifications...", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (layoutUpdateAvailable != null) Color(0xFF2E7D32) else Color.White.copy(alpha = 0.08f),
-                                    contentColor = Color.White
-                                ),
-                                border = BorderStroke(1.dp, if (layoutUpdateAvailable != null) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.1f)),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                if (layoutUpdateAvailable != null) {
-                                    Icon(
-                                        imageVector = Icons.Default.CloudDownload,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("UPDATE LAYOUT", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("CHECK LAYOUT", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            AnimatedContent(
-                targetState = updateState,
-                transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = "update_state_crossfade"
-            ) { state ->
-                when (state) {
-                    is com.example.viewmodel.UpdateState.Idle -> {
-                        // Checking update status placeholder
-                    }
-
-                    is com.example.viewmodel.UpdateState.NoReleases -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(20.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(
-                                                Color(0xFF2196F3).copy(alpha = 0.15f),
-                                                RoundedCornerShape(10.dp)
-                                              ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = null,
-                                            tint = Color(0xFF2196F3),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            "REPOSITORY CONNECTED",
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF2196F3),
-                                            letterSpacing = 0.5.sp
-                                        )
-                                        Text(
-                                            "No published releases found yet",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "The connection to cstone1983/HVAC-Android-App is active and functional. However, there are no official compiled releases (.apk) published on your GitHub repository. Once you create a Release on GitHub and attach your APK, the app will auto-detect it here.",
-                                    fontSize = 11.sp,
-                                    color = Color.White.copy(alpha = 0.6f),
-                                    lineHeight = 15.sp
-                                )
-
-                                Spacer(modifier = Modifier.height(18.dp))
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        "Want to test the update downloader?",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White.copy(alpha = 0.7f)
-                                    )
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Button(
-                                        onClick = { viewModel.simulateUpdate() },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.PlayArrow,
-                                            contentDescription = "Simulate",
-                                            tint = Color.Black,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            "RUN UPDATE SIMULATION",
-                                            color = Color.Black,
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 11.sp,
-                                            letterSpacing = 0.5.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    is com.example.viewmodel.UpdateState.Checking -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.04f)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(24.dp).fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                    color = Color(0xFF2196F3)
-                                )
-                                Spacer(modifier = Modifier.width(16.dp))
-                                Text(
-                                    "Checking GitHub releases...",
-                                    fontSize = 13.sp,
-                                    color = Color.White.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    }
-
-                    is com.example.viewmodel.UpdateState.UpToDate -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.04f)),
-                            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.2f)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(18.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(
-                                                Color(0xFF10B981).copy(alpha = 0.15f),
-                                                RoundedCornerShape(10.dp)
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Check,
-                                            contentDescription = null,
-                                            tint = Color(0xFF10B981),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(14.dp))
-                                    Column {
-                                        Text(
-                                            "SYSTEM IS UP TO DATE",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = Color.White
-                                        )
-                                        Text(
-                                            "You are running version: v$currentVersion",
-                                            fontSize = 11.sp,
-                                            color = Color.White.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
-
-                                if (state.downloadUrl != null) {
-                                    Spacer(modifier = Modifier.height(18.dp))
-                                    HorizontalDivider(
-                                        color = Color.White.copy(alpha = 0.05f),
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Spacer(modifier = Modifier.height(14.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                "WANT TO REINSTALL?",
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Black,
-                                                color = Color.White.copy(alpha = 0.4f),
-                                                letterSpacing = 0.5.sp
-                                            )
-                                            Text(
-                                                "Force build re-install (tag ${state.version})",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White.copy(alpha = 0.6f)
-                                            )
-                                        }
-
-                                        Button(
-                                            onClick = {
-                                                viewModel.downloadUpdateAndInstall(context, state.downloadUrl)
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
-                                            shape = RoundedCornerShape(10.dp),
-                                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Refresh,
-                                                contentDescription = "Force reinstall",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                "FORCE REINSTALL",
-                                                color = Color.White,
-                                                fontWeight = FontWeight.Black,
-                                                fontSize = 10.sp
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    is com.example.viewmodel.UpdateState.UpdateAvailable -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF59E0B).copy(alpha = 0.05f)),
-                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.3f)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(18.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(
-                                                Color(0xFFF59E0B).copy(alpha = 0.15f),
-                                                RoundedCornerShape(10.dp)
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.SystemUpdate,
-                                            contentDescription = null,
-                                            tint = Color(0xFFF59E0B),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            "NEW UPDATE AVAILABLE!",
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 13.sp,
-                                            color = Color(0xFFF59E0B),
-                                            letterSpacing = 0.5.sp
-                                        )
-                                        Text(
-                                            "Version ${state.version}",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(14.dp))
-                                Text(
-                                    "RELEASE NOTES",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color.White.copy(alpha = 0.5f),
-                                    letterSpacing = 1.sp
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.25f)),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(max = 140.dp)
-                                            .padding(12.dp)
-                                    ) {
-                                        Text(
-                                            text = state.releaseNotes,
-                                            fontSize = 12.sp,
-                                            color = Color.White.copy(alpha = 0.8f),
-                                            lineHeight = 16.sp
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val sizeMb = remember(state.size) {
-                                        String.format("%.1f MB", state.size.toDouble() / (1024 * 1024))
-                                    }
-
-                                    Text(
-                                        text = "Size: $sizeMb",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White.copy(alpha = 0.6f)
-                                    )
-
-                                    Button(
-                                        onClick = {
-                                            viewModel.downloadUpdateAndInstall(context, state.downloadUrl)
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF59E0B)),
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Download,
-                                            contentDescription = "Download package",
-                                            tint = Color.Black,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            "DOWNLOAD UPDATE",
-                                            color = Color.Black,
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 11.sp,
-                                            letterSpacing = 0.5.sp
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    is com.example.viewmodel.UpdateState.Downloading -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(20.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        "DOWNLOADING HVAC STAGING PACKAGE...",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White.copy(alpha = 0.5f),
-                                        letterSpacing = 1.sp
-                                    )
-                                    Text(
-                                        "${state.progress}%",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF2196F3)
-                                    )
-                                }
-
-                                Spacer(modifier = Modifier.height(12.dp))
-
-                                val progressFloat = if (state.progress >= 0) state.progress / 100f else 0f
-                                LinearProgressIndicator(
-                                    progress = { progressFloat },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(8.dp)
-                                        .clip(RoundedCornerShape(4.dp)),
-                                    color = Color(0xFF2196F3),
-                                    trackColor = Color.White.copy(alpha = 0.08f)
-                                )
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                val dlMb = String.format("%.1f MB", state.downloaded.toDouble() / (1024 * 1024))
-                                val totalMb = String.format("%.1f MB", state.totalSize.toDouble() / (1024 * 1024))
-                                Text(
-                                    text = "$dlMb / $totalMb",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
-                    }
-
-                    is com.example.viewmodel.UpdateState.Success -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.06f)),
-                            border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(20.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(
-                                                Color(0xFF10B981).copy(alpha = 0.15f),
-                                                RoundedCornerShape(10.dp)
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.CloudDone,
-                                            contentDescription = null,
-                                            tint = Color(0xFF10B981),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            "DOWNLOAD COMPLETE",
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF10B981),
-                                            letterSpacing = 0.5.sp
-                                        )
-                                        Text(
-                                            "Update package is ready to apply",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(20.dp))
-
-                                Button(
-                                    onClick = {
-                                        viewModel.installApk(context, state.apkPath)
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Launch,
-                                        contentDescription = "Install Apk",
-                                        tint = Color.Black,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        "INSTALL NOW",
-                                        color = Color.Black,
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 12.sp,
-                                        letterSpacing = 1.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    is com.example.viewmodel.UpdateState.Error -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444).copy(alpha = 0.05f)),
-                            border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.3f)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(18.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .background(
-                                                Color(0xFFEF4444).copy(alpha = 0.15f),
-                                                RoundedCornerShape(10.dp)
-                                            ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.BugReport,
-                                            contentDescription = null,
-                                            tint = Color(0xFFEF4444),
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            "PROVISIONING FAILURE",
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 11.sp,
-                                            color = Color(0xFFEF4444),
-                                            letterSpacing = 0.5.sp
-                                        )
-                                        Text(
-                                            "Could not process updates",
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text(
-                                    text = state.message,
-                                    fontSize = 11.sp,
-                                    color = Color.White.copy(alpha = 0.6f)
-                                )
-
-                                Spacer(modifier = Modifier.height(14.dp))
-
-                                Button(
-                                    onClick = {
-                                        viewModel.checkForUpdates(currentVersion)
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f)),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = "Retry",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("RETRY CHECK", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
+                            Text("CHECK LAYOUT", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
