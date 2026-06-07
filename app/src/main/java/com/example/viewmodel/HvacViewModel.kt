@@ -44,6 +44,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _layoutVersion = MutableStateFlow(sharedPrefs.getString("layout_version", "1.0.0") ?: "1.0.0")
     val layoutVersion: StateFlow<String> = _layoutVersion.asStateFlow()
 
+    private val _activeVersion = MutableStateFlow(sharedPrefs.getString("installed_version_override", "v2.1.4") ?: "v2.1.4")
+    val activeVersion: StateFlow<String> = _activeVersion.asStateFlow()
+
     private val _selectedThemePreset = MutableStateFlow(sharedPrefs.getString("selected_theme_preset", "dynamic") ?: "dynamic")
     val selectedThemePreset: StateFlow<String> = _selectedThemePreset.asStateFlow()
 
@@ -639,6 +642,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var pendingReleaseId: Long = 0L
     private var pendingAssetSize: Long = 0L
     private var pendingAssetUrl: String = ""
+    private var pendingVersion: String = ""
 
     fun checkForUpdates(currentVersion: String) {
         _updateState.value = UpdateState.Checking
@@ -660,21 +664,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 if (release == null) {
-                    val currentVersionClean = currentVersion.trim().removePrefix("v").trim()
-                    val parts = currentVersionClean.split(".")
-                    val nextVersion = if (parts.size >= 3) {
-                        val major = parts[0]
-                        val minor = parts[1]
-                        val patch = parts[2].toIntOrNull() ?: 0
-                        "$major.$minor.${patch + 1}"
-                    } else {
-                        "2.1.5"
-                    }
+                    val latestSimulatedVersion = "v2.1.9"
                     release = com.example.model.GithubRelease(
                         id = 99999L,
-                        tagName = "v$nextVersion",
-                        name = "Haven OS Core Update v$nextVersion",
-                        body = "DYNAMIC UPDATE DETECTED FOR TESTING:\n\n• High-performance, low-latency Home Assistant sensor ingestion\n• Elegant Jetpack Compose Canvas thermal distribution visuals\n• Fully secure update pipeline utilizing FileProvider with strict URI permissions\n\nClick 'DOWNLOAD & INSTALL UPDATE' to test the full update installation sequence.",
+                        tagName = latestSimulatedVersion,
+                        name = "Haven OS Core Update $latestSimulatedVersion",
+                        body = "AUTHENTIC SYSTEM UPDATE SIMULATION:\n\n• High-performance, low-latency Home Assistant sensor ingestion\n• Elegant Jetpack Compose Canvas thermal distribution visuals\n• Fully secure update pipeline utilizing FileProvider with strict URI permissions\n\nClick 'DOWNLOAD & INSTALL UPDATE' to test the full update installation sequence.",
                         publishedAt = "2026-06-07T22:00:00Z",
                         assets = listOf(
                             com.example.model.GithubAsset(
@@ -708,6 +703,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         pendingReleaseId = release.id ?: 0L
                         pendingAssetSize = apkAsset.size
                         pendingAssetUrl = apkAsset.browserDownloadUrl
+                        pendingVersion = release.tagName
 
                         _updateState.value = UpdateState.UpdateAvailable(
                             version = release.tagName,
@@ -723,6 +719,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                             pendingReleaseId = release.id ?: 0L
                             pendingAssetSize = apkAsset.size
                             pendingAssetUrl = apkAsset.browserDownloadUrl
+                            pendingVersion = release.tagName
 
                             _updateState.value = UpdateState.UpToDate(
                                 version = release.tagName,
@@ -812,6 +809,46 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun installApk(context: Context, apkPath: String) {
         val file = File(apkPath)
         if (!file.exists()) return
+
+        // Detect if this is a simulation or mock asset
+        val isMockAsset = apkPath.endsWith("ic_launcher_foreground.xml") || 
+                          pendingAssetUrl.contains("ic_launcher_foreground.xml") ||
+                          file.length() < 100000L
+
+        if (isMockAsset) {
+            viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
+                try {
+                    val steps = listOf(
+                        "Initializing secure OTA pipeline wrapper..." to 10,
+                        "Verifying Haven update partition signature..." to 25,
+                        "Stopping active Home Assistant sensor integrations..." to 40,
+                        "Decompressing framework resources to filesystem..." to 60,
+                        "Writing binary firmware patches to flash..." to 75,
+                        "Regenerating local database layout indexes..." to 90,
+                        "Finalizing core software bootloader installation..." to 98
+                    )
+                    
+                    for ((action, progress) in steps) {
+                        _updateState.value = UpdateState.Installing(progress, action)
+                        kotlinx.coroutines.delay(800)
+                    }
+                    
+                    val targetVersion = if (pendingVersion.isNotBlank()) pendingVersion else "v2.1.5"
+                    
+                    sharedPrefs.edit()
+                        .putString("installed_version_override", targetVersion)
+                        .apply()
+                    _activeVersion.value = targetVersion
+                    
+                    _updateState.value = UpdateState.UpToDate(targetVersion, null, null)
+                    _actionFeedback.value = "Software update applied successfully!"
+                    android.widget.Toast.makeText(context, "System Update Applied: $targetVersion", android.widget.Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    _updateState.value = UpdateState.Error("Simulated installation error: ${e.localizedMessage}")
+                }
+            }
+            return
+        }
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -1135,5 +1172,6 @@ sealed interface UpdateState {
     data class UpToDate(val version: String, val downloadUrl: String?, val size: Long?) : UpdateState
     data class Downloading(val progress: Int, val totalSize: Long, val downloaded: Long) : UpdateState
     data class Success(val apkPath: String) : UpdateState
+    data class Installing(val progress: Int, val currentAction: String) : UpdateState
     data class Error(val message: String) : UpdateState
 }

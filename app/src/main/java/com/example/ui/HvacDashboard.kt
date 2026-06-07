@@ -52,6 +52,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.model.*
 import com.example.ui.theme.*
@@ -437,7 +441,8 @@ fun HvacDashboard(
 fun DynamicTabContent(
     tab: TabConfig,
     state: HvacUiState.Success,
-    viewModel: HvacViewModel
+    viewModel: HvacViewModel,
+    listState: LazyListState
 ) {
     val context = LocalContext.current
     val theme = LocalHvacTheme.current
@@ -486,6 +491,7 @@ fun DynamicTabContent(
     }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .testTag("tab_content_${tab.id}"),
@@ -922,10 +928,39 @@ fun HvacDashboardContent(
         TabConfig("updates", "UPDATES", "cloud_download", listOf("updates"))
     )
 
+    // Keep track of scroll states for each tab to reset back to top on inactivity
+    val listStates = remember { List(10) { LazyListState() } }
+    var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    // Revert to Main Tab and Top of Page after 30 seconds of inactivity
+    LaunchedEffect(lastInteractionTime) {
+        kotlinx.coroutines.delay(30000L)
+        selectedTab = 0
+        if (listStates.isNotEmpty()) {
+            try {
+                listStates[0].scrollToItem(0)
+            } catch (e: Exception) {
+                // Safeguard against scroll interruptions
+            }
+        }
+    }
+
     var isMenuExpanded by remember { mutableStateOf(true) }
     val sidePanelWidth by animateDpAsState(targetValue = if (isMenuExpanded) 260.dp else 72.dp, label = "side_panel_width")
 
-    if (isLandscape) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial)
+                        lastInteractionTime = System.currentTimeMillis()
+                    }
+                }
+            }
+    ) {
+        if (isLandscape) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -1249,7 +1284,12 @@ fun HvacDashboardContent(
                         ) { currentTabIdx ->
                             val currentTab = activeTabs.getOrNull(currentTabIdx)
                             if (currentTab != null) {
-                                DynamicTabContent(tab = currentTab, state = state, viewModel = viewModel)
+                                DynamicTabContent(
+                                    tab = currentTab,
+                                    state = state,
+                                    viewModel = viewModel,
+                                    listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)]
+                                )
                             }
                         }
                     }
@@ -1383,11 +1423,17 @@ fun HvacDashboardContent(
             ) { currentTabIdx ->
                 val currentTab = activeTabs.getOrNull(currentTabIdx)
                 if (currentTab != null) {
-                    DynamicTabContent(tab = currentTab, state = state, viewModel = viewModel)
+                    DynamicTabContent(
+                        tab = currentTab,
+                        state = state,
+                        viewModel = viewModel,
+                        listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)]
+                    )
                 }
             }
         }
     }
+}
 }
 
 @Composable
@@ -2997,6 +3043,7 @@ fun UpdatesTab(
     val context = LocalContext.current
     val theme = LocalHvacTheme.current
     val layoutVersion by viewModel.layoutVersion.collectAsStateWithLifecycle()
+    val activeVersion by viewModel.activeVersion.collectAsStateWithLifecycle()
     val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
     val layoutUpdateError by viewModel.layoutUpdateError.collectAsStateWithLifecycle()
     val githubRepo by viewModel.githubRepo.collectAsStateWithLifecycle()
@@ -3017,7 +3064,10 @@ fun UpdatesTab(
 
     LaunchedEffect(Unit) {
         viewModel.checkForLayoutUpdates()
-        viewModel.checkForUpdates(ACTIVE_CORE_VERSION)
+    }
+
+    LaunchedEffect(activeVersion) {
+        viewModel.checkForUpdates(activeVersion)
     }
 
     LaunchedEffect(updateState) {
@@ -3221,7 +3271,7 @@ fun UpdatesTab(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            ACTIVE_CORE_VERSION,
+                            activeVersion,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = theme.ecoColor
@@ -3230,7 +3280,7 @@ fun UpdatesTab(
 
                     Button(
                         onClick = {
-                            viewModel.checkForUpdates(ACTIVE_CORE_VERSION)
+                            viewModel.checkForUpdates(activeVersion)
                             android.widget.Toast.makeText(context, "Checking for software updates...", android.widget.Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -3500,6 +3550,55 @@ fun UpdatesTab(
                             }
                         }
                     }
+                    is UpdateState.Installing -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        color = theme.ecoColor,
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "Applying System Update...",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                                Text(
+                                    "${state.progress}%",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = theme.ecoColor
+                                )
+                            }
+                            
+                            LinearProgressIndicator(
+                                progress = { state.progress / 100f },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = theme.ecoColor,
+                                trackColor = Color.White.copy(alpha = 0.1f)
+                            )
+                            
+                            Text(
+                                text = state.currentAction,
+                                fontSize = 10.sp,
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
                     is UpdateState.Success -> {
                         Column(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -3551,7 +3650,7 @@ fun UpdatesTab(
                     else -> {
                         Button(
                             onClick = {
-                                viewModel.checkForUpdates(ACTIVE_CORE_VERSION)
+                                viewModel.checkForUpdates(activeVersion)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.04f)),
                             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
@@ -4855,7 +4954,7 @@ fun HvacSettingsDialog(
                             letterSpacing = 1.sp
                         )
                         Text(
-                            text = "$ACTIVE_CORE_VERSION build-prod",
+                            text = "${viewModel.activeVersion.collectAsStateWithLifecycle().value} build-prod",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White.copy(alpha = 0.8f)
