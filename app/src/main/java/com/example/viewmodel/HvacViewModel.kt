@@ -108,18 +108,24 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _githubBranch = MutableStateFlow(sharedPrefs.getString("github_branch", "main") ?: "main")
     val githubBranch: StateFlow<String> = _githubBranch.asStateFlow()
 
+    private val _githubToken = MutableStateFlow(sharedPrefs.getString("github_token", "") ?: "")
+    val githubToken: StateFlow<String> = _githubToken.asStateFlow()
+
     private val _layoutUpdateError = MutableStateFlow<String?>(null)
     val layoutUpdateError: StateFlow<String?> = _layoutUpdateError.asStateFlow()
 
-    fun updateGithubSettings(repo: String, branch: String) {
+    fun updateGithubSettings(repo: String, branch: String, token: String) {
         val cleanRepo = repo.trim().removePrefix("https://github.com/").removeSuffix(".git").trim()
         val cleanBranch = branch.trim()
+        val cleanToken = token.trim()
         sharedPrefs.edit()
             .putString("github_repo", cleanRepo)
             .putString("github_branch", cleanBranch)
+            .putString("github_token", cleanToken)
             .apply()
         _githubRepo.value = cleanRepo
         _githubBranch.value = cleanBranch
+        _githubToken.value = cleanToken
     }
 
     fun clearLayoutUpdateError() {
@@ -207,6 +213,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var lastLayoutCheckTime = 0L
 
     init {
+        com.example.api.GithubClient.tokenProvider = {
+            sharedPrefs.getString("github_token", "")
+        }
         _layoutVersion.value = getActiveLayoutConfig().version
         val savedUrl = sharedPrefs.getString("ha_url", null)
         val savedToken = sharedPrefs.getString("ha_token", null)
@@ -562,6 +571,21 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         callServiceWithOptimisticFeedback("light", service, mapOf(
             "entity_id" to entityId
         ), "$name Light toggled")
+    }
+
+    fun setLightBrightness(entityId: String, brightness: Int, name: String) {
+        val service = if (brightness <= 0) "turn_off" else "turn_on"
+        val payload = if (brightness <= 0) {
+            mapOf("entity_id" to entityId)
+        } else {
+            mapOf(
+                "entity_id" to entityId,
+                "brightness" to brightness
+            )
+        }
+        val pct = ((brightness / 255f) * 100).toInt()
+        val feedback = if (brightness <= 0) "$name turned off" else "$name brightness set to $pct%"
+        callServiceWithOptimisticFeedback("light", service, payload, feedback)
     }
 
     fun toggleSwitch(entityId: String, currentOn: Boolean, name: String) {
@@ -953,7 +977,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun checkForLayoutUpdates() {
+    fun checkForLayoutUpdates(showFeedback: Boolean = false) {
         viewModelScope.launch {
             _layoutUpdateError.value = null
             try {
@@ -979,17 +1003,31 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     val currentConfig = getActiveLayoutConfig()
                     if (remoteConfig != currentConfig) {
                         _layoutUpdateAvailable.value = remoteConfig.version
+                        if (showFeedback) {
+                            _actionFeedback.value = "New design layout v${remoteConfig.version} available!"
+                        }
                     } else {
                         _layoutUpdateAvailable.value = null
+                        if (showFeedback) {
+                            _actionFeedback.value = "Layout is fully up to date."
+                        }
                     }
                 } else {
-                    _layoutUpdateError.value = "HTTP error ${response.code()} checking layout config."
+                    val errMsg = "HTTP error ${response.code()} checking layout config."
+                    _layoutUpdateError.value = errMsg
                     _layoutUpdateAvailable.value = null
+                    if (showFeedback) {
+                        _actionFeedback.value = errMsg
+                    }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                _layoutUpdateError.value = "Layout check failed: ${e.localizedMessage ?: "Parsing or connection error"}"
+                val errMsg = "Layout check failed: ${e.localizedMessage ?: "Parsing or connection error"}"
+                _layoutUpdateError.value = errMsg
                 _layoutUpdateAvailable.value = null
+                if (showFeedback) {
+                    _actionFeedback.value = errMsg
+                }
             }
         }
     }

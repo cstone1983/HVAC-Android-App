@@ -116,6 +116,13 @@ fun HvacDashboard(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val actionFeedback by viewModel.actionFeedback.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    LaunchedEffect(actionFeedback) {
+        actionFeedback?.let { msg ->
+            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearFeedback()
+        }
+    }
     val scope = rememberCoroutineScope()
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -433,7 +440,36 @@ fun DynamicTabContent(
     val theme = LocalHvacTheme.current
     val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
     var activeZoneDetail by remember { mutableStateOf<ClimateZone?>(null) }
+    var activeLightPopupId by remember { mutableStateOf<String?>(null) }
+    var activeSwitchPopupId by remember { mutableStateOf<String?>(null) }
     
+    // Popup lookup & display
+    val currentLightPopupState = activeLightPopupId?.let { id -> state.lights.find { it.entityId == id } }
+    if (activeLightPopupId != null && currentLightPopupState != null) {
+        LightingControlPopup(
+            entityId = currentLightPopupState.entityId,
+            name = currentLightPopupState.name,
+            isOn = currentLightPopupState.isOn,
+            brightness = currentLightPopupState.brightness,
+            isLight = true,
+            onDismiss = { activeLightPopupId = null },
+            viewModel = viewModel
+        )
+    }
+
+    val currentSwitchPopupState = activeSwitchPopupId?.let { id -> state.switches.find { it.entityId == id } }
+    if (activeSwitchPopupId != null && currentSwitchPopupState != null) {
+        LightingControlPopup(
+            entityId = currentSwitchPopupState.entityId,
+            name = currentSwitchPopupState.name,
+            isOn = currentSwitchPopupState.isOn,
+            brightness = null,
+            isLight = false,
+            onDismiss = { activeSwitchPopupId = null },
+            viewModel = viewModel
+        )
+    }
+
     if (activeZoneDetail != null) {
         val currentZoneStatus = state.zones.find { it.key == activeZoneDetail?.key } ?: activeZoneDetail!!
         ZoneDetailPopup(
@@ -603,7 +639,7 @@ fun DynamicTabContent(
                                     Card(
                                         modifier = Modifier
                                             .testTag("light_card_${light.entityId}")
-                                            .clickable { viewModel.toggleLight(light.entityId, light.isOn, light.name) },
+                                            .clickable { activeLightPopupId = light.entityId },
                                         colors = CardDefaults.cardColors(
                                             containerColor = if (light.isOn) hvacActiveCardBgColor(theme.heatColor) else hvacCardBgColor()
                                         ),
@@ -665,7 +701,7 @@ fun DynamicTabContent(
                                     Card(
                                         modifier = Modifier
                                             .testTag("exterior_card_${light.entityId}")
-                                            .clickable { viewModel.toggleLight(light.entityId, light.isOn, light.name) },
+                                            .clickable { activeLightPopupId = light.entityId },
                                         colors = CardDefaults.cardColors(
                                             containerColor = if (light.isOn) hvacActiveCardBgColor(theme.coolColor) else hvacCardBgColor()
                                         ),
@@ -732,7 +768,7 @@ fun DynamicTabContent(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .testTag("switch_card_${switch.entityId}")
-                                                    .clickable { viewModel.toggleSwitch(switch.entityId, switch.isOn, switch.name) },
+                                                    .clickable { activeSwitchPopupId = switch.entityId },
                                                 colors = CardDefaults.cardColors(
                                                     containerColor = if (switch.isOn) Color(0xFF10B981).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
                                                 ),
@@ -1895,6 +1931,188 @@ fun ConsolidatedZoneCard(
 }
 
 @Composable
+fun LightingControlPopup(
+    entityId: String,
+    name: String,
+    isOn: Boolean,
+    brightness: Int?,
+    isLight: Boolean,
+    onDismiss: () -> Unit,
+    viewModel: HvacViewModel
+) {
+    val theme = LocalHvacTheme.current
+    val activeColor = if (isOn) theme.heatColor else Color(0xFF64748B)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp)
+                .testTag("lighting_control_popup_$entityId"),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF1E293B)
+            ),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(activeColor.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isLight) Icons.Default.Lightbulb else Icons.Default.FlashlightOn,
+                                contentDescription = null,
+                                tint = activeColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = name,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (isLight) "DIMMABLE LIGHT" else "POWER SWITCH",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 1.sp
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(Color.White.copy(alpha = 0.05f), CircleShape)
+                            .clickable { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close Popup",
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (isOn) Icons.Default.Power else Icons.Default.PowerOff,
+                            contentDescription = null,
+                            tint = if (isOn) activeColor else Color.White.copy(alpha = 0.4f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text("POWER STATE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.5f))
+                            Text(if (isOn) "ACTIVE" else "POWER OFF", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                    androidx.compose.material3.Switch(
+                        checked = isOn,
+                        onCheckedChange = { checked ->
+                            if (isLight) {
+                                viewModel.toggleLight(entityId, isOn, name)
+                            } else {
+                                viewModel.toggleSwitch(entityId, isOn, name)
+                            }
+                        },
+                        modifier = Modifier.testTag("lighting_popup_power_switch")
+                    )
+                }
+
+                if (isLight) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                            .padding(12.dp)
+                    ) {
+                        var sliderValue by remember(brightness) {
+                            mutableStateOf(brightness?.toFloat() ?: 255f)
+                        }
+                        val pct = ((sliderValue / 255f) * 100).toInt()
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    tint = activeColor,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text("BRIGHTNESS LEVEL", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.5f))
+                                    Text("$pct%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                            Text(
+                                text = "${sliderValue.toInt()} / 255",
+                                color = Color.White.copy(alpha = 0.4f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        androidx.compose.material3.Slider(
+                            value = sliderValue,
+                            onValueChange = { sliderValue = it },
+                            onValueChangeFinished = {
+                                viewModel.setLightBrightness(entityId, sliderValue.toInt(), name)
+                            },
+                            valueRange = 0f..255f,
+                            colors = androidx.compose.material3.SliderDefaults.colors(
+                                thumbColor = activeColor,
+                                activeTrackColor = activeColor,
+                                inactiveTrackColor = Color.White.copy(alpha = 0.1f)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("lighting_popup_brightness_slider")
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun ZoneDetailPopup(
     zone: ClimateZone,
     globalHvacMode: String,
@@ -2471,6 +2689,36 @@ fun AuxiliariesTab(
     state: HvacUiState.Success,
     viewModel: HvacViewModel
 ) {
+    var activeLightPopupId by remember { mutableStateOf<String?>(null) }
+    var activeSwitchPopupId by remember { mutableStateOf<String?>(null) }
+    
+    // Popup lookup & display
+    val currentLightPopupState = activeLightPopupId?.let { id -> state.lights.find { it.entityId == id } }
+    if (activeLightPopupId != null && currentLightPopupState != null) {
+        LightingControlPopup(
+            entityId = currentLightPopupState.entityId,
+            name = currentLightPopupState.name,
+            isOn = currentLightPopupState.isOn,
+            brightness = currentLightPopupState.brightness,
+            isLight = true,
+            onDismiss = { activeLightPopupId = null },
+            viewModel = viewModel
+        )
+    }
+
+    val currentSwitchPopupState = activeSwitchPopupId?.let { id -> state.switches.find { it.entityId == id } }
+    if (activeSwitchPopupId != null && currentSwitchPopupState != null) {
+        LightingControlPopup(
+            entityId = currentSwitchPopupState.entityId,
+            name = currentSwitchPopupState.name,
+            isOn = currentSwitchPopupState.isOn,
+            brightness = null,
+            isLight = false,
+            onDismiss = { activeSwitchPopupId = null },
+            viewModel = viewModel
+        )
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -2503,7 +2751,7 @@ fun AuxiliariesTab(
                     Card(
                         modifier = Modifier
                             .testTag("light_card_${light.entityId}")
-                            .clickable { viewModel.toggleLight(light.entityId, light.isOn, light.name) },
+                            .clickable { activeLightPopupId = light.entityId },
                         colors = CardDefaults.cardColors(
                             containerColor = if (light.isOn) Color(0xFFF59E0B).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
                         ),
@@ -2562,7 +2810,7 @@ fun AuxiliariesTab(
                     Card(
                         modifier = Modifier
                             .testTag("exterior_card_${light.entityId}")
-                            .clickable { viewModel.toggleLight(light.entityId, light.isOn, light.name) },
+                            .clickable { activeLightPopupId = light.entityId },
                         colors = CardDefaults.cardColors(
                             containerColor = if (light.isOn) Color(0xFF2196F3).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
                         ),
@@ -2623,7 +2871,7 @@ fun AuxiliariesTab(
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("switch_card_${switch.entityId}")
-                                    .clickable { viewModel.toggleSwitch(switch.entityId, switch.isOn, switch.name) },
+                                    .clickable { activeSwitchPopupId = switch.entityId },
                                 colors = CardDefaults.cardColors(
                                     containerColor = if (switch.isOn) Color(0xFF10B981).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
                                 ),
@@ -2958,7 +3206,7 @@ fun UpdatesTab(
 
                     Button(
                         onClick = {
-                            viewModel.checkForLayoutUpdates()
+                            viewModel.checkForLayoutUpdates(showFeedback = true)
                             android.widget.Toast.makeText(context, "Checking for latest schemas...", android.widget.Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(
@@ -3115,7 +3363,7 @@ fun UpdatesTab(
                                     android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
                                 }
                             } else {
-                                viewModel.checkForLayoutUpdates()
+                                viewModel.checkForLayoutUpdates(showFeedback = true)
                                 android.widget.Toast.makeText(context, "Scanning branch specification...", android.widget.Toast.LENGTH_SHORT).show()
                             }
                         },
@@ -3949,8 +4197,10 @@ fun HvacSettingsDialog(
 
                     val currentRepo by viewModel.githubRepo.collectAsState()
                     val currentBranch by viewModel.githubBranch.collectAsState()
+                    val currentToken by viewModel.githubToken.collectAsState()
                     var repoText by remember(currentRepo) { mutableStateOf(currentRepo) }
                     var branchText by remember(currentBranch) { mutableStateOf(currentBranch) }
+                    var tokenText by remember(currentToken) { mutableStateOf(currentToken) }
                     val context = LocalContext.current
 
                     OutlinedTextField(
@@ -3995,6 +4245,34 @@ fun HvacSettingsDialog(
                         }
                     )
 
+                    OutlinedTextField(
+                        value = tokenText,
+                        onValueChange = { tokenText = it },
+                        label = { Text("GitHub Token / PAT (Highly Recommended)", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedIndicatorColor = Color(0xFF2196F3),
+                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("github_token_input"),
+                        leadingIcon = {
+                            Icon(Icons.Default.VpnKey, contentDescription = null, tint = Color(0xFF2196F3).copy(alpha = 0.8f))
+                        },
+                        supportingText = {
+                            Text(
+                                "Prevents API rate limiting, facilitating instantaneous and reliable layout update checks over CDN cache.",
+                                fontSize = 8.sp,
+                                color = Color.White.copy(alpha = 0.4f)
+                            )
+                        }
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -4002,7 +4280,7 @@ fun HvacSettingsDialog(
                         Button(
                             onClick = {
                                 if (repoText.isNotBlank() && branchText.isNotBlank()) {
-                                    viewModel.updateGithubSettings(repoText, branchText)
+                                    viewModel.updateGithubSettings(repoText, branchText, tokenText)
                                     Toast.makeText(context, "GitHub repository parameters saved!", Toast.LENGTH_SHORT).show()
                                 } else {
                                     Toast.makeText(context, "Parameters cannot be empty", Toast.LENGTH_SHORT).show()
@@ -4023,7 +4301,7 @@ fun HvacSettingsDialog(
                         if (!isDefault) {
                             Button(
                                 onClick = {
-                                    viewModel.updateGithubSettings("cstone1983/HVAC-Android-App", "main")
+                                    viewModel.updateGithubSettings("cstone1983/HVAC-Android-App", "main", "")
                                     Toast.makeText(context, "Restored default GitHub repository source!", Toast.LENGTH_SHORT).show()
                                 },
                                 colors = ButtonDefaults.buttonColors(

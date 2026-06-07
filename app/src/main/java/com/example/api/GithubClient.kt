@@ -10,20 +10,28 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
 object GithubClient {
+    var tokenProvider: (() -> String?)? = null
+
     private val moshi = Moshi.Builder()
         .add(KotlinJsonAdapterFactory())
         .build()
 
     val service: GithubApi by lazy {
         val authInterceptor = Interceptor { chain ->
-            val request = chain.request().newBuilder()
+            val requestBuilder = chain.request().newBuilder()
                 .header("User-Agent", "HVAC-Android-App-Updater")
                 .header("Accept", "application/vnd.github.v3+json")
                 .header("Cache-Control", "no-cache, no-store, must-revalidate")
                 .header("Pragma", "no-cache")
                 .header("Expires", "0")
-                .build()
-            chain.proceed(request)
+
+            tokenProvider?.invoke()?.let { token ->
+                if (token.isNotBlank()) {
+                    requestBuilder.header("Authorization", "token $token")
+                }
+            }
+
+            chain.proceed(requestBuilder.build())
         }
 
         val loggingInterceptor = HttpLoggingInterceptor().apply {
