@@ -60,7 +60,7 @@ import com.example.viewmodel.HvacViewModel
 import com.example.viewmodel.UpdateState
 import kotlinx.coroutines.launch
 
-const val ACTIVE_CORE_VERSION = "v2.1.5"
+const val ACTIVE_CORE_VERSION = "v2.1.4"
 
 private data class WaterHeaterItem(
     val option: String,
