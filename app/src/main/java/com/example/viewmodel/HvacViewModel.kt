@@ -687,6 +687,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var pendingAssetSize: Long = 0L
     private var pendingAssetUrl: String = ""
     private var pendingVersion: String = ""
+    private var pendingSoftwareCommit: String = ""
 
     fun checkForUpdates(currentVersion: String, quiet: Boolean = false) {
         val current = _updateState.value
@@ -701,11 +702,33 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 checkForLayoutUpdates()
             }
             try {
-                var release: com.example.model.GithubRelease? = null
                 val repo = _githubRepo.value
                 val branch = _githubBranch.value
 
-                // 1. First, try to fetch dynamic latest_release.json from GitHub branch
+                // Fetch the latest commit SHA of the branch to detect any new push events
+                var sha = ""
+                try {
+                    val commitUrl = "https://api.github.com/repos/$repo/commits/$branch"
+                    val commitResponse = com.example.api.GithubClient.service.getLatestCommit(commitUrl)
+                    if (commitResponse.isSuccessful && commitResponse.body() != null) {
+                        sha = commitResponse.body()!!.sha
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                // Retrieve stored latest applied/installed commit SHA
+                val currentSoftwareCommit = sharedPrefs.getString("software_commit_sha", "") ?: ""
+                val repoHasNewCommit = sha.isNotEmpty() && currentSoftwareCommit.isNotEmpty() && sha != currentSoftwareCommit
+
+                // Establish the baseline commit SHA on first check so we only trigger on subsequent fresh pushes
+                if (currentSoftwareCommit.isEmpty() && sha.isNotEmpty()) {
+                    sharedPrefs.edit().putString("software_commit_sha", sha).apply()
+                }
+
+                var release: com.example.model.GithubRelease? = null
+
+                // 1. Try to fetch dynamic latest_release.json from GitHub branch
                 try {
                     val dynamicUrl = "https://raw.githubusercontent.com/$repo/$branch/latest_release.json"
                     val rawResponse = GithubClient.service.downloadFile(dynamicUrl)
@@ -780,15 +803,22 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         (apkAsset.browserDownloadUrl != lastDlAssetUrl)
                     )
 
-                    if (apkAsset != null && (hasVersionChange || hasAssetChange)) {
+                    if (apkAsset != null && (hasVersionChange || hasAssetChange || repoHasNewCommit)) {
                         pendingReleaseId = finalRelease.id ?: 0L
                         pendingAssetSize = apkAsset.size
                         pendingAssetUrl = apkAsset.browserDownloadUrl
-                        pendingVersion = finalRelease.tagName
+                        
+                        // Use commit SHA if there is a new commit push on the repository
+                        pendingVersion = if (sha.isNotEmpty()) "${finalRelease.tagName}-${sha.take(7)}" else finalRelease.tagName
+                        pendingSoftwareCommit = sha
 
                         _updateState.value = UpdateState.UpdateAvailable(
-                            version = finalRelease.tagName,
-                            releaseNotes = finalRelease.body ?: "No release notes available.",
+                            version = pendingVersion,
+                            releaseNotes = if (repoHasNewCommit) {
+                                "Repository changes detected! New push on branch '$branch'.\n\nCommit Details:\n• SHA: $sha\n\n• Automatic real-time polling detected this push successfully! Click 'DOWNLOAD & INSTALL UPDATE' to apply all updated files."
+                            } else {
+                                finalRelease.body ?: "No release notes available."
+                            },
                             downloadUrl = apkAsset.browserDownloadUrl,
                             size = apkAsset.size
                         )
@@ -801,6 +831,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                             pendingAssetSize = apkAsset.size
                             pendingAssetUrl = apkAsset.browserDownloadUrl
                             pendingVersion = finalRelease.tagName
+                            pendingSoftwareCommit = sha
 
                             _updateState.value = UpdateState.UpToDate(
                                 version = finalRelease.tagName,
@@ -919,6 +950,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     sharedPrefs.edit()
                         .putString("installed_version_override", targetVersion)
                         .apply()
+                    if (pendingSoftwareCommit.isNotEmpty()) {
+                        sharedPrefs.edit()
+                            .putString("software_commit_sha", pendingSoftwareCommit)
+                            .apply()
+                    }
                     _activeVersion.value = targetVersion
                     
                     _updateState.value = UpdateState.UpToDate(targetVersion, null, null)
@@ -1146,10 +1182,21 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 if (response.isSuccessful && response.body() != null) {
                     val remoteConfig = response.body()!!
                     val currentConfig = getActiveLayoutConfig()
-                    if (remoteConfig != currentConfig) {
-                        _layoutUpdateAvailable.value = remoteConfig.version
+                    
+                    val currentAppliedSha = sharedPrefs.getString("layout_commit_sha", "") ?: ""
+                    val hasConfigChange = remoteConfig != currentConfig
+                    val hasNewCommit = sha.isNotEmpty() && currentAppliedSha.isNotEmpty() && sha != currentAppliedSha
+
+                    // Set baseline commit SHA on first run if layouts match
+                    if (currentAppliedSha.isEmpty() && sha.isNotEmpty() && !hasConfigChange) {
+                        sharedPrefs.edit().putString("layout_commit_sha", sha).apply()
+                    }
+
+                    if (hasConfigChange || hasNewCommit) {
+                        val displayVersion = if (sha.isNotEmpty()) "${remoteConfig.version} (${sha.take(7)})" else remoteConfig.version
+                        _layoutUpdateAvailable.value = displayVersion
                         if (showFeedback) {
-                            _actionFeedback.value = "New design layout v${remoteConfig.version} available!"
+                            _actionFeedback.value = "New design layout $displayVersion available!"
                         }
                     } else {
                         _layoutUpdateAvailable.value = null
@@ -1204,13 +1251,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     sharedPrefs.edit()
                         .putString("layout_config_json", remoteJson)
                         .putString("layout_version", remoteConfig.version)
+                        .putString("layout_commit_sha", sha)
                         .apply()
                     _layoutVersion.value = remoteConfig.version
                     _layoutConfig.value = remoteConfig
                     _layoutUpdateAvailable.value = null
-                    _actionFeedback.value = "Layout design updated dynamically to v${remoteConfig.version}!"
+                    _actionFeedback.value = "Layout design updated dynamically to v${remoteConfig.version} (${sha.take(7)})!"
                     fetchStates()
-                    onComplete(true, "Successfully updated to layout design v${remoteConfig.version}")
+                    onComplete(true, "Successfully updated to layout design v${remoteConfig.version} (${sha.take(7)})")
                 } else {
                     val errMsg = "Failed to download layout layout (HTTP ${response.code()})"
                     _layoutUpdateError.value = errMsg
@@ -1228,6 +1276,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val defaultVersion = getBuiltInDefaultLayoutConfig().version
         sharedPrefs.edit()
             .remove("layout_config_json")
+            .remove("layout_commit_sha")
             .putString("layout_version", defaultVersion)
             .apply()
         _layoutVersion.value = defaultVersion
