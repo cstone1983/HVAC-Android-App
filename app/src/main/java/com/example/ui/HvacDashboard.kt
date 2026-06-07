@@ -3436,6 +3436,99 @@ fun HvacSettingsDialog(
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
 
+                // Home Assistant Settings overrides
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
+                        Text(
+                            text = "HOME ASSISTANT CONNECTIVITY",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Modify or override default background server address",
+                            fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.4f)
+                        )
+                    }
+
+                    val context = LocalContext.current
+                    val currentHaUrl by viewModel.haUrl.collectAsState()
+                    val defaultHaUrl = remember { viewModel.getDefaultHaUrl() }
+                    var urlText by remember(currentHaUrl) { mutableStateOf(currentHaUrl) }
+
+                    OutlinedTextField(
+                        value = urlText,
+                        onValueChange = { urlText = it },
+                        label = { Text("Server Base URL", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedIndicatorColor = Color(0xFF2196F3),
+                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("ha_override_url_input"),
+                        leadingIcon = {
+                            Icon(Icons.Default.Link, contentDescription = null, tint = Color(0xFF2196F3).copy(alpha = 0.8f))
+                        }
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (urlText.isNotBlank()) {
+                                    viewModel.updateHaUrl(urlText)
+                                    Toast.makeText(context, "Server URL updated & reconnected!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "URL cannot be empty", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF2196F3).copy(alpha = 0.15f),
+                                contentColor = Color(0xFF2196F3)
+                            ),
+                            border = BorderStroke(1.dp, Color(0xFF2196F3).copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("SAVE & RECONNECT", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                        }
+
+                        val isDefault = currentHaUrl.trim().removeSuffix("/") == defaultHaUrl.trim().removeSuffix("/")
+                        if (!isDefault) {
+                            Button(
+                                onClick = {
+                                    viewModel.restoreDefaultHaUrl()
+                                    Toast.makeText(context, "Restored default Home Assistant URL!", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFD32F2F).copy(alpha = 0.15f),
+                                    contentColor = Color(0xFFEF5350)
+                                ),
+                                border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("RESTORE DEFAULT", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
                 // Metadata block
                 Row(
                     modifier = Modifier.fillMaxWidth(),

@@ -55,6 +55,38 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _darkModeEnabled = MutableStateFlow(sharedPrefs.getBoolean("dark_mode_enabled", true))
     val darkModeEnabled: StateFlow<Boolean> = _darkModeEnabled.asStateFlow()
 
+    private val _haUrl = MutableStateFlow(sharedPrefs.getString("ha_url", null) ?: (try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }))
+    val haUrl: StateFlow<String> = _haUrl.asStateFlow()
+
+    fun updateHaUrl(newUrl: String) {
+        val formattedUrl = HomeAssistantClient.formatBaseUrl(newUrl)
+        sharedPrefs.edit().putString("ha_url", formattedUrl).apply()
+        _haUrl.value = formattedUrl
+        
+        val token = sharedPrefs.getString("ha_token", "") ?: ""
+        if (token.isNotEmpty() && _isLoggedIn.value) {
+            HomeAssistantClient.initialize(formattedUrl, token)
+            startSync()
+        }
+    }
+
+    fun restoreDefaultHaUrl() {
+        val defaultUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+        val formattedUrl = HomeAssistantClient.formatBaseUrl(defaultUrl)
+        sharedPrefs.edit().putString("ha_url", formattedUrl).apply()
+        _haUrl.value = formattedUrl
+        
+        val token = sharedPrefs.getString("ha_token", "") ?: ""
+        if (token.isNotEmpty() && _isLoggedIn.value) {
+            HomeAssistantClient.initialize(formattedUrl, token)
+            startSync()
+        }
+    }
+
+    fun getDefaultHaUrl(): String {
+        return try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+    }
+
     fun setForceScreenOn(enabled: Boolean) {
         sharedPrefs.edit().putBoolean("force_screen_on", enabled).apply()
         _forceScreenOn.value = enabled
