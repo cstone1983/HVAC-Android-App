@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -159,36 +160,42 @@ fun HvacDashboard(
                         actions = {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 modifier = Modifier.padding(end = 12.dp)
                             ) {
-                                IconButton(
-                                    onClick = { showSettingsDialog = true },
+                                // Settings Button
+                                Box(
                                     modifier = Modifier
-                                        .size(32.dp)
-                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
-                                        .testTag("settings_button")
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.06f))
+                                        .clickable { showSettingsDialog = true }
+                                        .testTag("settings_button"),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Settings,
                                         contentDescription = "Settings",
-                                        tint = Color.White.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(16.dp)
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
 
-                                IconButton(
-                                    onClick = { viewModel.logout() },
+                                // Logout Button
+                                Box(
                                     modifier = Modifier
-                                        .size(32.dp)
-                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
-                                        .testTag("logout_button")
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.06f))
+                                        .clickable { viewModel.logout() }
+                                        .testTag("logout_button"),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.ExitToApp,
                                         contentDescription = "Log out",
-                                        tint = Color.White.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(16.dp)
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
 
@@ -207,16 +214,17 @@ fun HvacDashboard(
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
-                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(Color.White.copy(alpha = 0.06f))
                                         .clickable {
                                             scope.launch { viewModel.fetchStates() }
                                         }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
                                 ) {
                                     Box(
                                         modifier = Modifier
                                             .size(8.dp)
-                                            .background(connectionColor, RoundedCornerShape(4.dp))
+                                            .background(connectionColor, CircleShape)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
@@ -542,35 +550,39 @@ fun HvacDashboardContent(
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                IconButton(
-                                    onClick = { onShowSettings() },
+                                Box(
                                     modifier = Modifier
                                         .size(28.dp)
-                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
-                                        .testTag("settings_button")
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.06f))
+                                        .clickable { onShowSettings() }
+                                        .testTag("settings_button"),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Settings,
                                         contentDescription = "Settings",
-                                        tint = Color.White.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(12.dp)
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(14.dp)
                                     )
                                 }
 
-                                IconButton(
-                                    onClick = { viewModel.logout() },
+                                Box(
                                     modifier = Modifier
                                         .size(28.dp)
-                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(14.dp))
-                                        .testTag("logout_button")
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.06f))
+                                        .clickable { viewModel.logout() }
+                                        .testTag("logout_button"),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.ExitToApp,
                                         contentDescription = "Log out",
-                                        tint = Color.White.copy(alpha = 0.8f),
-                                        modifier = Modifier.size(12.dp)
+                                        tint = Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(14.dp)
                                     )
                                 }
                             }
@@ -592,33 +604,37 @@ fun HvacDashboardContent(
                             )
                         }
 
-                        IconButton(
-                            onClick = { onShowSettings() },
+                        Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(18.dp))
-                                .testTag("settings_button")
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.06f))
+                                .clickable { onShowSettings() }
+                                .testTag("settings_button"),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = "Settings",
-                                tint = Color.White.copy(alpha = 0.8f),
-                                modifier = Modifier.size(16.dp)
+                                tint = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
-                        IconButton(
-                            onClick = { viewModel.logout() },
+                        Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(18.dp))
-                                .testTag("logout_button")
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.06f))
+                                .clickable { viewModel.logout() }
+                                .testTag("logout_button"),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ExitToApp,
                                 contentDescription = "Log out",
-                                tint = Color.White.copy(alpha = 0.8f),
-                                modifier = Modifier.size(16.dp)
+                                tint = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }
