@@ -119,6 +119,8 @@ fun HvacDashboard(
     // Dynamic state background color mapping matching home assistant transitions
     val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
     val themeConfig = layoutConfig.theme ?: HvacThemeConfig()
+    val cardCornerStyle by viewModel.cardCornerStyle.collectAsStateWithLifecycle()
+    val cardOpacity by viewModel.cardOpacity.collectAsStateWithLifecycle()
 
     val rawGlowColor = parseHexColor(themeConfig.glowColorHex, Color(0xFF2196F3))
     val glowColorFactor = themeConfig.glowAlpha ?: 0.12f
@@ -153,7 +155,9 @@ fun HvacDashboard(
         bgStart = bgStartColor,
         bgEnd = bgEndColor,
         glowColor = glowColor,
-        glowAlpha = glowColorFactor
+        glowAlpha = glowColorFactor,
+        cardCornerStyle = cardCornerStyle,
+        cardOpacity = cardOpacity
     )
 
     CompositionLocalProvider(LocalHvacTheme provides hvacThemeColors) {
@@ -573,9 +577,10 @@ fun DynamicTabContent(
                                             .testTag("light_card_${light.entityId}")
                                             .clickable { viewModel.toggleLight(light.entityId, light.isOn, light.name) },
                                         colors = CardDefaults.cardColors(
-                                            containerColor = if (light.isOn) theme.heatColor.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
+                                            containerColor = if (light.isOn) hvacActiveCardBgColor(theme.heatColor) else hvacCardBgColor()
                                         ),
-                                        border = BorderStroke(1.dp, if (light.isOn) theme.heatColor.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
+                                        border = BorderStroke(1.dp, if (light.isOn) hvacActiveBorderAlphaColor(theme.heatColor) else hvacBorderAlphaColor()),
+                                        shape = hvacCardShape(12)
                                     ) {
                                         Row(
                                             modifier = Modifier
@@ -634,9 +639,10 @@ fun DynamicTabContent(
                                             .testTag("exterior_card_${light.entityId}")
                                             .clickable { viewModel.toggleLight(light.entityId, light.isOn, light.name) },
                                         colors = CardDefaults.cardColors(
-                                            containerColor = if (light.isOn) theme.coolColor.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
+                                            containerColor = if (light.isOn) hvacActiveCardBgColor(theme.coolColor) else hvacCardBgColor()
                                         ),
-                                        border = BorderStroke(1.dp, if (light.isOn) theme.coolColor.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
+                                        border = BorderStroke(1.dp, if (light.isOn) hvacActiveBorderAlphaColor(theme.coolColor) else hvacBorderAlphaColor()),
+                                        shape = hvacCardShape(12)
                                     ) {
                                         Row(
                                             modifier = Modifier
@@ -755,12 +761,12 @@ fun DynamicTabContent(
                             val isOpen = cover.state.lowercase() == "open" || cover.state.lowercase() == "opening"
                             Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                                 Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                                    colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
                                     border = BorderStroke(
                                         1.dp,
-                                        if (isOpen) Color(0xFFEF4444).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.05f)
+                                        if (isOpen) hvacActiveBorderAlphaColor(Color(0xFFEF4444)) else hvacBorderAlphaColor()
                                     ),
-                                    shape = RoundedCornerShape(12.dp)
+                                    shape = hvacCardShape(12)
                                 ) {
                                     Row(
                                         modifier = Modifier
@@ -1318,9 +1324,9 @@ fun RoomSensorsStrip(rooms: List<RoomSensor>) {
     ) {
         items(rooms) { room ->
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.04f)),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-                shape = RoundedCornerShape(12.dp)
+                colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+                border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+                shape = hvacCardShape(12)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1371,9 +1377,9 @@ fun GlobalSettingsQuickControl(
         modifier = modifier
             .fillMaxWidth()
             .testTag("global_quick_control_card"),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-        shape = RoundedCornerShape(14.dp)
+        colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+        border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+        shape = hvacCardShape(14)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // First row: HOUSE SCHEDULE
@@ -1713,22 +1719,22 @@ fun ConsolidatedZoneCard(
             .testTag("zone_card_${zone.key}"),
         colors = CardDefaults.cardColors(
             containerColor = if (zone.overrideOn) {
-                theme.heatColor.copy(alpha = 0.08f)
+                hvacActiveCardBgColor(theme.heatColor)
             } else {
-                Color.White.copy(alpha = 0.03f)
+                hvacCardBgColor()
             }
         ),
         border = BorderStroke(
             1.dp,
             if (zone.overrideOn) {
-                theme.heatColor.copy(alpha = 0.5f)
+                hvacActiveBorderAlphaColor(theme.heatColor)
             } else if (!zone.autoOn) {
-                theme.boostColor.copy(alpha = 0.3f)
+                hvacActiveBorderAlphaColor(theme.boostColor)
             } else {
-                Color.White.copy(alpha = 0.06f)
+                hvacBorderAlphaColor()
             }
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = hvacCardShape(12)
     ) {
         Column(
             modifier = Modifier
@@ -3848,6 +3854,7 @@ fun HvacSettingsDialog(
 ) {
     val forceScreenOn by viewModel.forceScreenOn.collectAsState()
     val darkModeEnabled by viewModel.darkModeEnabled.collectAsState()
+    val theme = LocalHvacTheme.current
 
     Dialog(
         onDismissRequest = onDismiss
@@ -4117,6 +4124,151 @@ fun HvacSettingsDialog(
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                // DESIGN STYLE ADJUSTMENTS
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
+                        Text(
+                            text = "DESIGN STYLE ADJUSTMENTS",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Tailor layout shapes and glassy depth across card surfaces",
+                            color = Color.White.copy(alpha = 0.4f),
+                            fontSize = 10.sp
+                        )
+                    }
+
+                    // 1. CARD CORNER DEPTH
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = "CARD CORNER DEPTH",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.7f),
+                            letterSpacing = 0.5.sp
+                        )
+
+                        val activeStyle by viewModel.cardCornerStyle.collectAsState()
+                        val cornerOptions = listOf(
+                            Triple("sharp", "SHARP EDGE", "Symmetric 0dp tech look"),
+                            Triple("rounded", "ROUNDIVE", "Standard fluid 12dp style"),
+                            Triple("ultra_rounded", "ULTRA CURVE", "Liquid glass 26dp frame")
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            cornerOptions.forEach { (styleKey, title, desc) ->
+                                val isChosen = activeStyle == styleKey
+                                Card(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(56.dp)
+                                        .clickable { viewModel.setCardCornerStyle(styleKey) }
+                                        .testTag("corner_style_${styleKey}"),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isChosen) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.02f)
+                                    ),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isChosen) theme.heatColor else Color.White.copy(alpha = 0.05f)
+                                    ),
+                                    shape = RoundedCornerShape(
+                                        when (styleKey) {
+                                            "sharp" -> 0.dp
+                                            "ultra_rounded" -> 16.dp
+                                            else -> 8.dp
+                                        }
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(4.dp).fillMaxSize(),
+                                        verticalArrangement = Arrangement.Center,
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(
+                                            text = title,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 9.sp,
+                                            color = if (isChosen) theme.heatColor else Color.White
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = desc,
+                                            fontSize = 7.sp,
+                                            color = Color.White.copy(alpha = 0.4f),
+                                            lineHeight = 8.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. GLASSMORPHIC OPACITY
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val activeOpacity by viewModel.cardOpacity.collectAsState()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "GLASS SURFACE OPACITY",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp,
+                                color = Color.White.copy(alpha = 0.7f),
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "${(activeOpacity * 100).toInt()}% GLASS",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 9.sp,
+                                color = theme.coolColor
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                                .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Opacity,
+                                contentDescription = "Opacity icon",
+                                tint = theme.coolColor.copy(alpha = 0.8f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Slider(
+                                value = activeOpacity,
+                                onValueChange = { viewModel.setCardOpacity(it) },
+                                valueRange = 0.01f..0.20f,
+                                modifier = Modifier.weight(1f).testTag("glass_opacity_slider"),
+                                colors = SliderDefaults.colors(
+                                    thumbColor = theme.coolColor,
+                                    activeTrackColor = theme.coolColor.copy(alpha = 0.5f),
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.1f)
+                                )
+                            )
                         }
                     }
                 }

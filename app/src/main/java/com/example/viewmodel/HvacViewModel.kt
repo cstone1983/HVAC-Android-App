@@ -52,6 +52,22 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         _selectedThemePreset.value = presetId
     }
 
+    private val _cardCornerStyle = MutableStateFlow(sharedPrefs.getString("card_corner_style", "rounded") ?: "rounded")
+    val cardCornerStyle: StateFlow<String> = _cardCornerStyle.asStateFlow()
+
+    fun setCardCornerStyle(style: String) {
+        sharedPrefs.edit().putString("card_corner_style", style).apply()
+        _cardCornerStyle.value = style
+    }
+
+    private val _cardOpacity = MutableStateFlow(sharedPrefs.getFloat("card_opacity", 0.03f))
+    val cardOpacity: StateFlow<Float> = _cardOpacity.asStateFlow()
+
+    fun setCardOpacity(opacity: Float) {
+        sharedPrefs.edit().putFloat("card_opacity", opacity).apply()
+        _cardOpacity.value = opacity
+    }
+
     private val _layoutConfig = MutableStateFlow(getActiveLayoutConfig())
     val layoutConfig: StateFlow<com.example.model.HvacLayoutConfig> = kotlinx.coroutines.flow.combine(
         _layoutConfig,

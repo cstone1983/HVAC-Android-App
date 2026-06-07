@@ -2,6 +2,10 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.runtime.Composable
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 data class HvacThemePreset(
     val id: String,
@@ -25,7 +29,9 @@ data class HvacThemeColors(
     val bgStart: Color,
     val bgEnd: Color,
     val glowColor: Color,
-    val glowAlpha: Float
+    val glowAlpha: Float,
+    val cardCornerStyle: String = "rounded", // "sharp", "rounded", "ultra_rounded"
+    val cardOpacity: Float = 0.03f
 )
 
 val LocalHvacTheme = staticCompositionLocalOf {
@@ -36,8 +42,47 @@ val LocalHvacTheme = staticCompositionLocalOf {
         bgStart = Color(0xFF0F172A),
         bgEnd = Color(0xFF1E293B),
         glowColor = Color(0xFF2196F3),
-        glowAlpha = 0.12f
+        glowAlpha = 0.12f,
+        cardCornerStyle = "rounded",
+        cardOpacity = 0.03f
     )
+}
+
+@Composable
+fun hvacCardShape(defaultDp: Int = 12): Shape {
+    val theme = LocalHvacTheme.current
+    return when (theme.cardCornerStyle) {
+        "sharp" -> RoundedCornerShape(0.dp)
+        "ultra_rounded" -> RoundedCornerShape((defaultDp * 2.2).toInt().dp)
+        else -> RoundedCornerShape(defaultDp.dp)
+    }
+}
+
+@Composable
+fun hvacCardBgColor(baseAlpha: Float = 0.03f): Color {
+    val theme = LocalHvacTheme.current
+    return Color.White.copy(alpha = theme.cardOpacity)
+}
+
+@Composable
+fun hvacActiveCardBgColor(baseColor: Color): Color {
+    val theme = LocalHvacTheme.current
+    val alpha = (theme.cardOpacity * 3f).coerceIn(0.04f, 0.40f)
+    return baseColor.copy(alpha = alpha)
+}
+
+@Composable
+fun hvacBorderAlphaColor(): Color {
+    val theme = LocalHvacTheme.current
+    val alpha = (theme.cardOpacity * 1.5f).coerceIn(0.04f, 0.40f)
+    return Color.White.copy(alpha = alpha)
+}
+
+@Composable
+fun hvacActiveBorderAlphaColor(baseColor: Color): Color {
+    val theme = LocalHvacTheme.current
+    val alpha = (theme.cardOpacity * 5.0f).coerceIn(0.15f, 0.85f)
+    return baseColor.copy(alpha = alpha)
 }
 
 val HvacThemePresetsList = listOf(
