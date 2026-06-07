@@ -3342,7 +3342,8 @@ fun HvacSettingsDialog(
             Column(
                 modifier = Modifier
                     .padding(24.dp)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 // Title and Close button Row
@@ -3392,8 +3393,8 @@ fun HvacSettingsDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(16.dp))
-                            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(16.dp))
+                            .background(hvacCardBgColor(), hvacCardShape(16))
+                            .border(BorderStroke(1.dp, hvacBorderAlphaColor()), hvacCardShape(16))
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -3438,7 +3439,7 @@ fun HvacSettingsDialog(
                                 checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.3f),
                                 uncheckedThumbColor = Color(0xFF64748B),
                                 uncheckedTrackColor = Color(0xFF1E293B)
-                            )
+                             )
                         )
                     }
 
@@ -3446,8 +3447,8 @@ fun HvacSettingsDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(16.dp))
-                            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(16.dp))
+                            .background(hvacCardBgColor(), hvacCardShape(16))
+                            .border(BorderStroke(1.dp, hvacBorderAlphaColor()), hvacCardShape(16))
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -3716,8 +3717,8 @@ fun HvacSettingsDialog(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
-                                .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(12.dp))
+                                .background(hvacCardBgColor(), hvacCardShape(12))
+                                .border(BorderStroke(1.dp, hvacBorderAlphaColor()), hvacCardShape(12))
                                 .padding(horizontal = 14.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -3739,6 +3740,127 @@ fun HvacSettingsDialog(
                                     inactiveTrackColor = Color.White.copy(alpha = 0.1f)
                                 )
                             )
+                        }
+                    }
+
+                    // 3. LIVE INTERACTIVE DECK PREVIEW
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "LIVE DESIGN SYSTEM PREVIEW",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp,
+                            color = theme.heatColor,
+                            letterSpacing = 0.5.sp
+                        )
+                        
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("live_style_preview_card"),
+                            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+                            border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+                            shape = hvacCardShape(14)
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Thermostat,
+                                            contentDescription = null,
+                                            tint = theme.heatColor,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "PREVIEW CHANNEL",
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 11.sp,
+                                            color = Color.White
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .background(theme.ecoColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "LIVE RENDER",
+                                            color = theme.ecoColor,
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                    }
+                                }
+                                
+                                Spacer(modifier = Modifier.height(10.dp))
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "Selected Profile Values",
+                                            fontSize = 9.sp,
+                                            color = Color.White.copy(alpha = 0.5f)
+                                        )
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        ) {
+                                            Box(modifier = Modifier.size(8.dp).background(theme.heatColor, CircleShape))
+                                            Box(modifier = Modifier.size(8.dp).background(theme.coolColor, CircleShape))
+                                            Box(modifier = Modifier.size(8.dp).background(theme.ecoColor, CircleShape))
+                                            Text(
+                                                text = "${(theme.cardOpacity * 100).toInt()}% Glass | ${theme.cardCornerStyle.uppercase().replace("_", " ")}",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                    }
+                                    
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .background(hvacCardBgColor(), hvacCardShape(6))
+                                                .border(BorderStroke(1.dp, hvacBorderAlphaColor()), hvacCardShape(6)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Remove,
+                                                contentDescription = null,
+                                                tint = Color.White.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .background(hvacActiveCardBgColor(theme.coolColor), hvacCardShape(6))
+                                                .border(BorderStroke(1.dp, hvacActiveBorderAlphaColor(theme.coolColor)), hvacCardShape(6)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = null,
+                                                tint = theme.coolColor,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
