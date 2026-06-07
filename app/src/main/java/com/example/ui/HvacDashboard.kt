@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -3325,13 +3326,18 @@ fun HvacSettingsDialog(
     val forceScreenOn by viewModel.forceScreenOn.collectAsState()
     val darkModeEnabled by viewModel.darkModeEnabled.collectAsState()
     val theme = LocalHvacTheme.current
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
 
     Dialog(
-        onDismissRequest = onDismiss
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Card(
             modifier = Modifier
-                .fillMaxWidth()
+                .widthIn(max = 620.dp)
+                .fillMaxWidth(0.9f)
+                .heightIn(max = screenHeight * 0.88f)
                 .padding(16.dp)
                 .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)), RoundedCornerShape(24.dp)),
             shape = RoundedCornerShape(24.dp),
