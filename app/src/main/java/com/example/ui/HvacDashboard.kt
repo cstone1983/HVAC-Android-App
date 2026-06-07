@@ -3137,8 +3137,7 @@ fun HvacLoginScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     val loginError by viewModel.loginErrorMessage.collectAsStateWithLifecycle()
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val isConnecting = uiState is HvacUiState.Loading
+    val isConnecting by viewModel.isLoggingIn.collectAsStateWithLifecycle()
 
     Box(
         modifier = Modifier

@@ -127,6 +127,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _loginErrorMessage = MutableStateFlow<String?>(null)
     val loginErrorMessage: StateFlow<String?> = _loginErrorMessage.asStateFlow()
 
+    private val _isLoggingIn = MutableStateFlow(false)
+    val isLoggingIn: StateFlow<Boolean> = _isLoggingIn.asStateFlow()
+
     private val _uiState = MutableStateFlow<HvacUiState>(HvacUiState.Loading)
     val uiState: StateFlow<HvacUiState> = _uiState.asStateFlow()
 
@@ -161,6 +164,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 _loginErrorMessage.value = "Username and password cannot be empty."
                 return@launch
             }
+            _isLoggingIn.value = true
             try {
                 // Get pre-configured background server address and token
                 val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
@@ -199,6 +203,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 _loginErrorMessage.value = "Connection failed: ${e.localizedMessage ?: "Unknown error"}"
+            } finally {
+                _isLoggingIn.value = false
             }
         }
     }

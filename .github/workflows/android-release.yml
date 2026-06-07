@@ -1,0 +1,63 @@
+name: Build and Deploy Rolling Android Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission to Gradle wrapper
+        run: chmod +x gradlew
+
+      - name: Set up Environment from .env
+        run: |
+          if [ ! -f .env ]; then
+            if [ -f .env.example ]; then
+              cp .env.example .env
+            else
+              touch .env
+            fi
+          fi
+
+      - name: Build Debug APK with Gradle
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Create or Update GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          tag: "v1.0"
+          name: "Latest Rolling Release v1.0"
+          body: |
+            ### HAVEN HVAC COMPILATION BUILD
+            
+            This release is automatically updated to host the latest compiled Android package (.apk) generated directly from your commits to the `main` branch.
+            
+            • **Branch:** `main`
+            • **Build Trigger:** Push / Auto Deploy
+            
+            **How to install:**
+            Download and run the attached `.apk` asset on your Android device to install the update. If you are already running the app on your phone, you can go to the **System Updates** tab inside the app to check for and install this update over-the-air (OTA)!
+          draft: false
+          prerelease: false
+          artifacts: "app/build/outputs/apk/debug/app-debug.apk"
+          replacesArtifacts: true
+          token: ${{ secrets.GITHUB_TOKEN }}
