@@ -186,6 +186,17 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow<HvacUiState>(HvacUiState.Loading)
     val uiState: StateFlow<HvacUiState> = _uiState.asStateFlow()
 
+    private val _isOffline = MutableStateFlow(false)
+    val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
+
+    fun forceSyncOnResume() {
+        if (_isLoggedIn.value) {
+            viewModelScope.launch {
+                fetchStates()
+            }
+        }
+    }
+
     private val _actionFeedback = MutableStateFlow<String?>(null)
     val actionFeedback: StateFlow<String?> = _actionFeedback.asStateFlow()
 
@@ -306,7 +317,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         if (responseList == null) {
             consecutiveFailureCount++
             val current = _uiState.value
-            if (current !is HvacUiState.Success || consecutiveFailureCount >= 3) {
+            if (current is HvacUiState.Success) {
+                _isOffline.value = true
+            } else {
                 _uiState.value = HvacUiState.Error("Connectivity error: Reconnection failed. ${lastException?.localizedMessage ?: "Unknown error"}")
             }
             return
@@ -457,9 +470,15 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 covers = parsedCovers,
                 lastUpdated = System.currentTimeMillis()
             )
+            _isOffline.value = false
             consecutiveFailureCount = 0
         } catch (e: Exception) {
-            _uiState.value = HvacUiState.Error("Connectivity error: Check connection setup. ${e.localizedMessage}")
+            val current = _uiState.value
+            if (current is HvacUiState.Success) {
+                _isOffline.value = true
+            } else {
+                _uiState.value = HvacUiState.Error("Connectivity error: Check connection setup. ${e.localizedMessage}")
+            }
         }
     }
 
@@ -940,8 +959,20 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val repo = _githubRepo.value
                 val branch = _githubBranch.value
-                val url = "https://raw.githubusercontent.com/$repo/$branch/layout_config.json"
                 
+                // Fetch the latest commit SHA to bypass raw.githubusercontent.com CDN cache
+                var sha = branch
+                try {
+                    val commitUrl = "https://api.github.com/repos/$repo/commits/$branch"
+                    val commitResponse = com.example.api.GithubClient.service.getLatestCommit(commitUrl)
+                    if (commitResponse.isSuccessful && commitResponse.body() != null) {
+                        sha = commitResponse.body()!!.sha
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                val url = "https://raw.githubusercontent.com/$repo/$sha/layout_config.json"
                 val response = com.example.api.GithubClient.service.getLayoutConfig(url, System.currentTimeMillis())
                 if (response.isSuccessful && response.body() != null) {
                     val remoteConfig = response.body()!!
@@ -969,8 +1000,20 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val repo = _githubRepo.value
                 val branch = _githubBranch.value
-                val url = "https://raw.githubusercontent.com/$repo/$branch/layout_config.json"
                 
+                // Fetch the latest commit SHA to bypass raw.githubusercontent.com CDN cache
+                var sha = branch
+                try {
+                    val commitUrl = "https://api.github.com/repos/$repo/commits/$branch"
+                    val commitResponse = com.example.api.GithubClient.service.getLatestCommit(commitUrl)
+                    if (commitResponse.isSuccessful && commitResponse.body() != null) {
+                        sha = commitResponse.body()!!.sha
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                val url = "https://raw.githubusercontent.com/$repo/$sha/layout_config.json"
                 val response = com.example.api.GithubClient.service.getLayoutConfig(url, System.currentTimeMillis())
                 if (response.isSuccessful && response.body() != null) {
                     val remoteConfig = response.body()!!

@@ -50,6 +50,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.model.*
 import com.example.ui.theme.*
 import com.example.viewmodel.HvacUiState
@@ -118,6 +121,19 @@ fun HvacDashboard(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     var showSettingsDialog by remember { mutableStateOf(false) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.forceSyncOnResume()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Dynamic state background color mapping matching home assistant transitions
     val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
@@ -260,15 +276,24 @@ fun HvacDashboard(
                                 }
 
                                 // Connection / sync state node indicator
-                                val connectionColor = when (uiState) {
-                                    is HvacUiState.Success -> Color(0xFF10B981) // active green
-                                    is HvacUiState.Loading -> Color(0xFFF59E0B) // active yellow
-                                    is HvacUiState.Error -> Color(0xFFEF4444)  // inactive red
+                                val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
+                                val connectionColor = if (isOffline) {
+                                    Color(0xFFEF4444)
+                                } else {
+                                    when (uiState) {
+                                        is HvacUiState.Success -> Color(0xFF10B981)
+                                        is HvacUiState.Loading -> Color(0xFFF59E0B)
+                                        is HvacUiState.Error -> Color(0xFFEF4444)
+                                    }
                                 }
-                                val connectionText = when (uiState) {
-                                    is HvacUiState.Success -> "CONNECTED"
-                                    is HvacUiState.Loading -> "REFRESHING"
-                                    is HvacUiState.Error -> "DISCONNECTED"
+                                val connectionText = if (isOffline) {
+                                    "DISCONNECTED"
+                                } else {
+                                    when (uiState) {
+                                        is HvacUiState.Success -> "CONNECTED"
+                                        is HvacUiState.Loading -> "REFRESHING"
+                                        is HvacUiState.Error -> "DISCONNECTED"
+                                    }
                                 }
 
                                 Row(
@@ -994,15 +1019,25 @@ fun HvacDashboardContent(
                     HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
 
                     // Connection State
-                    val connectionColor = when (viewModel.uiState.value) {
-                        is HvacUiState.Success -> Color(0xFF10B981)
-                        is HvacUiState.Loading -> Color(0xFFF59E0B)
-                        is HvacUiState.Error -> Color(0xFFEF4444)
+                    val isOfflineSide by viewModel.isOffline.collectAsStateWithLifecycle()
+                    val uiStateSide by viewModel.uiState.collectAsStateWithLifecycle()
+                    val connectionColor = if (isOfflineSide) {
+                        Color(0xFFEF4444)
+                    } else {
+                        when (uiStateSide) {
+                            is HvacUiState.Success -> Color(0xFF10B981)
+                            is HvacUiState.Loading -> Color(0xFFF59E0B)
+                            is HvacUiState.Error -> Color(0xFFEF4444)
+                        }
                     }
-                    val connectionText = when (viewModel.uiState.value) {
-                        is HvacUiState.Success -> "CONNECTED"
-                        is HvacUiState.Loading -> "REFRESHING"
-                        is HvacUiState.Error -> "DISCONNECTED"
+                    val connectionText = if (isOfflineSide) {
+                        "DISCONNECTED"
+                    } else {
+                        when (uiStateSide) {
+                            is HvacUiState.Success -> "CONNECTED"
+                            is HvacUiState.Loading -> "REFRESHING"
+                            is HvacUiState.Error -> "DISCONNECTED"
+                        }
                     }
 
                     if (isMenuExpanded) {
@@ -1318,49 +1353,67 @@ fun HvacDashboardContent(
 
 @Composable
 fun RoomSensorsStrip(rooms: List<RoomSensor>) {
-    LazyRow(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
             .testTag("room_sensors_strip"),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        items(rooms) { room ->
-            Card(
-                colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
-                border = BorderStroke(1.dp, hvacBorderAlphaColor()),
-                shape = hvacCardShape(12)
+        rooms.forEach { room ->
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .widthIn(max = 135.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+                    border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+                    shape = hvacCardShape(12)
                 ) {
-                    Icon(
-                        imageVector = when (room.id) {
-                            "living_room" -> Icons.Default.Weekend
-                            "bedroom" -> Icons.Default.Bed
-                            "basement" -> Icons.Default.AcUnit
-                            else -> Icons.Default.Thermostat
-                        },
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = Color.White.copy(alpha = 0.6f)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Column {
-                        Text(
-                            text = room.name,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.5f),
-                            letterSpacing = 1.sp
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = when (room.id) {
+                                "living_room" -> Icons.Default.Weekend
+                                "bedroom" -> Icons.Default.Bed
+                                "basement" -> Icons.Default.AcUnit
+                                else -> Icons.Default.Thermostat
+                            },
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = Color.White.copy(alpha = 0.6f)
                         )
-                        Text(
-                            text = room.temp?.let { "${it.toInt()}°F" } ?: "--°F",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Column(
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = room.name,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 0.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = room.temp?.let { "${it.toInt()}°F" } ?: "--°F",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

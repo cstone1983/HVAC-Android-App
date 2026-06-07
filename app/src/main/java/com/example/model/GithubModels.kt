@@ -19,3 +19,9 @@ data class GithubAsset(
     @Json(name = "browser_download_url") val browserDownloadUrl: String,
     val size: Long
 )
+
+@JsonClass(generateAdapter = true)
+data class GithubCommit(
+    val sha: String
+)
+
