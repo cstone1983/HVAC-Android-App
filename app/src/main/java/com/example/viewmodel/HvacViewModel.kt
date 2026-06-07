@@ -792,10 +792,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 val response = com.example.api.GithubClient.service.getLayoutConfig()
                 if (response.isSuccessful && response.body() != null) {
                     val remoteConfig = response.body()!!
-                    val remoteVersion = remoteConfig.version
-                    val currentVersion = _layoutVersion.value
-                    if (isNewerVersion(remoteVersion, currentVersion)) {
-                        _layoutUpdateAvailable.value = remoteVersion
+                    val currentConfig = getActiveLayoutConfig()
+                    if (remoteConfig != currentConfig) {
+                        _layoutUpdateAvailable.value = remoteConfig.version
                     } else {
                         _layoutUpdateAvailable.value = null
                     }

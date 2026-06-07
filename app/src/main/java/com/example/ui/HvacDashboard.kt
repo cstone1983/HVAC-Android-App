@@ -2134,8 +2134,13 @@ fun UpdatesTab(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
+                                val displayText = if (layoutUpdateAvailable == layoutVersion) {
+                                    "Layout config changes detected on GitHub (v$layoutUpdateAvailable)"
+                                } else {
+                                    "New layout specification available: v$layoutUpdateAvailable"
+                                }
                                 Text(
-                                    "New layout specification available: v$layoutUpdateAvailable",
+                                    displayText,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFFE8F5E9)
