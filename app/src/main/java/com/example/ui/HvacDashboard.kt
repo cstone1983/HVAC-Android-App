@@ -1536,11 +1536,11 @@ fun ZoneCardItem(
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
 
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             Text("Vane Direction", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.6f))
                             Spacer(modifier = Modifier.height(4.dp))
                             val vaneScrollState = rememberScrollState()
@@ -1575,7 +1575,7 @@ fun ZoneCardItem(
                             }
                         }
 
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             Text("Fan Power", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.6f))
                             Spacer(modifier = Modifier.height(4.dp))
                             val fanScrollState = rememberScrollState()
