@@ -8,14 +8,14 @@ import retrofit2.http.Streaming
 import retrofit2.http.Url
 
 interface GithubApi {
-    @GET("repos/cstone1983/HVAC-Android-App/releases/latest")
-    suspend fun getLatestRelease(): Response<GithubRelease>
+    @GET
+    suspend fun getLatestRelease(@Url url: String): Response<GithubRelease>
 
-    @GET("repos/cstone1983/HVAC-Android-App/releases")
-    suspend fun getReleases(): Response<List<GithubRelease>>
+    @GET
+    suspend fun getReleases(@Url url: String): Response<List<GithubRelease>>
 
-    @GET("https://raw.githubusercontent.com/cstone1983/HVAC-Android-App/main/layout_config.json")
-    suspend fun getLayoutConfig(@retrofit2.http.Query("t") timestamp: Long): Response<com.example.model.HvacLayoutConfig>
+    @GET
+    suspend fun getLayoutConfig(@Url url: String, @retrofit2.http.Query("t") timestamp: Long): Response<com.example.model.HvacLayoutConfig>
 
     @Streaming
     @GET

@@ -49,6 +49,30 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _layoutUpdateAvailable = MutableStateFlow<String?>(null)
     val layoutUpdateAvailable: StateFlow<String?> = _layoutUpdateAvailable.asStateFlow()
 
+    private val _githubRepo = MutableStateFlow(sharedPrefs.getString("github_repo", "cstone1983/HVAC-Android-App") ?: "cstone1983/HVAC-Android-App")
+    val githubRepo: StateFlow<String> = _githubRepo.asStateFlow()
+
+    private val _githubBranch = MutableStateFlow(sharedPrefs.getString("github_branch", "main") ?: "main")
+    val githubBranch: StateFlow<String> = _githubBranch.asStateFlow()
+
+    private val _layoutUpdateError = MutableStateFlow<String?>(null)
+    val layoutUpdateError: StateFlow<String?> = _layoutUpdateError.asStateFlow()
+
+    fun updateGithubSettings(repo: String, branch: String) {
+        val cleanRepo = repo.trim().removePrefix("https://github.com/").removeSuffix(".git").trim()
+        val cleanBranch = branch.trim()
+        sharedPrefs.edit()
+            .putString("github_repo", cleanRepo)
+            .putString("github_branch", cleanBranch)
+            .apply()
+        _githubRepo.value = cleanRepo
+        _githubBranch.value = cleanBranch
+    }
+
+    fun clearLayoutUpdateError() {
+        _layoutUpdateError.value = null
+    }
+
     private val _forceScreenOn = MutableStateFlow(sharedPrefs.getBoolean("force_screen_on", true))
     val forceScreenOn: StateFlow<Boolean> = _forceScreenOn.asStateFlow()
 
@@ -513,13 +537,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             checkForLayoutUpdates()
             try {
                 var release: com.example.model.GithubRelease? = null
+                val repo = _githubRepo.value
                 
-                // Fetch the list of releases first to ensure pre-releases or release drafts are covered
-                val listResponse = GithubClient.service.getReleases()
+                // Fetch the list of releases dynamically
+                val listResponse = GithubClient.service.getReleases("https://api.github.com/repos/$repo/releases")
                 if (listResponse.isSuccessful && !listResponse.body().isNullOrEmpty()) {
                     release = listResponse.body()!!.first()
                 } else {
-                    val response = GithubClient.service.getLatestRelease()
+                    val response = GithubClient.service.getLatestRelease("https://api.github.com/repos/$repo/releases/latest")
                     if (response.isSuccessful && response.body() != null) {
                         release = response.body()
                     }
@@ -845,8 +870,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     fun checkForLayoutUpdates() {
         viewModelScope.launch {
+            _layoutUpdateError.value = null
             try {
-                val response = com.example.api.GithubClient.service.getLayoutConfig(System.currentTimeMillis())
+                val repo = _githubRepo.value
+                val branch = _githubBranch.value
+                val url = "https://raw.githubusercontent.com/$repo/$branch/layout_config.json"
+                
+                val response = com.example.api.GithubClient.service.getLayoutConfig(url, System.currentTimeMillis())
                 if (response.isSuccessful && response.body() != null) {
                     val remoteConfig = response.body()!!
                     val currentConfig = getActiveLayoutConfig()
@@ -855,17 +885,27 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         _layoutUpdateAvailable.value = null
                     }
+                } else {
+                    _layoutUpdateError.value = "HTTP error ${response.code()} checking layout config."
+                    _layoutUpdateAvailable.value = null
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                _layoutUpdateError.value = "Layout check failed: ${e.localizedMessage ?: "Parsing or connection error"}"
+                _layoutUpdateAvailable.value = null
             }
         }
     }
 
     fun downloadAndApplyLayoutUpdate(onComplete: (Boolean, String) -> Unit) {
         viewModelScope.launch {
+            _layoutUpdateError.value = null
             try {
-                val response = com.example.api.GithubClient.service.getLayoutConfig(System.currentTimeMillis())
+                val repo = _githubRepo.value
+                val branch = _githubBranch.value
+                val url = "https://raw.githubusercontent.com/$repo/$branch/layout_config.json"
+                
+                val response = com.example.api.GithubClient.service.getLayoutConfig(url, System.currentTimeMillis())
                 if (response.isSuccessful && response.body() != null) {
                     val remoteConfig = response.body()!!
                     val remoteJson = layoutConfigAdapter.toJson(remoteConfig)
@@ -879,10 +919,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     fetchStates()
                     onComplete(true, "Successfully updated to layout design v${remoteConfig.version}")
                 } else {
-                    onComplete(false, "Failed to download layout config (HTTP ${response.code()})")
+                    val errMsg = "Failed to download layout layout (HTTP ${response.code()})"
+                    _layoutUpdateError.value = errMsg
+                    onComplete(false, errMsg)
                 }
             } catch (e: Exception) {
-                onComplete(false, "Error: ${e.localizedMessage ?: "Unknown failure"}")
+                val errMsg = "Parsing error: ${e.localizedMessage ?: "Invalid JSON syntax"}"
+                _layoutUpdateError.value = errMsg
+                onComplete(false, errMsg)
             }
         }
     }

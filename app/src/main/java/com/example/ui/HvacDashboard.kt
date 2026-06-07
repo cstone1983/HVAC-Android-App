@@ -157,79 +157,82 @@ fun HvacDashboard(
                             }
                         },
                         actions = {
-                            IconButton(
-                                onClick = { showSettingsDialog = true },
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
-                                    .testTag("settings_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Settings",
-                                    tint = Color.White.copy(alpha = 0.8f),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            IconButton(
-                                onClick = { viewModel.logout() },
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
-                                    .testTag("logout_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.ExitToApp,
-                                    contentDescription = "Log out",
-                                    tint = Color.White.copy(alpha = 0.8f),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            // Connection / sync state node indicator
-                            val connectionColor = when (uiState) {
-                                is HvacUiState.Success -> Color(0xFF10B981) // active green
-                                is HvacUiState.Loading -> Color(0xFFF59E0B) // active yellow
-                                is HvacUiState.Error -> Color(0xFFEF4444)  // inactive red
-                            }
-                            val connectionText = when (uiState) {
-                                is HvacUiState.Success -> "CONNECTED"
-                                is HvacUiState.Loading -> "REFRESHING"
-                                is HvacUiState.Error -> "DISCONNECTED"
-                            }
-
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .padding(end = 12.dp)
-                                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                                    .clickable {
-                                        scope.launch { viewModel.fetchStates() }
-                                    }
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(end = 12.dp)
                             ) {
-                                Box(
+                                IconButton(
+                                    onClick = { showSettingsDialog = true },
                                     modifier = Modifier
-                                        .size(8.dp)
-                                        .background(connectionColor, RoundedCornerShape(4.dp))
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = connectionText,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "Manual Sync Request",
-                                    modifier = Modifier.size(12.dp),
-                                    tint = Color.White.copy(alpha = 0.8f)
-                                )
+                                        .size(32.dp)
+                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
+                                        .testTag("settings_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Settings",
+                                        tint = Color.White.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = { viewModel.logout() },
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(16.dp))
+                                        .testTag("logout_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ExitToApp,
+                                        contentDescription = "Log out",
+                                        tint = Color.White.copy(alpha = 0.8f),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+
+                                // Connection / sync state node indicator
+                                val connectionColor = when (uiState) {
+                                    is HvacUiState.Success -> Color(0xFF10B981) // active green
+                                    is HvacUiState.Loading -> Color(0xFFF59E0B) // active yellow
+                                    is HvacUiState.Error -> Color(0xFFEF4444)  // inactive red
+                                }
+                                val connectionText = when (uiState) {
+                                    is HvacUiState.Success -> "CONNECTED"
+                                    is HvacUiState.Loading -> "REFRESHING"
+                                    is HvacUiState.Error -> "DISCONNECTED"
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(20.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        .clickable {
+                                            scope.launch { viewModel.fetchStates() }
+                                        }
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .background(connectionColor, RoundedCornerShape(4.dp))
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = connectionText,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.9f)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "Manual Sync Request",
+                                        modifier = Modifier.size(12.dp),
+                                        tint = Color.White.copy(alpha = 0.8f)
+                                    )
+                                }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -2171,6 +2174,9 @@ fun UpdatesTab(
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val layoutVersion by viewModel.layoutVersion.collectAsStateWithLifecycle()
     val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
+    val layoutUpdateError by viewModel.layoutUpdateError.collectAsStateWithLifecycle()
+    val githubRepo by viewModel.githubRepo.collectAsStateWithLifecycle()
+    val githubBranch by viewModel.githubBranch.collectAsStateWithLifecycle()
 
     val currentVersion = remember {
         try {
@@ -2334,7 +2340,77 @@ fun UpdatesTab(
                         lineHeight = 16.sp
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
+                            .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Code,
+                            contentDescription = null,
+                            tint = Color(0xFF2196F3),
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Connected Connection Source: github.com/$githubRepo ($githubBranch)",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.7f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    if (layoutUpdateError != null) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFD32F2F).copy(alpha = 0.15f)),
+                            border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.25f)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = Color(0xFFEF5350),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "SPECIFICATION PARSING FAILURE",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFFEF5350),
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = layoutUpdateError!!,
+                                    fontSize = 11.sp,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = { viewModel.clearLayoutUpdateError() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.align(Alignment.End)
+                                ) {
+                                    Text("CLEAR", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(14.dp))
+                    }
 
                     if (layoutUpdateAvailable != null) {
                         Card(
@@ -3431,6 +3507,121 @@ fun HvacSettingsDialog(
                                 uncheckedTrackColor = Color(0xFF1E293B)
                             )
                         )
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                // GitHub Settings overrides
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
+                        Text(
+                            text = "GITHUB UPDATER & SPECIFICATION",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Configure repository source for OTA layout designs & compiled APKs",
+                            fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.4f)
+                        )
+                    }
+
+                    val currentRepo by viewModel.githubRepo.collectAsState()
+                    val currentBranch by viewModel.githubBranch.collectAsState()
+                    var repoText by remember(currentRepo) { mutableStateOf(currentRepo) }
+                    var branchText by remember(currentBranch) { mutableStateOf(currentBranch) }
+                    val context = LocalContext.current
+
+                    OutlinedTextField(
+                        value = repoText,
+                        onValueChange = { repoText = it },
+                        label = { Text("GitHub Repository (owner/repo)", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedIndicatorColor = Color(0xFF2196F3),
+                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("github_repo_input"),
+                        leadingIcon = {
+                            Icon(Icons.Default.Code, contentDescription = null, tint = Color(0xFF2196F3).copy(alpha = 0.8f))
+                        }
+                    )
+
+                    OutlinedTextField(
+                        value = branchText,
+                        onValueChange = { branchText = it },
+                        label = { Text("Active Branch", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedIndicatorColor = Color(0xFF2196F3),
+                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("github_branch_input"),
+                        leadingIcon = {
+                            Icon(Icons.Default.AccountTree, contentDescription = null, tint = Color(0xFF2196F3).copy(alpha = 0.8f))
+                        }
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                if (repoText.isNotBlank() && branchText.isNotBlank()) {
+                                    viewModel.updateGithubSettings(repoText, branchText)
+                                    Toast.makeText(context, "GitHub repository parameters saved!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Parameters cannot be empty", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF2196F3).copy(alpha = 0.15f),
+                                contentColor = Color(0xFF2196F3)
+                            ),
+                            border = BorderStroke(1.dp, Color(0xFF2196F3).copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("SAVE GITHUB SOURCE", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                        }
+
+                        val isDefault = currentRepo == "cstone1983/HVAC-Android-App" && currentBranch == "main"
+                        if (!isDefault) {
+                            Button(
+                                onClick = {
+                                    viewModel.updateGithubSettings("cstone1983/HVAC-Android-App", "main")
+                                    Toast.makeText(context, "Restored default GitHub repository source!", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFD32F2F).copy(alpha = 0.15f),
+                                    contentColor = Color(0xFFEF5350)
+                                ),
+                                border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f)),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("RESTORE DEFAULT", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                            }
+                        }
                     }
                 }
 

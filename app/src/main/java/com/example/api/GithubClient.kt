@@ -19,6 +19,9 @@ object GithubClient {
             val request = chain.request().newBuilder()
                 .header("User-Agent", "HVAC-Android-App-Updater")
                 .header("Accept", "application/vnd.github.v3+json")
+                .header("Cache-Control", "no-cache, no-store, must-revalidate")
+                .header("Pragma", "no-cache")
+                .header("Expires", "0")
                 .build()
             chain.proceed(request)
         }
