@@ -1344,6 +1344,12 @@ fun HvacDashboardContent(
                         .weight(1f)
                         .fillMaxHeight()
                 ) {
+                    UpdateAlertBanner(
+                        viewModel = viewModel,
+                        activeTabs = activeTabs,
+                        onNavigateToUpdates = { selectedTab = it }
+                    )
+
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -1487,6 +1493,12 @@ fun HvacDashboardContent(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            UpdateAlertBanner(
+                viewModel = viewModel,
+                activeTabs = activeTabs,
+                onNavigateToUpdates = { selectedTab = it }
+            )
+
             // Body content swap based on selected tab containing robust details
             AnimatedContent(
                 targetState = selectedTab,
@@ -1509,6 +1521,72 @@ fun HvacDashboardContent(
         }
     }
 }
+}
+
+@Composable
+fun UpdateAlertBanner(
+    viewModel: HvacViewModel,
+    activeTabs: List<TabConfig>,
+    onNavigateToUpdates: (Int) -> Unit
+) {
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val theme = LocalHvacTheme.current
+    
+    val availableUpdate = updateState as? UpdateState.UpdateAvailable
+    if (availableUpdate != null) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = theme.coolColor.copy(alpha = 0.12f)
+            ),
+            border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.35f)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp, start = 4.dp, end = 4.dp)
+                .clickable {
+                    val idx = activeTabs.indexOfFirst { it.id == "updates" }
+                    if (idx != -1) {
+                        onNavigateToUpdates(idx)
+                    }
+                }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CloudDownload,
+                    contentDescription = "Update available banner",
+                    tint = theme.coolColor,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "NEW CORE UPGRADE DETECTED",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        color = theme.coolColor,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "Haven OS ${availableUpdate.version} is ready for installation. Tap to upgrade now.",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ArrowForward,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.4f),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
 }
 
 @Composable

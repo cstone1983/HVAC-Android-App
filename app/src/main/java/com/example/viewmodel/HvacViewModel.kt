@@ -245,6 +245,22 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var syncJob: Job? = null
     private var consecutiveFailureCount = 0
     private var lastLayoutCheckTime = 0L
+    private var updateSyncJob: Job? = null
+
+    fun startUpdateSync() {
+        updateSyncJob?.cancel()
+        updateSyncJob = viewModelScope.launch {
+            while (true) {
+                try {
+                    checkForLayoutUpdates()
+                    checkForUpdates(activeVersion.value, quiet = true)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                delay(15000L) // Poll GitHub layout configurations and software releases every 15 seconds dynamically in the background
+            }
+        }
+    }
 
     init {
         com.example.api.GithubClient.tokenProvider = {
@@ -254,6 +270,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val savedUrl = sharedPrefs.getString("ha_url", null)
         val savedToken = sharedPrefs.getString("ha_token", null)
         val hasSession = sharedPrefs.getBoolean("logged_in", false)
+
+        startUpdateSync()
 
         if (hasSession && !savedUrl.isNullOrEmpty() && !savedToken.isNullOrEmpty()) {
             HomeAssistantClient.initialize(savedUrl, savedToken)
@@ -368,12 +386,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        // Run automatic layout updates check every 30 seconds to detect fresh commits on GitHub
-        val now = System.currentTimeMillis()
-        if (now - lastLayoutCheckTime > 30000L) {
-            lastLayoutCheckTime = now
-            checkForLayoutUpdates()
-        }
+        // Layout and software updates are handled dynamically by the persistent startUpdateSync() background task.
 
         try {
             val statesMap = responseList.associateBy { it.entity_id }
@@ -675,10 +688,18 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var pendingAssetUrl: String = ""
     private var pendingVersion: String = ""
 
-    fun checkForUpdates(currentVersion: String) {
-        _updateState.value = UpdateState.Checking
+    fun checkForUpdates(currentVersion: String, quiet: Boolean = false) {
+        val current = _updateState.value
+        if (current is UpdateState.Downloading || current is UpdateState.Installing || current is UpdateState.Success) {
+            return
+        }
+        if (!quiet) {
+            _updateState.value = UpdateState.Checking
+        }
         viewModelScope.launch {
-            checkForLayoutUpdates()
+            if (!quiet) {
+                checkForLayoutUpdates()
+            }
             try {
                 var release: com.example.model.GithubRelease? = null
                 val repo = _githubRepo.value
