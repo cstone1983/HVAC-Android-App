@@ -103,7 +103,8 @@ data class ClimateZone(
 data class GlobalSettings(
     val houseSchedule: String = "Day", // Day, Night, Away
     val waterHeaterMode: String = "eco", // eco, heat_pump, high_demand
-    val globalHvacMode: String = "heat" // heat, cool, off
+    val globalHvacMode: String = "heat", // heat, cool, off
+    val lastNonOffHvacMode: String = "heat"
 )
 
 data class LightControl(

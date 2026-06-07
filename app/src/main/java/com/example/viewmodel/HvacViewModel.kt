@@ -77,6 +77,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _actionFeedback = MutableStateFlow<String?>(null)
     val actionFeedback: StateFlow<String?> = _actionFeedback.asStateFlow()
 
+    private var lastNonOffHvacMode = sharedPrefs.getString("last_non_off_hvac_mode", "heat") ?: "heat"
+
     private var syncJob: Job? = null
     private var consecutiveFailureCount = 0
 
@@ -201,10 +203,20 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             val houseSchedule = statesMap["input_select.house_schedule_state"]?.state ?: "Day"
             val waterHeaterMode = statesMap["input_select.water_heater_mode"]?.state ?: "eco"
             val globalHvacMode = statesMap["input_select.global_hvac_mode"]?.state ?: "heat"
+
+            val hModeLower = globalHvacMode.lowercase()
+            if (hModeLower == "heat" || hModeLower == "cool") {
+                if (lastNonOffHvacMode != hModeLower) {
+                    lastNonOffHvacMode = hModeLower
+                    sharedPrefs.edit().putString("last_non_off_hvac_mode", hModeLower).apply()
+                }
+            }
+
             val globalSettings = GlobalSettings(
                 houseSchedule = houseSchedule,
                 waterHeaterMode = waterHeaterMode,
-                globalHvacMode = globalHvacMode
+                globalHvacMode = globalHvacMode,
+                lastNonOffHvacMode = lastNonOffHvacMode
             )
 
             // 2. Room sensors mapping parsed from active configuration dynamically
@@ -388,7 +400,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleZonePower(climateEntityId: String, currentHvacMode: String, globalHvacMode: String, name: String) {
         val isOff = currentHvacMode.lowercase() == "off"
         val targetMode = if (isOff) {
-            if (globalHvacMode.lowercase() == "cool") "cool" else "heat"
+            val activeGlobalMode = if (globalHvacMode.lowercase() == "off") {
+                lastNonOffHvacMode
+            } else {
+                globalHvacMode
+            }
+            if (activeGlobalMode.lowercase() == "cool") "cool" else "heat"
         } else {
             "off"
         }

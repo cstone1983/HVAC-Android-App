@@ -1100,6 +1100,7 @@ fun ClimateZonesTab(
                 zone = zone,
                 isExpanded = isExpanded,
                 globalHvacMode = state.globalSettings.globalHvacMode,
+                lastNonOffHvacMode = state.globalSettings.lastNonOffHvacMode,
                 activeScheduleState = state.globalSettings.houseSchedule,
                 onHeaderClick = {
                     expandedZoneKey = if (isExpanded) null else zone.key
@@ -1116,6 +1117,7 @@ fun ZoneCardItem(
     zone: ClimateZone,
     isExpanded: Boolean,
     globalHvacMode: String,
+    lastNonOffHvacMode: String,
     activeScheduleState: String,
     onHeaderClick: () -> Unit,
     viewModel: HvacViewModel
@@ -1283,8 +1285,9 @@ fun ZoneCardItem(
                 ) {
                     HorizontalDivider(color = Color.White.copy(alpha = 0.05f), modifier = Modifier.padding(bottom = 16.dp))
 
-                    val blockPresets = if (globalHvacMode == "cool") zone.presetsCool else zone.presetsHeat
-                    val presetLabelType = if (globalHvacMode == "cool") "Cool" else "Heat"
+                    val activeModeForPresets = if (globalHvacMode.lowercase() == "off") lastNonOffHvacMode else globalHvacMode
+                    val blockPresets = if (activeModeForPresets.lowercase() == "cool") zone.presetsCool else zone.presetsHeat
+                    val presetLabelType = if (activeModeForPresets.lowercase() == "cool") "Cool" else "Heat"
 
                     Text(
                         text = "SCHEDULE SETPOINTS ($presetLabelType Mode)",
