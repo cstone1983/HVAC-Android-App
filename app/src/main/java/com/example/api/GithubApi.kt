@@ -15,7 +15,7 @@ interface GithubApi {
     suspend fun getReleases(): Response<List<GithubRelease>>
 
     @GET("https://raw.githubusercontent.com/cstone1983/HVAC-Android-App/main/layout_config.json")
-    suspend fun getLayoutConfig(): Response<com.example.model.HvacLayoutConfig>
+    suspend fun getLayoutConfig(@retrofit2.http.Query("t") timestamp: Long): Response<com.example.model.HvacLayoutConfig>
 
     @Streaming
     @GET

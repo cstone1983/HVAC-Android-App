@@ -81,6 +81,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     private var syncJob: Job? = null
     private var consecutiveFailureCount = 0
+    private var lastLayoutCheckTime = 0L
 
     init {
         _layoutVersion.value = getActiveLayoutConfig().version
@@ -194,6 +195,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.value = HvacUiState.Error("Connectivity error: Reconnection failed. ${lastException?.localizedMessage ?: "Unknown error"}")
             }
             return
+        }
+
+        // Run automatic layout updates check every 30 seconds to detect fresh commits on GitHub
+        val now = System.currentTimeMillis()
+        if (now - lastLayoutCheckTime > 30000L) {
+            lastLayoutCheckTime = now
+            checkForLayoutUpdates()
         }
 
         try {
@@ -806,7 +814,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun checkForLayoutUpdates() {
         viewModelScope.launch {
             try {
-                val response = com.example.api.GithubClient.service.getLayoutConfig()
+                val response = com.example.api.GithubClient.service.getLayoutConfig(System.currentTimeMillis())
                 if (response.isSuccessful && response.body() != null) {
                     val remoteConfig = response.body()!!
                     val currentConfig = getActiveLayoutConfig()
@@ -825,7 +833,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun downloadAndApplyLayoutUpdate(onComplete: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             try {
-                val response = com.example.api.GithubClient.service.getLayoutConfig()
+                val response = com.example.api.GithubClient.service.getLayoutConfig(System.currentTimeMillis())
                 if (response.isSuccessful && response.body() != null) {
                     val remoteConfig = response.body()!!
                     val remoteJson = layoutConfigAdapter.toJson(remoteConfig)

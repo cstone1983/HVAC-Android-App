@@ -1058,6 +1058,8 @@ fun ClimateZonesTab(
     state: HvacUiState.Success,
     viewModel: HvacViewModel
 ) {
+    val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var activeZoneDetail by remember { mutableStateOf<ClimateZone?>(null) }
 
     // If an active zone is selected, show detail configuration popup
@@ -1080,6 +1082,54 @@ fun ClimateZonesTab(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        if (layoutUpdateAvailable != null) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .clickable {
+                            viewModel.downloadAndApplyLayoutUpdate { success, msg ->
+                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        .testTag("zones_layout_update_banner"),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF10B981).copy(alpha = 0.15f)
+                    ),
+                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = null,
+                            tint = Color(0xFF34D399),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "LAYOUT SPECIFICATION UPDATE AVAILABLE",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF34D399),
+                                letterSpacing = 0.8.sp
+                            )
+                            Text(
+                                text = "Changes to layout_config.json detected on GitHub. Tap here to apply instantly!",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.9f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         item {
             GlobalSettingsQuickControl(state = state, viewModel = viewModel)
         }
