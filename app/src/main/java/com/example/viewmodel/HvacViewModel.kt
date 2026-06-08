@@ -45,7 +45,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _layoutVersion = MutableStateFlow(sharedPrefs.getString("layout_version", "1.0.0") ?: "1.0.0")
     val layoutVersion: StateFlow<String> = _layoutVersion.asStateFlow()
 
-    private val _activeVersion = MutableStateFlow(sharedPrefs.getString("installed_version_override", "v2.1.4") ?: "v2.1.4")
+    private val _activeVersion = MutableStateFlow("v" + com.example.BuildConfig.VERSION_NAME)
     val activeVersion: StateFlow<String> = _activeVersion.asStateFlow()
 
     private val _selectedThemePreset = MutableStateFlow(sharedPrefs.getString("selected_theme_preset", "dynamic") ?: "dynamic")
@@ -758,8 +758,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                val latestSimulatedVersion = _simulatedLatestVersion.value
-                if (release == null || isTargetOlderThan(release.tagName, latestSimulatedVersion)) {
+                if (release == null) {
+                    val latestSimulatedVersion = _simulatedLatestVersion.value
                     release = com.example.model.GithubRelease(
                         id = 99999L,
                         tagName = latestSimulatedVersion,
@@ -987,6 +987,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 _actionFeedback.value = "Please grant permission to install unknown apps, then click install again."
                 return
             }
+        }
+
+        if (pendingSoftwareCommit.isNotEmpty()) {
+            sharedPrefs.edit().putString("software_commit_sha", pendingSoftwareCommit).apply()
         }
 
         try {
