@@ -1024,16 +1024,29 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun getActiveLayoutConfig(): com.example.model.HvacLayoutConfig {
+        val builtIn = getBuiltInDefaultLayoutConfig()
         val savedJson = sharedPrefs.getString("layout_config_json", null)
         if (!savedJson.isNullOrBlank()) {
             try {
                 val config = layoutConfigAdapter.fromJson(savedJson)
-                if (config != null) return config
+                if (config != null) {
+                    val builtInParts = builtIn.version.split(".").map { it.toIntOrNull() ?: 0 }
+                    val configParts = config.version.split(".").map { it.toIntOrNull() ?: 0 }
+                    var builtInIsNewer = false
+                    for (i in 0 until maxOf(builtInParts.size, configParts.size)) {
+                        val b = builtInParts.getOrElse(i) { 0 }
+                        val c = configParts.getOrElse(i) { 0 }
+                        if (b > c) { builtInIsNewer = true; break }
+                        else if (c > b) break
+                    }
+                    if (!builtInIsNewer && config.version == builtIn.version) return config
+                    if (!builtInIsNewer) return config
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
-        return getBuiltInDefaultLayoutConfig()
+        return builtIn
     }
 
     fun getBuiltInDefaultLayoutConfig(): com.example.model.HvacLayoutConfig {
