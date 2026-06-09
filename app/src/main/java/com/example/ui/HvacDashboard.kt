@@ -533,7 +533,6 @@ fun DynamicTabContent(
 ) {
     val context = LocalContext.current
     val theme = LocalHvacTheme.current
-    val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
     var activeZoneDetail by remember { mutableStateOf<ClimateZone?>(null) }
     var activeLightPopupId by remember { mutableStateOf<String?>(null) }
     var activeSwitchPopupId by remember { mutableStateOf<String?>(null) }
@@ -585,55 +584,6 @@ fun DynamicTabContent(
         contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Safe check for update available
-        if (layoutUpdateAvailable != null && (tab.sections.contains("zones") || tab.sections.contains("updates"))) {
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .clickable {
-                            viewModel.downloadAndApplyLayoutUpdate { success, msg ->
-                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
-                            }
-                        }
-                        .testTag("zones_layout_update_banner_dynamic"),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF10B981).copy(alpha = 0.15f)
-                    ),
-                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudDownload,
-                            contentDescription = null,
-                            tint = Color(0xFF34D399),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "LAYOUT SPECIFICATION UPDATE AVAILABLE",
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF34D399),
-                                letterSpacing = 0.8.sp
-                            )
-                            Text(
-                                "Changes to layout_config.json detected on GitHub. Tap here to apply instantly!",
-                                fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
         tab.sections.forEach { section ->
             when (section.lowercase().trim()) {
                 "sensors" -> {
@@ -1892,7 +1842,6 @@ fun ClimateZonesTab(
     state: HvacUiState.Success,
     viewModel: HvacViewModel
 ) {
-    val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
     val context = androidx.compose.ui.platform.LocalContext.current
     var activeZoneDetail by remember { mutableStateOf<ClimateZone?>(null) }
 
@@ -1916,54 +1865,6 @@ fun ClimateZonesTab(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (layoutUpdateAvailable != null) {
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp)
-                        .clickable {
-                            viewModel.downloadAndApplyLayoutUpdate { success, msg ->
-                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
-                            }
-                        }
-                        .testTag("zones_layout_update_banner"),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF10B981).copy(alpha = 0.15f)
-                    ),
-                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CloudDownload,
-                            contentDescription = null,
-                            tint = Color(0xFF34D399),
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "LAYOUT SPECIFICATION UPDATE AVAILABLE",
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color(0xFF34D399),
-                                letterSpacing = 0.8.sp
-                            )
-                            Text(
-                                text = "Changes to layout_config.json detected on GitHub. Tap here to apply instantly!",
-                                fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
         item {
             GlobalSettingsQuickControl(state = state, viewModel = viewModel)
         }
@@ -3218,7 +3119,6 @@ fun UpdatesTab(
     val theme = LocalHvacTheme.current
     val layoutVersion by viewModel.layoutVersion.collectAsStateWithLifecycle()
     val activeVersion by viewModel.activeVersion.collectAsStateWithLifecycle()
-    val layoutUpdateAvailable by viewModel.layoutUpdateAvailable.collectAsStateWithLifecycle()
     val layoutUpdateError by viewModel.layoutUpdateError.collectAsStateWithLifecycle()
     val githubRepo by viewModel.githubRepo.collectAsStateWithLifecycle()
     val githubBranch by viewModel.githubBranch.collectAsStateWithLifecycle()
@@ -3234,10 +3134,6 @@ fun UpdatesTab(
         } catch (e: Exception) {
             "$bytes B"
         }
-    }
-
-    LaunchedEffect(Unit) {
-        viewModel.checkForLayoutUpdates()
     }
 
     LaunchedEffect(activeVersion) {
@@ -3838,267 +3734,6 @@ fun UpdatesTab(
             }
         }
 
-        // LAYOUT SPECIFICATION UPDATE CARD
-        Card(
-            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
-            border = BorderStroke(1.dp, hvacBorderAlphaColor()),
-            shape = hvacCardShape(16)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "DYNAMIC LAYOUT ENGINE",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White.copy(alpha = 0.5f),
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Layout Specification Version",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.Default.Dashboard,
-                        contentDescription = null,
-                        tint = theme.heatColor,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // CURRENT VERSION ROW
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "ACTIVE SCHEMA VERSION",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White.copy(alpha = 0.5f),
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            "v$layoutVersion",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = theme.ecoColor
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            viewModel.checkForLayoutUpdates(showFeedback = true)
-                            android.widget.Toast.makeText(context, "Checking for latest schemas...", android.widget.Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White.copy(alpha = 0.08f),
-                            contentColor = Color.White
-                        ),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("CHECK NOW", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Error State Display
-                if (layoutUpdateError != null) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFD32F2F).copy(alpha = 0.12f)),
-                        border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f)),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(10.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = Color(0xFFEF5350),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "SPECIFICATION PARSING FAILURE",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFFEF5350),
-                                    letterSpacing = 0.5.sp
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = layoutUpdateError!!,
-                                fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Button(
-                                onClick = { viewModel.clearLayoutUpdateError() },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.1f)),
-                                shape = RoundedCornerShape(6.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier.align(Alignment.End)
-                            ) {
-                                Text("CLEAR", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        }
-                    }
-                }
-
-                // Update Status Display
-                if (layoutUpdateAvailable != null) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.12f)),
-                        border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.4f)),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = null,
-                                tint = theme.ecoColor,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            val displayText = if (layoutUpdateAvailable == layoutVersion) {
-                                "Layout draft changes detected on branch (v$layoutUpdateAvailable)"
-                            } else {
-                                "New design layout version available: v$layoutUpdateAvailable"
-                            }
-                            Text(
-                                displayText,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFE8F5E9)
-                            )
-                        }
-                    }
-                } else if (layoutUpdateError == null) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.04f)),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = theme.ecoColor.copy(alpha = 0.6f),
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Config is fully up to date with core layout specification",
-                                fontSize = 10.sp,
-                                color = Color.White.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                }
-
-                // CONTROLSROW
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (layoutVersion != "1.0.0") {
-                        Button(
-                            onClick = {
-                                viewModel.resetLayoutToDefault()
-                                android.widget.Toast.makeText(context, "Specification restored to local default layout!", android.widget.Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFD32F2F).copy(alpha = 0.12f),
-                                contentColor = Color(0xFFEF5350)
-                            ),
-                            border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.2f)),
-                            shape = RoundedCornerShape(10.dp)
-                        ) {
-                            Text("RESTORE DEFAULT", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    Button(
-                        onClick = {
-                            if (layoutUpdateAvailable != null) {
-                                viewModel.downloadAndApplyLayoutUpdate { success, msg ->
-                                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
-                                }
-                            } else {
-                                viewModel.checkForLayoutUpdates(showFeedback = true)
-                                android.widget.Toast.makeText(context, "Scanning branch specification...", android.widget.Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (layoutUpdateAvailable != null) theme.ecoColor else Color.White.copy(alpha = 0.08f),
-                            contentColor = if (layoutUpdateAvailable != null) Color.Black else Color.White
-                        ),
-                        border = BorderStroke(1.dp, if (layoutUpdateAvailable != null) theme.ecoColor else Color.White.copy(alpha = 0.1f)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        if (layoutUpdateAvailable != null) {
-                            Icon(
-                                imageVector = Icons.Default.CloudDownload,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = Color.Black
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("PULL UPDATE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("CHECK LAYOUT", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-
         // DEVELOPMENT & UPDATE SIMULATOR CARD
         Card(
             colors = CardDefaults.cardColors(containerColor = theme.coolColor.copy(alpha = 0.05f)),
@@ -4174,24 +3809,6 @@ fun UpdatesTab(
                         Icon(imageVector = Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("MOCK CORE PUSH", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            viewModel.simulateLayoutUpdateDetected()
-                            android.widget.Toast.makeText(context, "Layout specification update simulation triggered!", android.widget.Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = theme.coolColor.copy(alpha = 0.15f),
-                            contentColor = Color.White
-                        ),
-                        border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.4f)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("MOCK LAYOUT PUSH", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

@@ -137,9 +137,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         _layoutConfig.value
     )
 
-    private val _layoutUpdateAvailable = MutableStateFlow<String?>(null)
-    val layoutUpdateAvailable: StateFlow<String?> = _layoutUpdateAvailable.asStateFlow()
-
     private val _githubRepo = MutableStateFlow(sharedPrefs.getString("github_repo", "cstone1983/HVAC-Android-App") ?: "cstone1983/HVAC-Android-App")
     val githubRepo: StateFlow<String> = _githubRepo.asStateFlow()
 
@@ -260,7 +257,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         updateSyncJob = viewModelScope.launch {
             while (true) {
                 try {
-                    checkForLayoutUpdates()
                     checkForUpdates(activeVersion.value, quiet = true)
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -721,9 +717,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             _updateState.value = UpdateState.Checking
         }
         viewModelScope.launch {
-            if (!quiet) {
-                checkForLayoutUpdates()
-            }
             try {
                 val repo = _githubRepo.value
                 val branch = _githubBranch.value
@@ -885,7 +878,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
                     _layoutVersion.value = remoteConfig.version
                     _layoutConfig.value = remoteConfig
-                    _layoutUpdateAvailable.value = null
 
                     _activeVersion.value = "v" + com.example.BuildConfig.VERSION_NAME + "-${sha.take(7)}"
                     
@@ -1160,126 +1152,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun checkForLayoutUpdates(showFeedback: Boolean = false) {
-        viewModelScope.launch {
-            _layoutUpdateError.value = null
-            try {
-                val repo = _githubRepo.value
-                val branch = _githubBranch.value
-                
-                // Fetch the latest commit SHA to bypass raw.githubusercontent.com CDN cache
-                var sha = branch
-                try {
-                    val commitUrl = "https://api.github.com/repos/$repo/commits/$branch"
-                    val commitResponse = com.example.api.GithubClient.service.getLatestCommit(commitUrl)
-                    if (commitResponse.isSuccessful && commitResponse.body() != null) {
-                        sha = commitResponse.body()!!.sha
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-
-                val url = "https://raw.githubusercontent.com/$repo/$sha/layout_config.json"
-                val response = com.example.api.GithubClient.service.getLayoutConfig(url, System.currentTimeMillis())
-                if (response.isSuccessful && response.body() != null) {
-                    val remoteConfig = response.body()!!
-                    val currentConfig = getActiveLayoutConfig()
-                    
-                    val currentAppliedSha = sharedPrefs.getString("layout_commit_sha", "") ?: ""
-                    val hasConfigChange = remoteConfig != currentConfig
-                    val hasNewCommit = sha.isNotEmpty() && currentAppliedSha.isNotEmpty() && sha != currentAppliedSha
-
-                    // Set baseline commit SHA on first run if layouts match
-                    if (currentAppliedSha.isEmpty() && sha.isNotEmpty() && !hasConfigChange) {
-                        sharedPrefs.edit().putString("layout_commit_sha", sha).apply()
-                    }
-
-                    if (hasConfigChange || hasNewCommit) {
-                        val displayVersion = if (sha.isNotEmpty()) "${remoteConfig.version} (${sha.take(7)})" else remoteConfig.version
-                        _layoutUpdateAvailable.value = displayVersion
-                        if (showFeedback) {
-                            _actionFeedback.value = "New design layout $displayVersion available!"
-                        }
-                    } else {
-                        _layoutUpdateAvailable.value = null
-                        if (showFeedback) {
-                            _actionFeedback.value = "Layout is fully up to date."
-                        }
-                    }
-                } else {
-                    val errMsg = "HTTP error ${response.code()} checking layout config."
-                    _layoutUpdateError.value = errMsg
-                    _layoutUpdateAvailable.value = null
-                    if (showFeedback) {
-                        _actionFeedback.value = errMsg
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                val errMsg = "Layout check failed: ${e.localizedMessage ?: "Parsing or connection error"}"
-                _layoutUpdateError.value = errMsg
-                _layoutUpdateAvailable.value = null
-                if (showFeedback) {
-                    _actionFeedback.value = errMsg
-                }
-            }
-        }
-    }
-
-    fun downloadAndApplyLayoutUpdate(onComplete: (Boolean, String) -> Unit) {
-        viewModelScope.launch {
-            _layoutUpdateError.value = null
-            try {
-                val repo = _githubRepo.value
-                val branch = _githubBranch.value
-                
-                // Fetch the latest commit SHA to bypass raw.githubusercontent.com CDN cache
-                var sha = branch
-                try {
-                    val commitUrl = "https://api.github.com/repos/$repo/commits/$branch"
-                    val commitResponse = com.example.api.GithubClient.service.getLatestCommit(commitUrl)
-                    if (commitResponse.isSuccessful && commitResponse.body() != null) {
-                        sha = commitResponse.body()!!.sha
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-
-                val url = "https://raw.githubusercontent.com/$repo/$sha/layout_config.json"
-                val response = com.example.api.GithubClient.service.getLayoutConfig(url, System.currentTimeMillis())
-                if (response.isSuccessful && response.body() != null) {
-                    val remoteConfig = response.body()!!
-                    val remoteJson = layoutConfigAdapter.toJson(remoteConfig)
-                    sharedPrefs.edit()
-                        .putString("layout_config_json", remoteJson)
-                        .putString("layout_version", remoteConfig.version)
-                        .putString("layout_commit_sha", sha)
-                        .putString("software_commit_sha", sha)
-                        .putString("installed_version_override", remoteConfig.version)
-                        .apply()
-
-                    _layoutVersion.value = remoteConfig.version
-                    _layoutConfig.value = remoteConfig
-                    _layoutUpdateAvailable.value = null
-
-                    _activeVersion.value = "v" + com.example.BuildConfig.VERSION_NAME + "-${sha.take(7)}"
-                    _updateState.value = UpdateState.UpToDate(sha.take(7), url, 1024L)
-
-                    _actionFeedback.value = "Layout design updated dynamically to v${remoteConfig.version} (${sha.take(7)})!"
-                    fetchStates()
-                    onComplete(true, "Successfully updated to layout design v${remoteConfig.version} (${sha.take(7)})")
-                } else {
-                    val errMsg = "Failed to download layout layout (HTTP ${response.code()})"
-                    _layoutUpdateError.value = errMsg
-                    onComplete(false, errMsg)
-                }
-            } catch (e: Exception) {
-                val errMsg = "Parsing error: ${e.localizedMessage ?: "Invalid JSON syntax"}"
-                _layoutUpdateError.value = errMsg
-                onComplete(false, errMsg)
-            }
-        }
-    }
 
     fun resetLayoutToDefault() {
         val defaultVersion = getBuiltInDefaultLayoutConfig().version
@@ -1290,7 +1162,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             .apply()
         _layoutVersion.value = defaultVersion
         _layoutConfig.value = getBuiltInDefaultLayoutConfig()
-        _layoutUpdateAvailable.value = null
         _actionFeedback.value = "Layout restored to factory default configuration (v$defaultVersion)"
         viewModelScope.launch {
             fetchStates()
@@ -1328,12 +1199,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun simulateLayoutUpdateDetected() {
-        val version = "v${(2..9).random()}.${(0..9).random()}.${(0..9).random()}"
-        val randomSha = java.util.UUID.randomUUID().toString().replace("-", "").take(7)
-        _layoutUpdateAvailable.value = "$version ($randomSha)"
-        _actionFeedback.value = "Simulated design layout $version ($randomSha) available!"
-    }
 
     override fun onCleared() {
         syncJob?.cancel()
