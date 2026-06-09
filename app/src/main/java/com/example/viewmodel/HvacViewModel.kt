@@ -261,7 +261,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-                delay(15000L) // Poll GitHub layout configurations and software releases every 15 seconds dynamically in the background
+                delay(300000L) // Poll GitHub layout configurations and software releases every 5 minutes in the background
             }
         }
     }
@@ -714,6 +714,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 var commitMsg = ""
                 var authorName = ""
                 var commitDate = ""
+                var checkFailureDetails: String? = null
+
                 try {
                     val commitUrl = "https://api.github.com/repos/$repo/commits/$branch"
                     val commitResponse = com.example.api.GithubClient.service.getLatestCommit(commitUrl)
@@ -723,13 +725,32 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         commitMsg = commitObj.commit?.message ?: "New layout push on branch '$branch'"
                         authorName = commitObj.commit?.author?.name ?: "Developer"
                         commitDate = commitObj.commit?.author?.date ?: ""
+                    } else {
+                        val code = commitResponse.code()
+                        val errorBodyString = commitResponse.errorBody()?.string() ?: ""
+                        checkFailureDetails = when (code) {
+                            401 -> "GitHub API Unauthorized (401). Your GitHub Personal Access Token is invalid, expired, or improperly configured."
+                            403 -> {
+                                if (errorBodyString.contains("rate limit") || errorBodyString.contains("rate_limit")) {
+                                    "GitHub API rate limit exceeded (403). Unauthenticated requests are capped at 60/hr. Configure a Personal Access Token in Settings to bypass this limitation."
+                                } else {
+                                    "GitHub API Forbidden (403). Ensure your token has permission to access '$repo' or check repository policies."
+                                }
+                            }
+                            404 -> "GitHub Repository/Branch not found (404). Verify that repository path '$repo' and branch '$branch' exist, or check token scopes if the repo is private (requires 'repo' scope)."
+                            else -> "GitHub HTTP Error $code: ${commitResponse.message()}"
+                        }
                     }
+                } catch (e: java.net.UnknownHostException) {
+                    checkFailureDetails = "Network connection failed. Unable to resolve host (DNS error). Confirm your device is connected to the internet."
                 } catch (e: Exception) {
                     e.printStackTrace()
+                    checkFailureDetails = "Connection failure: ${e.localizedMessage ?: "Unknown network failure"}"
                 }
 
                 if (sha.isEmpty()) {
-                    _updateState.value = UpdateState.Error("Failed to reach GitHub repository. Please review your token / repository settings.")
+                    val errorMsg = checkFailureDetails ?: "Failed to retrieve commit from GitHub. Please verify your internet connection, repository name, or access token."
+                    _updateState.value = UpdateState.Error(errorMsg)
                     return@launch
                 }
 
