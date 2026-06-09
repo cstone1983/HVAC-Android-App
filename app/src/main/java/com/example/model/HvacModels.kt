@@ -29,12 +29,12 @@ data class HvacLayoutConfig(
     val lights: List<LightControlConfig>,
     val switches: List<SwitchControlConfig>,
     val covers: List<CoverControlConfig>,
-    val appTitle: String? = "Home HVAC",
+    val appTitle: String? = "Home Control",
     val appSubtitle: String? = "HVAC SYSTEM CONTROLLER",
     val theme: HvacThemeConfig? = HvacThemeConfig(),
     val tabs: List<TabConfig>? = listOf(
         TabConfig("zones", "ZONES & UNITS", "layers", listOf("sensors", "zones")),
-        TabConfig("aux", "AUXILIARY POWER", "lightbulb", listOf("lights", "switches", "covers")),
+        TabConfig("aux", "POWER CONTROL", "lightbulb", listOf("condensed_power")),
         TabConfig("updates", "UPDATES", "cloud_download", listOf("updates"))
     )
 )

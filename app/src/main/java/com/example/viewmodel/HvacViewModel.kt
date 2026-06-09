@@ -146,7 +146,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _githubBranch = MutableStateFlow(sharedPrefs.getString("github_branch", "main") ?: "main")
     val githubBranch: StateFlow<String> = _githubBranch.asStateFlow()
 
-    private val _githubToken = MutableStateFlow(sharedPrefs.getString("github_token", "") ?: "")
+    private val _githubToken = MutableStateFlow(
+        sharedPrefs.getString("github_token", "")?.ifEmpty {
+            try { com.example.BuildConfig.GITHUB_TOKEN } catch (e: Exception) { "" }
+        } ?: try { com.example.BuildConfig.GITHUB_TOKEN } catch (e: Exception) { "" }
+    )
     val githubToken: StateFlow<String> = _githubToken.asStateFlow()
 
     private val _layoutUpdateError = MutableStateFlow<String?>(null)
@@ -268,7 +272,16 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         com.example.api.GithubClient.tokenProvider = {
-            sharedPrefs.getString("github_token", "")
+            val token = sharedPrefs.getString("github_token", "")
+            if (!token.isNullOrBlank()) {
+                token
+            } else {
+                try {
+                    com.example.BuildConfig.GITHUB_TOKEN
+                } catch (e: Exception) {
+                    ""
+                }
+            }
         }
         _layoutVersion.value = getActiveLayoutConfig().version
         val savedUrl = sharedPrefs.getString("ha_url", null)
@@ -898,7 +911,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 try {
                     val steps = listOf(
                         "Initializing secure OTA pipeline wrapper..." to 10,
-                        "Verifying Home HVAC update partition signature..." to 25,
+                        "Verifying Home Control update partition signature..." to 25,
                         "Stopping active Home Assistant sensor integrations..." to 40,
                         "Decompressing framework resources to filesystem..." to 60,
                         "Writing binary firmware patches to flash..." to 75,

@@ -319,7 +319,7 @@ fun HvacDashboard(
                         title = {
                             Column {
                                 Text(
-                                    layoutConfig.appTitle ?: "Home HVAC",
+                                    layoutConfig.appTitle ?: "Home Control",
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 3.sp,
                                     fontSize = 20.sp,
@@ -692,6 +692,27 @@ fun DynamicTabContent(
                             }
                         }
                     }
+                }
+                "condensed_power" -> {
+                    val poolItems = mutableListOf<Any>()
+                    val interiorItems = mutableListOf<Any>()
+                    val exteriorItems = mutableListOf<Any>()
+
+                    (state.lights + state.switches + state.covers).forEach { item ->
+                        val entityId = when (item) {
+                            is LightControl -> item.entityId
+                            is SwitchControl -> item.entityId
+                            is CoverControl -> item.entityId
+                            else -> ""
+                        }
+                        if (entityId.contains("pool")) poolItems.add(item)
+                        else if (entityId.contains("exterior") || entityId.contains("porch") || entityId.contains("garage") || entityId.contains("workshop")) exteriorItems.add(item)
+                        else interiorItems.add(item)
+                    }
+
+                    item { CondensedPowerGroup("INTERIOR", interiorItems, theme, { activeLightPopupId = it }, { activeSwitchPopupId = it }, viewModel) }
+                    item { CondensedPowerGroup("EXTERIOR & GARAGE", exteriorItems, theme, { activeLightPopupId = it }, { activeSwitchPopupId = it }, viewModel) }
+                    item { CondensedPowerGroup("POOL", poolItems, theme, { activeLightPopupId = it }, { activeSwitchPopupId = it }, viewModel) }
                 }
                 "lights" -> {
                     val interiorLights = state.lights.filter { !it.entityId.contains("exterior") && !it.entityId.contains("porch") }
@@ -1066,7 +1087,7 @@ fun HvacDashboardContent(
                         ) {
                             Column {
                                 Text(
-                                    layoutConfig.appTitle ?: "Home HVAC",
+                                    layoutConfig.appTitle ?: "Home Control",
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 3.sp,
                                     fontSize = 18.sp,
@@ -1572,7 +1593,7 @@ fun UpdateAlertBanner(
                         letterSpacing = 1.sp
                     )
                     Text(
-                        text = "Home HVAC ${availableUpdate.version} is ready for installation. Tap to upgrade now.",
+                        text = "Home Control ${availableUpdate.version} is ready for installation. Tap to upgrade now.",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -3381,7 +3402,7 @@ fun UpdatesTab(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "HOME HVAC SOFTWARE UPDATE",
+                            "HOME CONTROL SOFTWARE UPDATE",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White.copy(alpha = 0.5f),
@@ -4233,7 +4254,7 @@ fun HvacLoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                "Home HVAC",
+                "Home Control",
                 fontWeight = FontWeight.Black,
                 letterSpacing = 4.sp,
                 fontSize = 24.sp,
@@ -5504,7 +5525,7 @@ fun HvacSettingsDialog(
                 ) {
                     Column {
                         Text(
-                            text = "HOME HVAC CORE VERSION",
+                            text = "HOME CONTROL CORE VERSION",
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White.copy(alpha = 0.4f),
@@ -5529,6 +5550,109 @@ fun HvacSettingsDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun CondensedPowerGroup(
+    title: String,
+    items: List<Any>,
+    theme: HvacThemeColors,
+    onLightClick: (String) -> Unit,
+    onSwitchClick: (String) -> Unit,
+    viewModel: HvacViewModel
+) {
+    if (items.isEmpty()) return
+    Text(
+        title,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Black,
+        color = Color.White.copy(alpha = 0.5f),
+        letterSpacing = 1.sp,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
+    )
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+    ) {
+        val nonCovers = items.filter { it !is CoverControl }
+        val covers = items.filterIsInstance<CoverControl>()
+
+        val chunks = nonCovers.chunked(2)
+        chunks.forEach { rowItems ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                rowItems.forEach { item ->
+                    Box(modifier = Modifier.weight(1f)) {
+                        when (item) {
+                            is LightControl -> {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().testTag("light_card_${item.entityId}").clickable { onLightClick(item.entityId) },
+                                    colors = CardDefaults.cardColors(containerColor = if (item.isOn) hvacActiveCardBgColor(theme.heatColor) else hvacCardBgColor()),
+                                    border = BorderStroke(1.dp, if (item.isOn) hvacActiveBorderAlphaColor(theme.heatColor) else hvacBorderAlphaColor()),
+                                    shape = hvacCardShape(12)
+                                ) {
+                                    Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Lightbulb, contentDescription = null, tint = if (item.isOn) theme.heatColor else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(item.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(if (item.isOn) "ACTIVE" else "POWER OFF", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = if (item.isOn) theme.heatColor else Color.White.copy(alpha = 0.4f))
+                                        }
+                                    }
+                                }
+                            }
+                            is SwitchControl -> {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().testTag("switch_card_${item.entityId}").clickable { onSwitchClick(item.entityId) },
+                                    colors = CardDefaults.cardColors(containerColor = if (item.isOn) Color(0xFF10B981).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)),
+                                    border = BorderStroke(1.dp, if (item.isOn) Color(0xFF10B981).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f)),
+                                    shape = hvacCardShape(12)
+                                ) {
+                                    Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.PowerSettingsNew, contentDescription = null, tint = if (item.isOn) Color(0xFF10B981) else Color.White.copy(alpha = 0.4f), modifier = Modifier.size(20.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(item.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Text(if (item.isOn) "ACTIVE" else "POWER OFF", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = if (item.isOn) Color(0xFF10B981) else Color.White.copy(alpha = 0.4f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (rowItems.size == 1) Spacer(modifier = Modifier.weight(1f))
+            }
+        }
+        
+        covers.forEach { cover ->
+             val isOpen = cover.state.lowercase() == "open" || cover.state.lowercase() == "opening"
+             Card(
+                  colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+                  border = BorderStroke(1.dp, if (isOpen) hvacActiveBorderAlphaColor(Color(0xFFEF4444)) else hvacBorderAlphaColor()),
+                  shape = hvacCardShape(12),
+                  modifier = Modifier.fillMaxWidth()
+             ) {
+                  Row(
+                      modifier = Modifier.fillMaxWidth().padding(16.dp),
+                      verticalAlignment = Alignment.CenterVertically,
+                      horizontalArrangement = Arrangement.SpaceBetween
+                  ) {
+                      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                          Icon(Icons.Default.Garage, contentDescription = null, tint = if (isOpen) Color(0xFFEF4444) else Color(0xFF10B981), modifier = Modifier.size(28.dp))
+                          Spacer(modifier = Modifier.width(12.dp))
+                          Column {
+                              Text(cover.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
+                              Text(cover.state.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (isOpen) Color(0xFFEF4444) else Color(0xFF10B981), letterSpacing = 0.5.sp)
+                          }
+                      }
+                      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                          Button(onClick = { viewModel.controlCover(cover.entityId, "open", cover.name) }, colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) { Text("OPEN", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White) }
+                          Button(onClick = { viewModel.controlCover(cover.entityId, "close", cover.name) }, colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) { Text("CLOSE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White) }
+                      }
+                  }
+             }
         }
     }
 }
