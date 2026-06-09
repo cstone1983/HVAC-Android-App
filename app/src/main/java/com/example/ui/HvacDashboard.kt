@@ -319,7 +319,7 @@ fun HvacDashboard(
                         title = {
                             Column {
                                 Text(
-                                    layoutConfig.appTitle ?: "HAVEN",
+                                    layoutConfig.appTitle ?: "Home HVAC",
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 3.sp,
                                     fontSize = 20.sp,
@@ -1066,7 +1066,7 @@ fun HvacDashboardContent(
                         ) {
                             Column {
                                 Text(
-                                    layoutConfig.appTitle ?: "HAVEN",
+                                    layoutConfig.appTitle ?: "Home HVAC",
                                     fontWeight = FontWeight.Black,
                                     letterSpacing = 3.sp,
                                     fontSize = 18.sp,
@@ -1572,7 +1572,7 @@ fun UpdateAlertBanner(
                         letterSpacing = 1.sp
                     )
                     Text(
-                        text = "Haven OS ${availableUpdate.version} is ready for installation. Tap to upgrade now.",
+                        text = "Home HVAC ${availableUpdate.version} is ready for installation. Tap to upgrade now.",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -3381,7 +3381,7 @@ fun UpdatesTab(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "HAVEN OS SOFTWARE UPDATE",
+                            "HOME HVAC SOFTWARE UPDATE",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White.copy(alpha = 0.5f),
@@ -4233,7 +4233,7 @@ fun HvacLoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                "HAVEN",
+                "Home HVAC",
                 fontWeight = FontWeight.Black,
                 letterSpacing = 4.sp,
                 fontSize = 24.sp,
@@ -5504,7 +5504,7 @@ fun HvacSettingsDialog(
                 ) {
                     Column {
                         Text(
-                            text = "HAVEN CORE VERSION",
+                            text = "HOME HVAC CORE VERSION",
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White.copy(alpha = 0.4f),

@@ -877,7 +877,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 try {
                     val steps = listOf(
                         "Initializing secure OTA pipeline wrapper..." to 10,
-                        "Verifying Haven update partition signature..." to 25,
+                        "Verifying Home HVAC update partition signature..." to 25,
                         "Stopping active Home Assistant sensor integrations..." to 40,
                         "Decompressing framework resources to filesystem..." to 60,
                         "Writing binary firmware patches to flash..." to 75,
