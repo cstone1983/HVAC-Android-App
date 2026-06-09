@@ -22,6 +22,19 @@ data class GithubAsset(
 
 @JsonClass(generateAdapter = true)
 data class GithubCommit(
-    val sha: String
+    val sha: String,
+    val commit: CommitDetails? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CommitDetails(
+    val message: String?,
+    val author: CommitAuthor? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CommitAuthor(
+    val name: String?,
+    val date: String?
 )
 
