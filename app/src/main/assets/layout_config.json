@@ -1,6 +1,6 @@
 {
-  "version": "1.0.2",
-  "appTitle": "Home HVAC",
+  "version": "1.1.0",
+  "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "theme": {
     "accentColorHex": "#10B981",
@@ -20,9 +20,9 @@
     },
     {
       "id": "aux",
-      "title": "AUXILIARY ELECTRIC GRID",
+      "title": "POWER CONTROL",
       "icon": "lightbulb",
-      "sections": ["lights", "switches", "covers"]
+      "sections": ["condensed_power"]
     },
     {
       "id": "updates",
@@ -205,17 +205,17 @@
     {
       "entityId": "light.porch_stairway_1",
       "name": "Porch Stair 1"
+    },
+    {
+      "entityId": "light.pool_flood1",
+      "name": "Pool Flood 1"
+    },
+    {
+      "entityId": "light.pool_flood2",
+      "name": "Pool Flood 2"
     }
   ],
   "switches": [
-    {
-      "entityId": "switch.shelly1_e8db84d7217d",
-      "name": "Garage Left"
-    },
-    {
-      "entityId": "switch.shellyplus1_b8d61a8a78b0_switch_0",
-      "name": "Workshop"
-    },
     {
       "entityId": "switch.exterior_backyard_flood",
       "name": "Exterior Flood"
@@ -227,12 +227,28 @@
     {
       "entityId": "switch.mudroom_wall_led",
       "name": "Mudroom LED"
+    },
+    {
+      "entityId": "switch.pool_fence_lights",
+      "name": "Fence Lights"
+    },
+    {
+      "entityId": "switch.pool_pump",
+      "name": "Pool Pump"
     }
   ],
   "covers": [
     {
       "entityId": "cover.konnected_d332ec_garage_door",
       "name": "Garage South"
+    },
+    {
+      "entityId": "switch.shelly1_e8db84d7217d",
+      "name": "Garage Left"
+    },
+    {
+      "entityId": "switch.shellyplus1_b8d61a8a78b0_switch_0",
+      "name": "Workshop"
     }
   ]
 }
