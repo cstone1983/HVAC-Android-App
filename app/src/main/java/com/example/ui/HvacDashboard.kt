@@ -5626,33 +5626,40 @@ fun CondensedPowerGroup(
             }
         }
         
-        covers.forEach { cover ->
-             val isOpen = cover.state.lowercase() == "open" || cover.state.lowercase() == "opening"
-             Card(
-                  colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
-                  border = BorderStroke(1.dp, if (isOpen) hvacActiveBorderAlphaColor(Color(0xFFEF4444)) else hvacBorderAlphaColor()),
-                  shape = hvacCardShape(12),
-                  modifier = Modifier.fillMaxWidth()
-             ) {
-                  Row(
-                      modifier = Modifier.fillMaxWidth().padding(16.dp),
-                      verticalAlignment = Alignment.CenterVertically,
-                      horizontalArrangement = Arrangement.SpaceBetween
-                  ) {
-                      Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                          Icon(Icons.Default.Garage, contentDescription = null, tint = if (isOpen) Color(0xFFEF4444) else Color(0xFF10B981), modifier = Modifier.size(28.dp))
-                          Spacer(modifier = Modifier.width(12.dp))
-                          Column {
-                              Text(cover.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
-                              Text(cover.state.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (isOpen) Color(0xFFEF4444) else Color(0xFF10B981), letterSpacing = 0.5.sp)
-                          }
-                      }
-                      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                          Button(onClick = { viewModel.controlCover(cover.entityId, "open", cover.name) }, colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) { Text("OPEN", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White) }
-                          Button(onClick = { viewModel.controlCover(cover.entityId, "close", cover.name) }, colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) { Text("CLOSE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White) }
-                      }
-                  }
-             }
+        val coverChunks = covers.chunked(2)
+        coverChunks.forEach { rowCovers ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                rowCovers.forEach { cover ->
+                    val isOpen = cover.state.lowercase() == "open" || cover.state.lowercase() == "opening" || cover.state.lowercase() == "on"
+                    Box(modifier = Modifier.weight(1f)) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+                            border = BorderStroke(1.dp, if (isOpen) hvacActiveBorderAlphaColor(Color(0xFFEF4444)) else hvacBorderAlphaColor()),
+                            shape = hvacCardShape(12),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Garage, contentDescription = null, tint = if (isOpen) Color(0xFFEF4444) else Color(0xFF10B981), modifier = Modifier.size(24.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(cover.name, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(cover.state.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Black, color = if (isOpen) Color(0xFFEF4444) else Color(0xFF10B981), letterSpacing = 0.5.sp)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = { viewModel.controlCover(cover.entityId, "open", cover.name) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)) { Text("OPEN", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White) }
+                                    Button(onClick = { viewModel.controlCover(cover.entityId, "close", cover.name) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)), shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)) { Text("CLOSE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White) }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (rowCovers.size == 1) Spacer(modifier = Modifier.weight(1f))
+            }
         }
     }
 }

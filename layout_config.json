@@ -217,14 +217,6 @@
   ],
   "switches": [
     {
-      "entityId": "switch.shelly1_e8db84d7217d",
-      "name": "Garage Left"
-    },
-    {
-      "entityId": "switch.shellyplus1_b8d61a8a78b0_switch_0",
-      "name": "Workshop"
-    },
-    {
       "entityId": "switch.exterior_backyard_flood",
       "name": "Exterior Flood"
     },
@@ -249,6 +241,14 @@
     {
       "entityId": "cover.konnected_d332ec_garage_door",
       "name": "Garage South"
+    },
+    {
+      "entityId": "switch.shelly1_e8db84d7217d",
+      "name": "Garage Left"
+    },
+    {
+      "entityId": "switch.shellyplus1_b8d61a8a78b0_switch_0",
+      "name": "Workshop"
     }
   ]
 }

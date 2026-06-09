@@ -667,10 +667,16 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun controlCover(entityId: String, state: String, name: String) {
-        val service = if (state == "open" || state == "opening") "open_cover" else "close_cover"
-        callServiceWithOptimisticFeedback("cover", service, mapOf(
-            "entity_id" to entityId
-        ), "$name $state command dispatch")
+        if (entityId.startsWith("switch.")) {
+            callServiceWithOptimisticFeedback("switch", "toggle", mapOf(
+                "entity_id" to entityId
+            ), "$name $state command dispatch")
+        } else {
+            val service = if (state == "open" || state == "opening") "open_cover" else "close_cover"
+            callServiceWithOptimisticFeedback("cover", service, mapOf(
+                "entity_id" to entityId
+            ), "$name $state command dispatch")
+        }
     }
 
     // Clean service orchestrator
