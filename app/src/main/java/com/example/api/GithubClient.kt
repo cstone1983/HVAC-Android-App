@@ -29,8 +29,13 @@ object GithubClient {
             if (url.contains("api.github.com")) {
                 requestBuilder.header("Accept", "application/vnd.github.v3+json")
                 tokenProvider?.invoke()?.let { token ->
-                    if (token.isNotBlank()) {
-                        requestBuilder.header("Authorization", "token $token")
+                    val trimmed = token.trim()
+                    if (trimmed.isNotBlank() && 
+                        !trimmed.startsWith("YOUR_", ignoreCase = true) && 
+                        !trimmed.startsWith("MY_", ignoreCase = true) && 
+                        trimmed != "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN"
+                    ) {
+                        requestBuilder.header("Authorization", "token $trimmed")
                     }
                 }
             }

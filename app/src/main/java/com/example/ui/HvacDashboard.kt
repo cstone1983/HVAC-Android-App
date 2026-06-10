@@ -576,13 +576,14 @@ fun DynamicTabContent(
         )
     }
 
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     LazyColumn(
         state = listState,
         modifier = Modifier
             .fillMaxSize()
             .testTag("tab_content_${tab.id}"),
-        contentPadding = PaddingValues(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentPadding = PaddingValues(bottom = if (isLandscape && tab.id == "zones") 10.dp else 24.dp),
+        verticalArrangement = Arrangement.spacedBy(if (isLandscape && tab.id == "zones") 8.dp else 16.dp)
     ) {
         tab.sections.forEach { section ->
             when (section.lowercase().trim()) {
@@ -991,7 +992,7 @@ fun HvacDashboardContent(
         }
     }
 
-    var isMenuExpanded by remember { mutableStateOf(true) }
+    var isMenuExpanded by remember { mutableStateOf(!isLandscape) }
     val sidePanelWidth by animateDpAsState(targetValue = if (isMenuExpanded) 260.dp else 72.dp, label = "side_panel_width")
 
     Box(
@@ -1638,6 +1639,25 @@ fun GlobalSettingsQuickControl(
     viewModel: HvacViewModel,
     modifier: Modifier = Modifier
 ) {
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // Sizing parameters - scaled down by approx 25% if in tablet mode
+    val cardPadding = if (isTablet) 12.dp else 16.dp
+    val rowSpacerHeight = if (isTablet) 8.dp else 12.dp
+
+    // Day/Night/Away & Heat/Cool/Off control sizes
+    val btnSize = if (isTablet) 30.dp else 40.dp
+    val btnIconSize = if (isTablet) 15.dp else 20.dp
+    val titleFontSize = if (isTablet) 7.5.sp else 9.sp
+    val valueFontSize = if (isTablet) 10.sp else 13.sp
+
+    // Hot Water control sizes
+    val waterBtnPadding = if (isTablet) 5.dp else 8.dp
+    val waterIconSize = if (isTablet) 15.dp else 20.dp
+    val waterSpacerHeight = if (isTablet) 4.dp else 6.dp
+    val waterLabelFontSize = if (isTablet) 8.sp else 10.sp
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1646,7 +1666,7 @@ fun GlobalSettingsQuickControl(
         border = BorderStroke(1.dp, hvacBorderAlphaColor()),
         shape = hvacCardShape(14)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(cardPadding)) {
             // First row: HOUSE SCHEDULE
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1656,15 +1676,15 @@ fun GlobalSettingsQuickControl(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "HOUSE SCHEDULE",
-                        fontSize = 9.sp,
+                        fontSize = titleFontSize,
                         fontWeight = FontWeight.Black,
                         color = Color.White.copy(alpha = 0.5f),
-                        letterSpacing = 1.sp
+                        letterSpacing = if (isTablet) 0.5.sp else 1.sp
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = state.globalSettings.houseSchedule.uppercase(),
-                        fontSize = 13.sp,
+                        fontSize = valueFontSize,
                         fontWeight = FontWeight.Bold,
                         color = when (state.globalSettings.houseSchedule.lowercase()) {
                             "day" -> Color(0xFFF59E0B)
@@ -1675,7 +1695,7 @@ fun GlobalSettingsQuickControl(
                 }
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 6.dp else 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     listOf(
@@ -1686,8 +1706,8 @@ fun GlobalSettingsQuickControl(
                         val isSelected = state.globalSettings.houseSchedule.lowercase() == label.lowercase()
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .size(btnSize)
+                                .clip(RoundedCornerShape(if (isTablet) 8.dp else 12.dp))
                                 .background(
                                     if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
                                 )
@@ -1698,7 +1718,7 @@ fun GlobalSettingsQuickControl(
                             Icon(
                                 imageVector = icon,
                                 contentDescription = "Set schedule to $label",
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(btnIconSize),
                                 tint = if (isSelected) color else Color.White.copy(alpha = 0.5f)
                             )
                         }
@@ -1706,9 +1726,9 @@ fun GlobalSettingsQuickControl(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(rowSpacerHeight))
             HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(rowSpacerHeight))
 
             // Second row: GLOBAL HVAC MODE
             Row(
@@ -1719,15 +1739,15 @@ fun GlobalSettingsQuickControl(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         "GLOBAL SEASON",
-                        fontSize = 9.sp,
+                        fontSize = titleFontSize,
                         fontWeight = FontWeight.Black,
                         color = Color.White.copy(alpha = 0.5f),
-                        letterSpacing = 1.sp
+                        letterSpacing = if (isTablet) 0.5.sp else 1.sp
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = state.globalSettings.globalHvacMode.uppercase(),
-                        fontSize = 13.sp,
+                        fontSize = valueFontSize,
                         fontWeight = FontWeight.Bold,
                         color = when (state.globalSettings.globalHvacMode.lowercase()) {
                             "heat" -> Color(0xFFF59E0B)
@@ -1738,7 +1758,7 @@ fun GlobalSettingsQuickControl(
                 }
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 6.dp else 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     listOf(
@@ -1749,8 +1769,8 @@ fun GlobalSettingsQuickControl(
                         val isSelected = state.globalSettings.globalHvacMode.lowercase() == label.lowercase()
                         Box(
                             modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .size(btnSize)
+                                .clip(RoundedCornerShape(if (isTablet) 8.dp else 12.dp))
                                 .background(
                                     if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
                                 )
@@ -1761,7 +1781,7 @@ fun GlobalSettingsQuickControl(
                             Icon(
                                 imageVector = icon,
                                 contentDescription = "Set global mode to $label",
-                                modifier = Modifier.size(20.dp),
+                                modifier = Modifier.size(btnIconSize),
                                 tint = if (isSelected) color else Color.White.copy(alpha = 0.5f)
                             )
                         }
@@ -1769,23 +1789,23 @@ fun GlobalSettingsQuickControl(
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(rowSpacerHeight))
             HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(rowSpacerHeight))
 
             // Third row: HOT WATER CONTROL
             Column {
                 Text(
                     "HOT WATER MODE",
-                    fontSize = 9.sp,
+                    fontSize = titleFontSize,
                     fontWeight = FontWeight.Black,
                     color = Color.White.copy(alpha = 0.5f),
-                    letterSpacing = 1.sp
+                    letterSpacing = if (isTablet) 0.5.sp else 1.sp
                 )
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(waterSpacerHeight))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 6.dp else 8.dp)
                 ) {
                     listOf(
                         WaterHeaterItem("eco", "ECO", Icons.Default.WaterDrop, Color(0xFF10B981)),
@@ -1808,22 +1828,23 @@ fun GlobalSettingsQuickControl(
                             border = BorderStroke(
                                 1.dp,
                                 if (isSelected) color else Color.White.copy(alpha = 0.05f)
-                            )
+                            ),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
                             Column(
-                                modifier = Modifier.padding(8.dp),
+                                modifier = Modifier.padding(waterBtnPadding),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = null,
                                     tint = if (isSelected) color else Color.White.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(waterIconSize)
                                 )
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(waterSpacerHeight))
                                 Text(
                                     text = label,
-                                    fontSize = 10.sp,
+                                    fontSize = waterLabelFontSize,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
                                     textAlign = TextAlign.Center
@@ -3153,7 +3174,7 @@ fun UpdatesTab(
             .padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // GITHUB CONNECTION & SPECIFICATION PATH
+        // UNIFIED SYSTEM DECK UPDATER CARD
         Card(
             colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
             border = BorderStroke(1.dp, hvacBorderAlphaColor()),
@@ -3164,6 +3185,7 @@ fun UpdatesTab(
                     .fillMaxWidth()
                     .padding(18.dp)
             ) {
+                // Header Row
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -3171,7 +3193,7 @@ fun UpdatesTab(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "DYNAMIC DISPATCH SOURCE",
+                            "DYNAMIC SYSTEM DECK SYNC",
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White.copy(alpha = 0.5f),
@@ -3179,7 +3201,7 @@ fun UpdatesTab(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            githubRepo,
+                            "Over-the-Air Broad Update",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -3188,133 +3210,6 @@ fun UpdatesTab(
 
                     Icon(
                         imageVector = Icons.Default.CloudDownload,
-                        contentDescription = null,
-                        tint = theme.coolColor,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = "Specification updates allow dynamic control configuration without full app compilation. The layout configuration is served directly from GitHub.",
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.7f),
-                    lineHeight = 16.sp
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)), RoundedCornerShape(8.dp))
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Code,
-                        contentDescription = null,
-                        tint = theme.coolColor,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Source Branch: $githubBranch",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.8f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // EXTERNAL URL LINKS FOR SPECIFICATIONS
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Button(
-                        onClick = {
-                            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/$githubRepo/blob/$githubBranch/layout_config.json"))
-                            context.startActivity(webIntent)
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Launch,
-                            contentDescription = "Open file link",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("VIEW ON GITHUB", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-
-                    Button(
-                        onClick = {
-                            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://raw.githubusercontent.com/$githubRepo/$githubBranch/layout_config.json"))
-                            context.startActivity(webIntent)
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Launch,
-                            contentDescription = "Open raw link",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("VIEW RAW JSON", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-                }
-            }
-        }
-
-        // CORE APPLICATION UPDATE CARD
-        Card(
-            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
-            border = BorderStroke(1.dp, hvacBorderAlphaColor()),
-            shape = hvacCardShape(16)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "HOME CONTROL SOFTWARE UPDATE",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White.copy(alpha = 0.5f),
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Core Application Software",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-
-                    Icon(
-                        imageVector = Icons.Default.SystemUpdate,
                         contentDescription = null,
                         tint = theme.ecoColor,
                         modifier = Modifier.size(28.dp)
@@ -3325,7 +3220,108 @@ fun UpdatesTab(
                 HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Current Active App Version & Checking buttons
+                Text(
+                    text = "Sync details are processed over-the-air to dynamically load configurations, layouts, and entities directly from your GitHub repository branch without rebuilding the application binary.",
+                    fontSize = 11.sp,
+                    color = Color.White.copy(alpha = 0.7f),
+                    lineHeight = 16.sp
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Connection Info Block
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)), RoundedCornerShape(8.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Code,
+                            contentDescription = null,
+                            tint = theme.coolColor,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Repository: $githubRepo",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.AccountTree,
+                            contentDescription = null,
+                            tint = theme.coolColor,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Branch: $githubBranch",
+                            fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Source File Actions
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Button(
+                        onClick = {
+                            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/$githubRepo/blob/$githubBranch/layout_config.json"))
+                            context.startActivity(webIntent)
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.05f)),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Launch,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("VIEW ON GITHUB", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+
+                    Button(
+                        onClick = {
+                            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://raw.githubusercontent.com/$githubRepo/$githubBranch/layout_config.json"))
+                            context.startActivity(webIntent)
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.05f)),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Launch,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("VIEW RAW JSON", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Active Version & Live Actions Block
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -3333,8 +3329,8 @@ fun UpdatesTab(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "ACTIVE CORE VERSION",
-                            fontSize = 9.sp,
+                            "ACTIVE CORE STATUS",
+                            fontSize = 8.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White.copy(alpha = 0.5f),
                             letterSpacing = 1.sp
@@ -3342,7 +3338,7 @@ fun UpdatesTab(
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             activeVersion,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = theme.ecoColor
                         )
@@ -3351,7 +3347,7 @@ fun UpdatesTab(
                     Button(
                         onClick = {
                             viewModel.checkForUpdates(activeVersion)
-                            android.widget.Toast.makeText(context, "Checking for software updates...", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, "Scanning branch for broad updates...", android.widget.Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White.copy(alpha = 0.08f),
@@ -3366,7 +3362,7 @@ fun UpdatesTab(
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("CHECK NOW", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("SCAN GITHUB", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -3383,7 +3379,7 @@ fun UpdatesTab(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                "Checking GitHub releases for system updates...",
+                                "Scanning repository branch for updates...",
                                 color = Color.White.copy(alpha = 0.7f),
                                 fontSize = 11.sp
                             )
@@ -3429,7 +3425,7 @@ fun UpdatesTab(
                     }
                     is UpdateState.NoReleases -> {
                         Text(
-                            "No releases found in the specified GitHub repository.",
+                            "No commits or releases found on specified branch.",
                             fontSize = 11.sp,
                             color = Color.White.copy(alpha = 0.5f),
                             modifier = Modifier.padding(vertical = 4.dp)
@@ -3458,7 +3454,7 @@ fun UpdatesTab(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        "System software is fully up to date (v${state.version})",
+                                        "System configuration is fully up to date (v${state.version})",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFE8F5E9)
@@ -3466,12 +3462,11 @@ fun UpdatesTab(
                                 }
                             }
 
-                            // Force re-download / reinstall option
                             if (state.downloadUrl != null) {
                                 Button(
                                     onClick = {
                                         viewModel.downloadUpdateAndInstall(context, state.downloadUrl)
-                                        android.widget.Toast.makeText(context, "Initiating package download...", android.widget.Toast.LENGTH_SHORT).show()
+                                        android.widget.Toast.makeText(context, "Initiating configuration pull...", android.widget.Toast.LENGTH_SHORT).show()
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.05f)),
                                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
@@ -3480,7 +3475,7 @@ fun UpdatesTab(
                                 ) {
                                     Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("FORCE REINSTALL CURRENT BUILD", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text("FORCE REINSTALL CURRENT CONFIG", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                 }
                             }
                         }
@@ -3506,7 +3501,7 @@ fun UpdatesTab(
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            "NEW SOFTWARE BUILD v${state.version} AVAILABLE!",
+                                            "NEW SYSTEM DECK CONFIG v${state.version} AVAILABLE!",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = theme.ecoColor
@@ -3515,7 +3510,7 @@ fun UpdatesTab(
                                     if (state.size > 0) {
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "Application update capacity: ${formatBytes(state.size)}",
+                                            text = "Dynamic config payload size: ${formatBytes(state.size)}",
                                             fontSize = 10.sp,
                                             color = Color.White.copy(alpha = 0.6f)
                                         )
@@ -3523,7 +3518,6 @@ fun UpdatesTab(
                                 }
                             }
 
-                            // Release notes block
                             if (state.releaseNotes.isNotBlank()) {
                                 Column(
                                     modifier = Modifier
@@ -3533,7 +3527,7 @@ fun UpdatesTab(
                                         .padding(10.dp)
                                 ) {
                                     Text(
-                                        "RELEASE NOTES:",
+                                        "UPDATE DETAILS:",
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Black,
                                         color = Color.White.copy(alpha = 0.5f),
@@ -3550,11 +3544,10 @@ fun UpdatesTab(
                                 }
                             }
 
-                            // Download / Install CTA Button
                             Button(
                                 onClick = {
                                     viewModel.downloadUpdateAndInstall(context, state.downloadUrl)
-                                    android.widget.Toast.makeText(context, "Downloading core software update...", android.widget.Toast.LENGTH_SHORT).show()
+                                    android.widget.Toast.makeText(context, "Pulling dynamic configurations...", android.widget.Toast.LENGTH_SHORT).show()
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = theme.ecoColor,
@@ -3565,7 +3558,7 @@ fun UpdatesTab(
                             ) {
                                 Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Black)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("DOWNLOAD & INSTALL UPDATE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Black)
+                                Text("DOWNLOAD & APPLY SYSTEM UPDATE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Black)
                             }
                         }
                     }
@@ -3583,7 +3576,7 @@ fun UpdatesTab(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    "Downloading software build...",
+                                    "Downloading broad update payload...",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -3610,14 +3603,6 @@ fun UpdatesTab(
                                     trackColor = Color.White.copy(alpha = 0.1f)
                                 )
                             }
-
-                            if (state.totalSize > 0) {
-                                Text(
-                                    text = "${formatBytes(state.downloaded)} of ${formatBytes(state.totalSize)} downloaded",
-                                    fontSize = 9.sp,
-                                    color = Color.White.copy(alpha = 0.5f)
-                                )
-                            }
                         }
                     }
                     is UpdateState.Installing -> {
@@ -3641,7 +3626,7 @@ fun UpdatesTab(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        "Applying System Update...",
+                                        "Applying broad deck update...",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
@@ -3692,7 +3677,7 @@ fun UpdatesTab(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        "Software update package ready to install!",
+                                        "Broad update package ready to install!",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFFE8F5E9)
@@ -3727,7 +3712,7 @@ fun UpdatesTab(
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("INITIALIZE UPDATE SCAN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("INITIALIZE BROAD UPDATE SCAN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
