@@ -35,7 +35,12 @@ object GithubClient {
                         !trimmed.startsWith("MY_", ignoreCase = true) && 
                         trimmed != "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN"
                     ) {
-                        requestBuilder.header("Authorization", "token $trimmed")
+                        val authHeaderValue = if (trimmed.startsWith("Bearer ", ignoreCase = true) || trimmed.startsWith("token ", ignoreCase = true)) {
+                            trimmed
+                        } else {
+                            "Bearer $trimmed"
+                        }
+                        requestBuilder.header("Authorization", authHeaderValue)
                     }
                 }
             }

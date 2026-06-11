@@ -2010,21 +2010,45 @@ fun ConsolidatedZoneCard(
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .background(
-                            if (zone.autoOn) Color(0xFF10B981).copy(alpha = 0.12f) else Color(0xFFEF4444).copy(alpha = 0.12f),
-                            RoundedCornerShape(4.dp)
-                        )
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(
-                        text = if (zone.autoOn) "AUTO" else "HOLD",
-                        fontSize = 7.sp,
-                        fontWeight = FontWeight.Black,
-                        color = if (zone.autoOn) Color(0xFF10B981) else Color(0xFFEF4444),
-                        letterSpacing = 0.2.sp
-                    )
+                    // Fan Speed Badge
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                theme.coolColor.copy(alpha = 0.12f),
+                                RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = zone.fanMode.uppercase(),
+                            fontSize = 7.sp,
+                            fontWeight = FontWeight.Black,
+                            color = theme.coolColor,
+                            letterSpacing = 0.2.sp
+                        )
+                    }
+
+                    // Auto/Hold Badge
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                if (zone.autoOn) Color(0xFF10B981).copy(alpha = 0.12f) else Color(0xFFEF4444).copy(alpha = 0.12f),
+                                RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = if (zone.autoOn) "AUTO" else "HOLD",
+                            fontSize = 7.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (zone.autoOn) Color(0xFF10B981) else Color(0xFFEF4444),
+                            letterSpacing = 0.2.sp
+                        )
+                    }
                 }
             }
 
