@@ -35,6 +35,8 @@ data class HvacLayoutConfig(
     val tabs: List<TabConfig>? = listOf(
         TabConfig("zones", "ZONES & UNITS", "layers", listOf("sensors", "zones")),
         TabConfig("aux", "POWER CONTROL", "lightbulb", listOf("condensed_power")),
+        TabConfig("solar", "SOLAR & ENERGY", "solar_power", listOf("solar")),
+        TabConfig("pool", "POOL DATA", "pool", listOf("pool")),
         TabConfig("updates", "UPDATES", "cloud_download", listOf("updates"))
     )
 )

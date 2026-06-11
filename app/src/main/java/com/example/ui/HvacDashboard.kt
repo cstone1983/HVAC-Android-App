@@ -1231,6 +1231,20 @@ fun DynamicTabContent(
                         }
                     }
                 }
+                "solar" -> {
+                    item {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            SolarDataPlaceholder(theme = theme)
+                        }
+                    }
+                }
+                "pool" -> {
+                    item {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                            PoolDataPlaceholder(theme = theme)
+                        }
+                    }
+                }
                 "updates" -> {
                     item {
                         Column(modifier = Modifier.padding(horizontal = 16.dp)) {

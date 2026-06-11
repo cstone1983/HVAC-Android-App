@@ -25,6 +25,18 @@
       "sections": ["condensed_power"]
     },
     {
+      "id": "solar",
+      "title": "SOLAR & ENERGY",
+      "icon": "solar_power",
+      "sections": ["solar"]
+    },
+    {
+      "id": "pool",
+      "title": "POOL DATA",
+      "icon": "pool",
+      "sections": ["pool"]
+    },
+    {
       "id": "updates",
       "title": "SYSTEM DISPATCH",
       "icon": "cloud_download",
