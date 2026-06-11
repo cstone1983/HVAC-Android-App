@@ -144,9 +144,26 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     val githubBranch: StateFlow<String> = _githubBranch.asStateFlow()
 
     private val _githubToken = MutableStateFlow(
-        sharedPrefs.getString("github_token", "")?.ifEmpty {
-            try { com.example.BuildConfig.GITHUB_TOKEN } catch (e: Exception) { "" }
-        } ?: try { com.example.BuildConfig.GITHUB_TOKEN } catch (e: Exception) { "" }
+        run {
+            val saved = sharedPrefs.getString("github_token", "") ?: ""
+            val buildConfigToken = try { com.example.BuildConfig.GITHUB_TOKEN } catch (e: Exception) { "" }
+            val chosen = if (saved.isNotEmpty()) saved else buildConfigToken
+            val t = chosen.trim()
+            if (t.isEmpty() ||
+                t.equals("null", ignoreCase = true) ||
+                t.equals("undefined", ignoreCase = true) ||
+                t.startsWith("YOUR_", ignoreCase = true) ||
+                t.startsWith("MY_", ignoreCase = true) ||
+                t.startsWith("placeholder", ignoreCase = true) ||
+                t.startsWith("\${") ||
+                t == "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN" ||
+                t.length < 10
+            ) {
+                ""
+            } else {
+                t
+            }
+        }
     )
     val githubToken: StateFlow<String> = _githubToken.asStateFlow()
 
@@ -268,15 +285,23 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         com.example.api.GithubClient.tokenProvider = {
-            val token = sharedPrefs.getString("github_token", "")
-            if (!token.isNullOrBlank()) {
-                token
+            val saved = sharedPrefs.getString("github_token", "") ?: ""
+            val buildConfigToken = try { com.example.BuildConfig.GITHUB_TOKEN } catch (e: Exception) { "" }
+            val chosen = if (saved.isNotEmpty()) saved else buildConfigToken
+            val t = chosen.trim()
+            if (t.isEmpty() ||
+                t.equals("null", ignoreCase = true) ||
+                t.equals("undefined", ignoreCase = true) ||
+                t.startsWith("YOUR_", ignoreCase = true) ||
+                t.startsWith("MY_", ignoreCase = true) ||
+                t.startsWith("placeholder", ignoreCase = true) ||
+                t.startsWith("\${") ||
+                t == "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN" ||
+                t.length < 10
+            ) {
+                null
             } else {
-                try {
-                    com.example.BuildConfig.GITHUB_TOKEN
-                } catch (e: Exception) {
-                    ""
-                }
+                t
             }
         }
         _layoutVersion.value = getActiveLayoutConfig().version

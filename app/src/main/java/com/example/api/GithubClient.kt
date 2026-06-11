@@ -30,11 +30,17 @@ object GithubClient {
                 requestBuilder.header("Accept", "application/vnd.github.v3+json")
                 tokenProvider?.invoke()?.let { token ->
                     val trimmed = token.trim()
-                    if (trimmed.isNotBlank() && 
-                        !trimmed.startsWith("YOUR_", ignoreCase = true) && 
-                        !trimmed.startsWith("MY_", ignoreCase = true) && 
-                        trimmed != "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN"
-                    ) {
+                    val isInvalid = trimmed.isBlank() ||
+                            trimmed.equals("null", ignoreCase = true) ||
+                            trimmed.equals("undefined", ignoreCase = true) ||
+                            trimmed.startsWith("YOUR_", ignoreCase = true) ||
+                            trimmed.startsWith("MY_", ignoreCase = true) ||
+                            trimmed.startsWith("placeholder", ignoreCase = true) ||
+                            trimmed.contains("\${") ||
+                            trimmed == "YOUR_GITHUB_PERSONAL_ACCESS_TOKEN" ||
+                            trimmed.length < 10
+
+                    if (!isInvalid) {
                         val authHeaderValue = if (trimmed.startsWith("Bearer ", ignoreCase = true) || trimmed.startsWith("token ", ignoreCase = true)) {
                             trimmed
                         } else {
