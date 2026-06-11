@@ -4585,7 +4585,8 @@ fun HvacSettingsDialog(
                 ) {
                     val subTabOptions = listOf(
                         Triple(0, "THEMES & GRAPHICS", Icons.Default.Palette),
-                        Triple(1, "SYSTEM ENGINES", Icons.Default.Settings)
+                        Triple(1, "SYSTEM ENGINES", Icons.Default.Settings),
+                        Triple(2, "CAR AUTOMOTIVE", Icons.Default.DirectionsCar)
                     )
                     subTabOptions.forEach { (idx, label, icon) ->
                         val isSelected = activeSubTab == idx
@@ -5240,6 +5241,285 @@ fun HvacSettingsDialog(
                 }
 
                 } // Ends if (activeSubTab == 0)
+
+                if (activeSubTab == 2) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Section 1: Automotive Screen Layout Mode
+                        Column {
+                            Text(
+                                text = "AUTOMOTIVE SCREEN LAYOUT",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 10.sp,
+                                color = theme.coolColor,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Choose how the dashboard screen presents on your Android Auto deck unit",
+                                color = Color.White.copy(alpha = 0.4f),
+                                fontSize = 10.sp
+                            )
+                        }
+
+                        val autoLayoutStyle by viewModel.autoLayoutStyle.collectAsStateWithLifecycle()
+                        val autoPrimaryZone by viewModel.autoPrimaryZone.collectAsStateWithLifecycle()
+                        val autoShowFanAction by viewModel.autoShowFanAction.collectAsStateWithLifecycle()
+                        val autoShowPowerAction by viewModel.autoShowPowerAction.collectAsStateWithLifecycle()
+                        val autoTempStep by viewModel.autoTempStep.collectAsStateWithLifecycle()
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color.White.copy(alpha = 0.04f))
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val layoutOptions = listOf("list" to "LIST OVERVIEW", "pane" to "FOCUS ZONE PANE")
+                            layoutOptions.forEach { (styleKey, styleLabel) ->
+                                val isLayoutSelected = autoLayoutStyle == styleKey
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isLayoutSelected) theme.coolColor.copy(alpha = 0.15f) else Color.Transparent)
+                                        .border(
+                                            BorderStroke(1.dp, if (isLayoutSelected) theme.coolColor.copy(alpha = 0.2f) else Color.Transparent),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable { viewModel.setAutoLayoutStyle(styleKey) }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = styleLabel,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 10.sp,
+                                        color = if (isLayoutSelected) Color.White else Color.White.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Section 2: Primary Focus Zone
+                        Column {
+                            Text(
+                                text = "PRIMARY FOCUS ZONE",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 10.sp,
+                                color = theme.coolColor,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            val hvacUiState by viewModel.uiState.collectAsStateWithLifecycle()
+                            val zonesList = if (hvacUiState is HvacUiState.Success) (hvacUiState as HvacUiState.Success).zones else emptyList()
+
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = "Select default climate zone for Focus Pane mode",
+                                        fontSize = 11.sp,
+                                        color = Color.White.copy(alpha = 0.6f)
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Display available zones beautifully in a horizontal scrollable row
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState())
+                                            .padding(vertical = 4.dp)
+                                    ) {
+                                        // Option: Default / Auto
+                                        val isAllSelected = autoPrimaryZone == "all"
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(20.dp))
+                                                .background(if (isAllSelected) theme.coolColor.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.04f))
+                                                .border(
+                                                    BorderStroke(1.dp, if (isAllSelected) theme.coolColor else Color.White.copy(alpha = 0.1f)),
+                                                    RoundedCornerShape(20.dp)
+                                                )
+                                                .clickable { viewModel.setAutoPrimaryZone("all") }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "AUTO (FIRST ZONE)",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isAllSelected) Color.White else Color.White.copy(alpha = 0.6f)
+                                            )
+                                        }
+
+                                        zonesList.forEach { zone ->
+                                            val isSelected = autoPrimaryZone == zone.key
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(20.dp))
+                                                    .background(if (isSelected) theme.coolColor.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.04f))
+                                                    .border(
+                                                        BorderStroke(1.dp, if (isSelected) theme.coolColor else Color.White.copy(alpha = 0.1f)),
+                                                        RoundedCornerShape(20.dp)
+                                                    )
+                                                    .clickable { viewModel.setAutoPrimaryZone(zone.key) }
+                                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                            ) {
+                                                Text(
+                                                    text = zone.name.uppercase(),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSelected) Color.White else Color.White.copy(alpha = 0.6f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Section 3: Action Button Customization
+                        Column {
+                            Text(
+                                text = "QUICK ACTION CONFIGURATIONS",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 10.sp,
+                                color = theme.coolColor,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Show Power Switch toggle
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(hvacCardBgColor(), hvacCardShape(16))
+                                    .border(BorderStroke(1.dp, hvacBorderAlphaColor()), hvacCardShape(16))
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Show Power Toggle Button",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = "Enable turn off/on zone action button",
+                                        fontSize = 10.sp,
+                                        color = Color.White.copy(alpha = 0.5f)
+                                    )
+                                }
+                                Switch(
+                                    checked = autoShowPowerAction,
+                                    onCheckedChange = { viewModel.setAutoShowPowerAction(it) },
+                                    modifier = Modifier.testTag("auto_power_action_switch"),
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color(0xFF10B981),
+                                        checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.3f),
+                                        uncheckedThumbColor = Color(0xFF64748B),
+                                        uncheckedTrackColor = Color(0xFF1E293B)
+                                    )
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Show Fan Cycling toggle
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(hvacCardBgColor(), hvacCardShape(16))
+                                    .border(BorderStroke(1.dp, hvacBorderAlphaColor()), hvacCardShape(16))
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Show Fan Speed Button",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = "Enable cycle fan speeds action button",
+                                        fontSize = 10.sp,
+                                        color = Color.White.copy(alpha = 0.5f)
+                                    )
+                                }
+                                Switch(
+                                    checked = autoShowFanAction,
+                                    onCheckedChange = { viewModel.setAutoShowFanAction(it) },
+                                    modifier = Modifier.testTag("auto_fan_action_switch"),
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color(0xFF10B981),
+                                        checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.3f),
+                                        uncheckedThumbColor = Color(0xFF64748B),
+                                        uncheckedTrackColor = Color(0xFF1E293B)
+                                    )
+                                )
+                            }
+                        }
+
+                        // Section 4: Temp Delta Adjust Step
+                        Column {
+                            Text(
+                                text = "TEMPERATURE ADJUST STEP",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 10.sp,
+                                color = theme.coolColor,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(hvacCardBgColor(), hvacCardShape(16))
+                                    .border(BorderStroke(1.dp, hvacBorderAlphaColor()), hvacCardShape(16))
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                val steps = listOf(0.5f to "± 0.5°F", 1.0f to "± 1.0°F", 2.0f to "± 2.0°F")
+                                steps.forEach { (stepVal, stepLabel) ->
+                                    val isStepSelected = autoTempStep == stepVal
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (isStepSelected) theme.coolColor.copy(alpha = 0.15f) else Color.Transparent)
+                                            .border(
+                                                BorderStroke(1.dp, if (isStepSelected) theme.coolColor.copy(alpha = 0.2f) else Color.Transparent),
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                            .clickable { viewModel.setAutoTempStep(stepVal) }
+                                            .padding(vertical = 12.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = stepLabel,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = if (isStepSelected) Color.White else Color.White.copy(alpha = 0.5f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 if (activeSubTab == 1) {
                     HorizontalDivider(color = Color.White.copy(alpha = 0.1f))

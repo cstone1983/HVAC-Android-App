@@ -40,6 +40,7 @@ firebaseBom = "34.12.0"
 secretsGradlePlugin = "2.0.1"
 
 [libraries]
+androidx-car-app = { group = "androidx.car.app", name = "app", version = "1.4.0" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

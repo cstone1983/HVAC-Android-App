@@ -34,6 +34,17 @@ sealed interface HvacUiState {
 
 class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
+    companion object {
+        @Volatile
+        private var instance: HvacViewModel? = null
+
+        fun getInstance(): HvacViewModel? = instance
+    }
+
+    init {
+        instance = this
+    }
+
     private val sharedPrefs = application.getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
 
     private val moshiLocal = com.squareup.moshi.Moshi.Builder()
@@ -194,6 +205,21 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _forceFullScreen = MutableStateFlow(sharedPrefs.getBoolean("force_full_screen", false))
     val forceFullScreen: StateFlow<Boolean> = _forceFullScreen.asStateFlow()
 
+    private val _autoLayoutStyle = MutableStateFlow(sharedPrefs.getString("auto_layout_style", "list") ?: "list")
+    val autoLayoutStyle: StateFlow<String> = _autoLayoutStyle.asStateFlow()
+
+    private val _autoPrimaryZone = MutableStateFlow(sharedPrefs.getString("auto_primary_zone", "all") ?: "all")
+    val autoPrimaryZone: StateFlow<String> = _autoPrimaryZone.asStateFlow()
+
+    private val _autoShowFanAction = MutableStateFlow(sharedPrefs.getBoolean("auto_show_fan_action", true))
+    val autoShowFanAction: StateFlow<Boolean> = _autoShowFanAction.asStateFlow()
+
+    private val _autoShowPowerAction = MutableStateFlow(sharedPrefs.getBoolean("auto_show_power_action", true))
+    val autoShowPowerAction: StateFlow<Boolean> = _autoShowPowerAction.asStateFlow()
+
+    private val _autoTempStep = MutableStateFlow(sharedPrefs.getFloat("auto_temp_step", 1.0f))
+    val autoTempStep: StateFlow<Float> = _autoTempStep.asStateFlow()
+
     private val _darkModeEnabled = MutableStateFlow(sharedPrefs.getBoolean("dark_mode_enabled", true))
     val darkModeEnabled: StateFlow<Boolean> = _darkModeEnabled.asStateFlow()
 
@@ -237,6 +263,31 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun setForceFullScreen(enabled: Boolean) {
         sharedPrefs.edit().putBoolean("force_full_screen", enabled).apply()
         _forceFullScreen.value = enabled
+    }
+
+    fun setAutoLayoutStyle(style: String) {
+        sharedPrefs.edit().putString("auto_layout_style", style).apply()
+        _autoLayoutStyle.value = style
+    }
+
+    fun setAutoPrimaryZone(zoneKey: String) {
+        sharedPrefs.edit().putString("auto_primary_zone", zoneKey).apply()
+        _autoPrimaryZone.value = zoneKey
+    }
+
+    fun setAutoShowFanAction(enabled: Boolean) {
+        sharedPrefs.edit().putBoolean("auto_show_fan_action", enabled).apply()
+        _autoShowFanAction.value = enabled
+    }
+
+    fun setAutoShowPowerAction(enabled: Boolean) {
+        sharedPrefs.edit().putBoolean("auto_show_power_action", enabled).apply()
+        _autoShowPowerAction.value = enabled
+    }
+
+    fun setAutoTempStep(step: Float) {
+        sharedPrefs.edit().putFloat("auto_temp_step", step).apply()
+        _autoTempStep.value = step
     }
 
     fun setDarkModeEnabled(enabled: Boolean) {
