@@ -19,6 +19,11 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -89,6 +94,122 @@ fun parseHexColor(hex: String?, fallback: Color): Color {
     }
 }
 
+@Composable
+fun ThemeCoreIcon(presetId: String, size: androidx.compose.ui.unit.Dp = 36.dp, modifier: Modifier = Modifier) {
+    val themeColors = LocalHvacTheme.current
+    val stroke1 = 1.dp
+    val stroke1_5 = 1.5.dp
+    val stroke2 = 2.dp
+    Canvas(modifier = modifier.size(size)) {
+        val w = size.toPx()
+        val h = size.toPx()
+        val cx = w / 2f
+        val cy = h / 2f
+        
+        when (presetId) {
+            "classic", "dynamic" -> {
+                drawCircle(themeColors.heatColor.copy(alpha = 0.2f), radius = w * 0.45f)
+                drawCircle(themeColors.heatColor, radius = w * 0.18f)
+                for (i in 0 until 8) {
+                    val angle = (i * Math.PI / 4)
+                    val cos = Math.cos(angle).toFloat()
+                    val sin = Math.sin(angle).toFloat()
+                    drawLine(
+                        color = themeColors.heatColor.copy(alpha = 0.7f),
+                        start = androidx.compose.ui.geometry.Offset(cx + cos * w * 0.22f, cy + sin * h * 0.22f),
+                        end = androidx.compose.ui.geometry.Offset(cx + cos * w * 0.42f, cy + sin * h * 0.42f),
+                        strokeWidth = stroke2.toPx()
+                    )
+                }
+            }
+            "nordic" -> {
+                drawCircle(themeColors.coolColor.copy(alpha = 0.15f), radius = w * 0.4f)
+                for (i in 0 until 6) {
+                    val angle = (i * Math.PI / 3)
+                    val cos = Math.cos(angle).toFloat()
+                    val sin = Math.sin(angle).toFloat()
+                    drawLine(
+                        color = themeColors.coolColor,
+                        start = androidx.compose.ui.geometry.Offset(cx, cy),
+                        end = androidx.compose.ui.geometry.Offset(cx + cos * w * 0.45f, cy + sin * h * 0.45f),
+                        strokeWidth = stroke2.toPx()
+                    )
+                    val shCos = Math.cos(angle + Math.PI / 12).toFloat()
+                    val shSin = Math.sin(angle + Math.PI / 12).toFloat()
+                    drawLine(
+                        color = themeColors.coolColor.copy(alpha = 0.7f),
+                        start = androidx.compose.ui.geometry.Offset(cx + cos * w * 0.25f, cy + sin * h * 0.25f),
+                        end = androidx.compose.ui.geometry.Offset(cx + shCos * w * 0.38f, cy + shSin * h * 0.38f),
+                        strokeWidth = stroke1_5.toPx()
+                    )
+                }
+            }
+            "emerald" -> {
+                drawCircle(themeColors.heatColor.copy(alpha = 0.15f), radius = w * 0.4f)
+                drawCircle(themeColors.coolColor.copy(alpha = 0.15f), radius = w * 0.3f)
+                drawCircle(themeColors.heatColor, radius = w * 0.12f)
+                rotate(45f, pivot = androidx.compose.ui.geometry.Offset(cx, cy)) {
+                    drawOval(
+                        color = themeColors.heatColor,
+                        topLeft = androidx.compose.ui.geometry.Offset(cx - w * 0.45f, cy - h * 0.15f),
+                        size = androidx.compose.ui.geometry.Size(w * 0.9f, h * 0.3f),
+                        style = Stroke(width = stroke1_5.toPx())
+                    )
+                }
+                rotate(135f, pivot = androidx.compose.ui.geometry.Offset(cx, cy)) {
+                    drawOval(
+                        color = themeColors.coolColor,
+                        topLeft = androidx.compose.ui.geometry.Offset(cx - w * 0.45f, cy - h * 0.15f),
+                        size = androidx.compose.ui.geometry.Size(w * 0.9f, h * 0.3f),
+                        style = Stroke(width = stroke1_5.toPx())
+                    )
+                }
+            }
+            "cyber" -> {
+                drawCircle(themeColors.heatColor.copy(alpha = 0.2f), radius = w * 0.45f)
+                val path = Path().apply {
+                    moveTo(cx, cy - h * 0.45f)
+                    lineTo(cx + w * 0.45f, cy)
+                    lineTo(cx, cy + h * 0.45f)
+                    lineTo(cx - w * 0.45f, cy)
+                    close()
+                }
+                drawPath(path, color = themeColors.heatColor, style = Stroke(width = stroke2.toPx()))
+                val pathInner = Path().apply {
+                    moveTo(cx, cy - h * 0.25f)
+                    lineTo(cx + w * 0.25f, cy)
+                    lineTo(cx, cy + h * 0.25f)
+                    lineTo(cx - w * 0.25f, cy)
+                    close()
+                }
+                drawPath(pathInner, color = themeColors.coolColor, style = Stroke(width = stroke1_5.toPx()))
+                drawCircle(Color.White, radius = w * 0.08f)
+            }
+            "volcanic" -> {
+                drawCircle(themeColors.heatColor.copy(alpha = 0.2f), radius = w * 0.45f)
+                val path = Path().apply {
+                    moveTo(cx - w * 0.35f, cy + h * 0.35f)
+                    cubicTo(cx - w * 0.45f, cy - h * 0.1f, cx - w * 0.1f, cy - h * 0.4f, cx, cy - h * 0.45f)
+                    cubicTo(cx + w * 0.1f, cy - h * 0.4f, cx + w * 0.45f, cy - h * 0.1f, cx + w * 0.35f, cy + h * 0.35f)
+                    lineTo(cx, cy + h * 0.15f)
+                    close()
+                }
+                drawPath(path, color = themeColors.heatColor)
+                drawCircle(themeColors.coolColor, radius = w * 0.12f)
+            }
+            "monochrome" -> {
+                drawCircle(themeColors.heatColor.copy(alpha = 0.1f), radius = w * 0.45f)
+                drawCircle(Color.White, radius = w * 0.35f, style = Stroke(width = stroke1_5.toPx()))
+                drawLine(Color.White, androidx.compose.ui.geometry.Offset(cx, cy - h * 0.42f), androidx.compose.ui.geometry.Offset(cx, cy - h * 0.28f), strokeWidth = stroke2.toPx())
+                drawLine(Color.White, androidx.compose.ui.geometry.Offset(cx, cy + h * 0.28f), androidx.compose.ui.geometry.Offset(cx, cy + h * 0.42f), strokeWidth = stroke2.toPx())
+                drawLine(Color.White, androidx.compose.ui.geometry.Offset(cx - w * 0.42f, cy), androidx.compose.ui.geometry.Offset(cx - w * 0.28f, cy), strokeWidth = stroke2.toPx())
+                drawLine(Color.White, androidx.compose.ui.geometry.Offset(cx + w * 0.28f, cy), androidx.compose.ui.geometry.Offset(cx + w * 0.42f, cy), strokeWidth = stroke2.toPx())
+                drawCircle(themeColors.heatColor, radius = w * 0.08f)
+            }
+        }
+    }
+}
+
 fun getIconByName(name: String?): ImageVector {
     return when (name?.lowercase()?.trim()) {
         "layers" -> Icons.Default.Layers
@@ -155,6 +276,7 @@ fun HvacDashboard(
     val cardCornerStyle by viewModel.cardCornerStyle.collectAsStateWithLifecycle()
     val cardOpacity by viewModel.cardOpacity.collectAsStateWithLifecycle()
     val backgroundDesign by viewModel.backgroundDesign.collectAsStateWithLifecycle()
+    val activeThemePreset by viewModel.selectedThemePreset.collectAsStateWithLifecycle()
 
     val rawGlowColor = parseHexColor(themeConfig.glowColorHex, Color(0xFF2196F3))
     val glowColorFactor = themeConfig.glowAlpha ?: 0.12f
@@ -214,6 +336,7 @@ fun HvacDashboard(
                     .fillMaxSize()
                     .background(bgGradient)
                     .drawBehind {
+                        // 1. Core Background Styles
                         when (backgroundDesign) {
                             "grid" -> {
                                 val gridSpacing = 44.dp.toPx()
@@ -309,6 +432,163 @@ fun HvacDashboard(
                                 )
                             }
                         }
+
+                        // 2. High-Resolution Immersive Vector Art based on Active Theme Preset
+                        when (activeThemePreset) {
+                            "classic", "dynamic" -> {
+                                // Haven Metallic - solar crown flares & precision concentric rings
+                                drawCircle(
+                                    color = hvacThemeColors.heatColor.copy(alpha = 0.04f),
+                                    radius = size.width * 0.45f,
+                                    center = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                                    style = Stroke(width = 1.dp.toPx())
+                                )
+                                drawCircle(
+                                    color = hvacThemeColors.heatColor.copy(alpha = 0.02f),
+                                    radius = size.width * 0.70f,
+                                    center = androidx.compose.ui.geometry.Offset(size.width, 0f),
+                                    style = Stroke(width = 2.dp.toPx())
+                                )
+                            }
+                            "nordic" -> {
+                                // Nordic Frost - deep glacier crystal vectors and coordinates
+                                val crystalColor = hvacThemeColors.coolColor.copy(alpha = 0.04f)
+                                drawCircle(
+                                    color = crystalColor,
+                                    radius = size.width * 0.3f,
+                                    center = androidx.compose.ui.geometry.Offset(0f, size.height * 0.5f),
+                                    style = Stroke(width = 1.dp.toPx())
+                                )
+                                drawLine(crystalColor, androidx.compose.ui.geometry.Offset(0f, size.height * 0.5f), androidx.compose.ui.geometry.Offset(size.width * 0.3f, size.height * 0.5f), strokeWidth = 1.dp.toPx())
+                                drawLine(crystalColor, androidx.compose.ui.geometry.Offset(0f, size.height * 0.2f), androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.35f), strokeWidth = 1.dp.toPx())
+                                drawLine(crystalColor, androidx.compose.ui.geometry.Offset(0f, size.height * 0.8f), androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.65f), strokeWidth = 1.dp.toPx())
+                            }
+                            "emerald" -> {
+                                // Emerald Nebula - orbital cosmic lanes and sweeping planetary systems
+                                val orbitColor = hvacThemeColors.ecoColor.copy(alpha = 0.04f)
+                                drawCircle(
+                                    color = orbitColor,
+                                    radius = size.width * 0.45f,
+                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.5f),
+                                    style = Stroke(width = 1.dp.toPx())
+                                )
+                                drawCircle(
+                                    color = orbitColor.copy(alpha = 0.02f),
+                                    radius = size.width * 0.65f,
+                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.5f),
+                                    style = Stroke(width = 1.5.dp.toPx())
+                                )
+                                drawOval(
+                                    color = orbitColor,
+                                    topLeft = androidx.compose.ui.geometry.Offset(-size.width * 0.1f, size.height * 0.2f),
+                                    size = androidx.compose.ui.geometry.Size(size.width * 1.2f, size.height * 0.6f),
+                                    style = Stroke(width = 1.3.dp.toPx())
+                                )
+                            }
+                            "cyber" -> {
+                                // Cyber Sunset - retro cyber perspective grids & wireframe horizon sun
+                                val gridColor = hvacThemeColors.heatColor.copy(alpha = 0.08f)
+                                val horizonY = size.height * 0.65f
+                                
+                                drawCircle(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(hvacThemeColors.heatColor.copy(alpha = 0.22f), Color.Transparent)
+                                    ),
+                                    radius = size.width * 0.28f,
+                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, horizonY - size.width * 0.12f)
+                                )
+                                
+                                var lineY = horizonY - size.width * 0.4f
+                                while (lineY < horizonY) {
+                                    drawLine(
+                                        color = hvacThemeColors.bgStart.copy(alpha = 0.9f),
+                                        start = androidx.compose.ui.geometry.Offset(0f, lineY),
+                                        end = androidx.compose.ui.geometry.Offset(size.width, lineY),
+                                        strokeWidth = 6.dp.toPx()
+                                    )
+                                    lineY += 16.dp.toPx()
+                                }
+
+                                val gridLineCount = 12
+                                for (i in 0..gridLineCount) {
+                                    val startX = (size.width / gridLineCount) * i
+                                    val vanishX = size.width / 2f
+                                    drawLine(
+                                        color = gridColor.copy(alpha = 0.12f),
+                                        start = androidx.compose.ui.geometry.Offset(vanishX, horizonY),
+                                        end = androidx.compose.ui.geometry.Offset(startX, size.height),
+                                        strokeWidth = 1.5.dp.toPx()
+                                    )
+                                }
+                                
+                                var hY = horizonY
+                                var spacing = 10.dp.toPx()
+                                while (hY < size.height) {
+                                    drawLine(
+                                        color = gridColor.copy(alpha = 0.08f),
+                                        start = androidx.compose.ui.geometry.Offset(0f, hY),
+                                        end = androidx.compose.ui.geometry.Offset(size.width, hY),
+                                        strokeWidth = 1.dp.toPx()
+                                    )
+                                    hY += spacing
+                                    spacing = (spacing * 1.35f).coerceAtMost(80.dp.toPx())
+                                }
+                            }
+                            "volcanic" -> {
+                                // Volcanic Obsidian - rising warm thermal sparks & dynamic magma channels
+                                val magmaColor = hvacThemeColors.heatColor.copy(alpha = 0.12f)
+                                val sparks = listOf(
+                                    androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.4f),
+                                    androidx.compose.ui.geometry.Offset(size.width * 0.22f, size.height * 0.75f),
+                                    androidx.compose.ui.geometry.Offset(size.width * 0.45f, size.height * 0.25f),
+                                    androidx.compose.ui.geometry.Offset(size.width * 0.58f, size.height * 0.85f),
+                                    androidx.compose.ui.geometry.Offset(size.width * 0.78f, size.height * 0.35f),
+                                    androidx.compose.ui.geometry.Offset(size.width * 0.88f, size.height * 0.7f)
+                                )
+                                sparks.forEachIndexed { idx, pos ->
+                                    val sizeFactor = (1.5f + (idx % 3) * 1.2f)
+                                    drawCircle(
+                                        color = magmaColor,
+                                        radius = sizeFactor.dp.toPx(),
+                                        center = pos
+                                    )
+                                    drawCircle(
+                                        color = magmaColor.copy(alpha = 0.025f),
+                                        radius = (sizeFactor * 4).dp.toPx(),
+                                        center = pos
+                                    )
+                                }
+                                val path = Path().apply {
+                                    moveTo(0f, size.height * 0.8f)
+                                    cubicTo(size.width * 0.3f, size.height * 0.75f, size.width * 0.7f, size.height * 0.9f, size.width, size.height * 0.85f)
+                                }
+                                drawPath(path, color = magmaColor.copy(alpha = 0.03f), style = Stroke(width = 12.dp.toPx()))
+                            }
+                            "monochrome" -> {
+                                // Monochrome Slate - high-precision engineered aerospace layout markups
+                                val tickColor = Color.White.copy(alpha = 0.05f)
+                                val sizeL = 16.dp.toPx()
+                                val inset = 12.dp.toPx()
+                                
+                                drawLine(tickColor, androidx.compose.ui.geometry.Offset(inset, inset), androidx.compose.ui.geometry.Offset(inset + sizeL, inset), strokeWidth = 1.dp.toPx())
+                                drawLine(tickColor, androidx.compose.ui.geometry.Offset(inset, inset), androidx.compose.ui.geometry.Offset(inset, inset + sizeL), strokeWidth = 1.dp.toPx())
+                                drawLine(tickColor, androidx.compose.ui.geometry.Offset(size.width - inset, inset), androidx.compose.ui.geometry.Offset(size.width - inset - sizeL, inset), strokeWidth = 1.dp.toPx())
+                                drawLine(tickColor, androidx.compose.ui.geometry.Offset(size.width - inset, inset), androidx.compose.ui.geometry.Offset(size.width - inset, inset + sizeL), strokeWidth = 1.dp.toPx())
+                                
+                                drawCircle(
+                                    color = tickColor,
+                                    radius = size.width * 0.15f,
+                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.5f),
+                                    style = Stroke(width = 1.dp.toPx())
+                                )
+                                drawCircle(
+                                    color = tickColor.copy(alpha = 0.02f),
+                                    radius = size.width * 0.3f,
+                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.5f),
+                                    style = Stroke(width = 1.dp.toPx())
+                                )
+                            }
+                        }
                     }
             ) {
         Scaffold(
@@ -317,21 +597,27 @@ fun HvacDashboard(
                 if (!isLandscape) {
                     TopAppBar(
                         title = {
-                            Column {
-                                Text(
-                                    layoutConfig.appTitle ?: "Home Control",
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 3.sp,
-                                    fontSize = 20.sp,
-                                    color = Color.White
-                                )
-                                Text(
-                                    layoutConfig.appSubtitle ?: "HVAC SYSTEM CONTROLLER",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.6f),
-                                    letterSpacing = 1.sp
-                                )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                ThemeCoreIcon(presetId = activeThemePreset, size = 28.dp)
+                                Column {
+                                    Text(
+                                        layoutConfig.appTitle ?: "Home Control",
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 3.sp,
+                                        fontSize = 18.sp,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        layoutConfig.appSubtitle ?: "HVAC SYSTEM CONTROLLER",
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.6f),
+                                        letterSpacing = 1.sp
+                                    )
+                                }
                             }
                         },
                         actions = {
@@ -967,6 +1253,7 @@ fun HvacDashboardContent(
     var selectedTab by remember { mutableStateOf(0) }
     
     val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
+    val activeThemePreset by viewModel.selectedThemePreset.collectAsStateWithLifecycle()
     val rawTabs = layoutConfig.tabs ?: emptyList()
     
     val activeTabs = if (rawTabs.isNotEmpty()) rawTabs else listOf(
@@ -1036,21 +1323,27 @@ fun HvacDashboardContent(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    layoutConfig.appTitle ?: "Home Control",
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 3.sp,
-                                    fontSize = 18.sp,
-                                    color = Color.White
-                                )
-                                Text(
-                                    layoutConfig.appSubtitle ?: "HVAC CONTROLLER",
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.6f),
-                                    letterSpacing = 1.sp
-                                )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                ThemeCoreIcon(presetId = activeThemePreset, size = 30.dp)
+                                Column {
+                                    Text(
+                                        layoutConfig.appTitle ?: "Home Control",
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 2.sp,
+                                        fontSize = 15.sp,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        layoutConfig.appSubtitle ?: "HVAC CONTROLLER",
+                                        fontSize = 7.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White.copy(alpha = 0.6f),
+                                        letterSpacing = 1.sp
+                                    )
+                                }
                             }
                             IconButton(
                                 onClick = { isMenuExpanded = false },
@@ -1428,37 +1721,58 @@ fun HvacDashboardContent(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Custom unified tab row navigation conforming to standard M3 guidelines
-            TabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = Color.Transparent,
-                contentColor = Color.White,
-                indicator = { tabPositions ->
-                    TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                        color = when (state.globalSettings.globalHvacMode) {
-                            "cool" -> Color(0xFF2196F3)
-                            "off" -> Color(0xFF64748B)
-                            else -> Color(0xFFF59E0B)
-                        }
-                    )
-                },
-                divider = {}
+            // Custom compact tab row navigation mimicking the hot water mode option buttons layout
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 activeTabs.forEachIndexed { index, tabConfig ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        modifier = Modifier.testTag("nav_tab_$index")
+                    val isSelected = selectedTab == index
+                    val activeColor = when (state.globalSettings.globalHvacMode) {
+                        "cool" -> Color(0xFF2196F3)
+                        "off" -> Color(0xFF64748B)
+                        else -> Color(0xFFF59E0B)
+                    }
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("nav_tab_$index")
+                            .clickable { selectedTab = index },
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected) activeColor.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
+                        ),
+                        border = BorderStroke(
+                            1.dp,
+                            if (isSelected) activeColor else Color.White.copy(alpha = 0.05f)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(
-                            text = tabConfig.title,
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (selectedTab == index) Color.White else Color.White.copy(alpha = 0.5f),
-                            letterSpacing = 1.sp
-                        )
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = getIconByName(tabConfig.icon),
+                                contentDescription = null,
+                                tint = if (isSelected) activeColor else Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = tabConfig.title,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
@@ -4196,6 +4510,7 @@ fun HvacSettingsDialog(
     val theme = LocalHvacTheme.current
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
+    var activeSubTab by remember { mutableStateOf(0) } // 0: Themes & Graphics, 1: Technical connections
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -4258,11 +4573,62 @@ fun HvacSettingsDialog(
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
 
-                // Feature toggles list
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth()
+                // Dual-Tab Segmented Selection Bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.04f))
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    val subTabOptions = listOf(
+                        Triple(0, "THEMES & GRAPHICS", Icons.Default.Palette),
+                        Triple(1, "SYSTEM ENGINES", Icons.Default.Settings)
+                    )
+                    subTabOptions.forEach { (idx, label, icon) ->
+                        val isSelected = activeSubTab == idx
+                        val activeColor = theme.coolColor
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) activeColor.copy(alpha = 0.15f) else Color.Transparent)
+                                .border(
+                                    BorderStroke(1.dp, if (isSelected) activeColor.copy(alpha = 0.2f) else Color.Transparent),
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .clickable { activeSubTab = idx }
+                                .padding(vertical = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = if (isSelected) activeColor else Color.White.copy(alpha = 0.4f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = label,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 10.sp,
+                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+
+                // Feature toggles list
+                if (activeSubTab == 1) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                     // Toggle 1: Force Screen On
                     Row(
                         modifier = Modifier
@@ -4371,10 +4737,12 @@ fun HvacSettingsDialog(
                         )
                     }
                 }
+                }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                if (activeSubTab == 0) {
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                // Theme Preset Selection Panel
+                    // Theme Preset Selection Panel
                 Column(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -4384,7 +4752,7 @@ fun HvacSettingsDialog(
                             text = "SYSTEM VISUAL THEME CONTROLS",
                             fontWeight = FontWeight.Black,
                             fontSize = 10.sp,
-                            color = Color.White.copy(alpha = 0.5f),
+                            color = theme.coolColor,
                             letterSpacing = 1.sp
                         )
                         Spacer(modifier = Modifier.height(2.dp))
@@ -4395,78 +4763,89 @@ fun HvacSettingsDialog(
                         )
                     }
 
-                    val activeThemePreset by viewModel.selectedThemePreset.collectAsState()
-
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth().height(104.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp)
-                    ) {
-                        items(HvacThemePresetsList) { preset ->
-                            val isSelected = activeThemePreset == preset.id
-                            val presetAccentColor = parseHexColor(preset.accentColorHex, Color.White)
-                            val presetBgStart = parseHexColor(preset.bgStartColorHex, Color.Black)
-                            val presetBgEnd = parseHexColor(preset.bgEndColorHex, Color.DarkGray)
-                            val presetCoolColor = parseHexColor(preset.coolColorHex, Color.White)
-
-                            Card(
-                                modifier = Modifier
-                                    .width(180.dp)
-                                    .fillMaxHeight()
-                                    .clickable { viewModel.setSelectedThemePreset(preset.id) }
-                                    .testTag("theme_preset_${preset.id}"),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.02f)
-                                ),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isSelected) presetAccentColor else Color.White.copy(alpha = 0.05f)
-                                ),
-                                shape = RoundedCornerShape(12.dp)
+                    HvacThemePresetsList.forEach { preset ->
+                        val isSelected = viewModel.selectedThemePreset.collectAsState().value == preset.id
+                        val presetAccentColor = parseHexColor(preset.accentColorHex, Color.White)
+                        val presetCoolColor = parseHexColor(preset.coolColorHex, Color.White)
+                        
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { viewModel.setSelectedThemePreset(preset.id) }
+                                .testTag("theme_preset_${preset.id}"),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isSelected) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.02f)
+                            ),
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) theme.coolColor else Color.White.copy(alpha = 0.05f)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(10.dp).fillMaxSize(),
-                                    verticalArrangement = Arrangement.SpaceBetween
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .background(Color.White.copy(alpha = 0.04f), CircleShape)
+                                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), CircleShape),
+                                    contentAlignment = Alignment.Center
                                 ) {
+                                    ThemeCoreIcon(presetId = preset.id, size = 30.dp)
+                                }
+                                
+                                Column(modifier = Modifier.weight(1f)) {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Text(
-                                            text = preset.name.uppercase(),
+                                            text = preset.name,
                                             fontWeight = FontWeight.Black,
-                                            fontSize = 9.sp,
-                                            color = Color.White,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
+                                            fontSize = 11.sp,
+                                            color = if (isSelected) theme.coolColor else Color.White
                                         )
-                                        // Visual dot representing the theme colors
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(8.dp)
-                                                    .background(presetAccentColor, CircleShape)
-                                            )
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(8.dp)
-                                                    .background(presetCoolColor, CircleShape)
-                                            )
+                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Box(modifier = Modifier.size(6.dp).background(presetAccentColor, CircleShape))
+                                            Box(modifier = Modifier.size(6.dp).background(presetCoolColor, CircleShape))
                                         }
                                     }
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = preset.description,
-                                        fontSize = 8.sp,
+                                        fontSize = 9.sp,
                                         color = Color.White.copy(alpha = 0.5f),
-                                        lineHeight = 10.sp,
-                                        maxLines = 3,
-                                        overflow = TextOverflow.Ellipsis
+                                        lineHeight = 11.sp
                                     )
+                                }
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .background(
+                                            if (isSelected) theme.coolColor else Color.Transparent,
+                                            CircleShape
+                                        )
+                                        .border(
+                                            BorderStroke(
+                                                1.dp,
+                                                if (isSelected) theme.coolColor else Color.White.copy(alpha = 0.3f)
+                                            ),
+                                            CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = Color.Black,
+                                            modifier = Modifier.size(10.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -4804,9 +5183,12 @@ fun HvacSettingsDialog(
                     }
                 }
 
-                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                } // Ends if (activeSubTab == 0)
 
-                // GitHub Settings overrides
+                if (activeSubTab == 1) {
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                    // GitHub Settings overrides
                 Column(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxWidth()
@@ -5140,6 +5522,7 @@ fun HvacSettingsDialog(
                         }
                     }
                 }
+                } // Close if (activeSubTab == 1)
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
 
