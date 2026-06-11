@@ -14,7 +14,7 @@
   "tabs": [
     {
       "id": "zones",
-      "title": "ROOM SENSORS & CLIMATE",
+      "title": "HOME & CLIMATE",
       "icon": "layers",
       "sections": ["sensors", "zones"]
     },
