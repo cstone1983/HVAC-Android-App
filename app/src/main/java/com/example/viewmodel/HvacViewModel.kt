@@ -15,6 +15,16 @@ import java.io.FileOutputStream
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.annotation.SuppressLint
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.os.Looper
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.Priority
 import android.os.Build
 import androidx.core.content.FileProvider
 
@@ -226,6 +236,203 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _haUrl = MutableStateFlow(sharedPrefs.getString("ha_url", null) ?: (try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }))
     val haUrl: StateFlow<String> = _haUrl.asStateFlow()
 
+    private val fusedLocationClient: FusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(application)
+
+    private val _locationMonitoringEnabled = MutableStateFlow(sharedPrefs.getBoolean("location_monitoring_enabled", false))
+    val locationMonitoringEnabled: StateFlow<Boolean> = _locationMonitoringEnabled.asStateFlow()
+
+    private val _locationDeviceId = MutableStateFlow(sharedPrefs.getString("location_device_id", "hvac_android_app") ?: "hvac_android_app")
+    val locationDeviceId: StateFlow<String> = _locationDeviceId.asStateFlow()
+
+    private val _locationInterval = MutableStateFlow(sharedPrefs.getInt("location_interval_minutes", 15))
+    val locationInterval: StateFlow<Int> = _locationInterval.asStateFlow()
+
+    private val _lastKnownLocation = MutableStateFlow<String?>(sharedPrefs.getString("last_known_location", null))
+    val lastKnownLocation: StateFlow<String?> = _lastKnownLocation.asStateFlow()
+
+    private val _lastLocationPushStatus = MutableStateFlow(sharedPrefs.getString("last_location_push_status", "Idle") ?: "Idle")
+    val lastLocationPushStatus: StateFlow<String> = _lastLocationPushStatus.asStateFlow()
+
+    fun setLocationMonitoringEnabled(enabled: Boolean) {
+        sharedPrefs.edit().putBoolean("location_monitoring_enabled", enabled).apply()
+        _locationMonitoringEnabled.value = enabled
+        if (enabled) {
+            startLocationUpdates()
+        } else {
+            stopLocationUpdates()
+        }
+    }
+
+    fun setLocationDeviceId(deviceId: String) {
+        val trimmed = deviceId.trim().lowercase().replace(" ", "_").filter { it.isLetterOrDigit() || it == '_' || it == '-' }
+        sharedPrefs.edit().putString("location_device_id", trimmed).apply()
+        _locationDeviceId.value = trimmed
+    }
+
+    fun setLocationInterval(minutes: Int) {
+        sharedPrefs.edit().putInt("location_interval_minutes", minutes).apply()
+        _locationInterval.value = minutes
+        if (_locationMonitoringEnabled.value) {
+            startLocationUpdates()
+        }
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        val fine = androidx.core.content.ContextCompat.checkSelfPermission(
+            getApplication(),
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val coarse = androidx.core.content.ContextCompat.checkSelfPermission(
+            getApplication(),
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        return fine || coarse
+    }
+
+    private var locationCallback: LocationCallback? = null
+
+    @SuppressLint("MissingPermission")
+    fun startLocationUpdates() {
+        if (!hasLocationPermission() || !_locationMonitoringEnabled.value) {
+            return
+        }
+        stopLocationUpdates() // Avoid double registrations
+
+        val intervalMs = _locationInterval.value.toLong() * 60 * 1000
+        val request = LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, intervalMs).apply {
+            setMinUpdateIntervalMillis(intervalMs / 2)
+            setWaitForAccurateLocation(false)
+        }.build()
+
+        val callback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                val loc = locationResult.lastLocation ?: return
+                handleNewLocation(loc)
+            }
+        }
+
+        try {
+            fusedLocationClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
+            locationCallback = callback
+        } catch (e: Exception) {
+            _lastLocationPushStatus.value = "Error starting updates: ${e.localizedMessage}"
+        }
+    }
+
+    fun stopLocationUpdates() {
+        locationCallback?.let {
+            fusedLocationClient.removeLocationUpdates(it)
+            locationCallback = null
+        }
+    }
+
+    private fun handleNewLocation(loc: android.location.Location) {
+        val lat = loc.latitude
+        val lon = loc.longitude
+        val accuracy = loc.accuracy
+        val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+
+        val formatted = "Lat: ${String.format("%.5f", lat)}, Lon: ${String.format("%.5f", lon)} (±${accuracy.toInt()}m) at $timestamp"
+        _lastKnownLocation.value = formatted
+        sharedPrefs.edit().putString("last_known_location", formatted).apply()
+
+        if (_isLoggedIn.value) {
+            pushLocationToHomeAssistant(lat, lon, accuracy)
+        }
+    }
+
+    private fun getBatteryLevel(): Int {
+        return try {
+            val batteryStatus: Intent? = getApplication<Application>().registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level: Int = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale: Int = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            if (level >= 0 && scale > 0) {
+                (level * 100 / scale.toFloat()).toInt()
+            } else {
+                100
+            }
+        } catch (e: Exception) {
+            100
+        }
+    }
+
+    fun pushLocationToHomeAssistant(lat: Double, lon: Double, accuracy: Float) {
+        val deviceTrackerId = _locationDeviceId.value.trim()
+        if (deviceTrackerId.isEmpty()) {
+            _lastLocationPushStatus.value = "Failed: Device Tracker ID is empty"
+            return
+        }
+
+        val payload = mapOf(
+            "dev_id" to deviceTrackerId,
+            "gps" to listOf(lat, lon),
+            "gps_accuracy" to accuracy.toInt(),
+            "battery" to getBatteryLevel()
+        )
+
+        viewModelScope.launch {
+            try {
+                val response = HomeAssistantClient.service.callService("device_tracker", "see", payload)
+                if (response.isSuccessful) {
+                    val timestamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+                    val statusStr = "Success: Pushed to HA ($deviceTrackerId) at $timestamp"
+                    _lastLocationPushStatus.value = statusStr
+                    sharedPrefs.edit().putString("last_location_push_status", statusStr).apply()
+                } else {
+                    val errorStr = "Error: HA responded with ${response.code()}"
+                    _lastLocationPushStatus.value = errorStr
+                    sharedPrefs.edit().putString("last_location_push_status", errorStr).apply()
+                }
+            } catch (e: Exception) {
+                val errorStr = "Error: ${e.localizedMessage}"
+                _lastLocationPushStatus.value = errorStr
+                sharedPrefs.edit().putString("last_location_push_status", errorStr).apply()
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun triggerManualLocationPush() {
+        if (!hasLocationPermission()) {
+            _lastLocationPushStatus.value = "Permission Denied: Please grant location permissions"
+            return
+        }
+        _lastLocationPushStatus.value = "Retrieving current location..."
+        try {
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
+                .addOnSuccessListener { loc ->
+                    if (loc != null) {
+                        handleNewLocation(loc)
+                    } else {
+                        // Fallback to last location
+                        fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
+                            if (lastLoc != null) {
+                                handleNewLocation(lastLoc)
+                            } else {
+                                _lastLocationPushStatus.value = "Failed: Both current & last location are null"
+                            }
+                        }.addOnFailureListener {
+                            _lastLocationPushStatus.value = "Failed: Current location is null"
+                        }
+                    }
+                }
+                .addOnFailureListener { e ->
+                    // Fallback to last location
+                    fusedLocationClient.lastLocation.addOnSuccessListener { lastLoc ->
+                        if (lastLoc != null) {
+                            handleNewLocation(lastLoc)
+                        } else {
+                            _lastLocationPushStatus.value = "Failed: ${e.localizedMessage}"
+                        }
+                    }.addOnFailureListener {
+                        _lastLocationPushStatus.value = "Failed: ${e.localizedMessage}"
+                    }
+                }
+        } catch (e: Exception) {
+            _lastLocationPushStatus.value = "Error: ${e.localizedMessage}"
+        }
+    }
+
     fun updateHaUrl(newUrl: String) {
         val formattedUrl = HomeAssistantClient.formatBaseUrl(newUrl)
         sharedPrefs.edit().putString("ha_url", formattedUrl).apply()
@@ -376,6 +583,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             startSync()
         } else {
             _isLoggedIn.value = false
+        }
+
+        // Start Location Updates on startup if enabled
+        if (_locationMonitoringEnabled.value) {
+            startLocationUpdates()
         }
     }
 
@@ -1286,6 +1498,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         syncJob?.cancel()
+        stopLocationUpdates()
         super.onCleared()
     }
 }

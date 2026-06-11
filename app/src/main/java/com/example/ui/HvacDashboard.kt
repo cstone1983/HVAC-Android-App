@@ -3,6 +3,8 @@ package com.example.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -4057,85 +4059,7 @@ fun UpdatesTab(
             }
         }
 
-        // DEVELOPMENT & UPDATE SIMULATOR CARD
-        Card(
-            colors = CardDefaults.cardColors(containerColor = theme.coolColor.copy(alpha = 0.05f)),
-            border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.25f)),
-            shape = hvacCardShape(16),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "DEVELOPMENT & UPDATE SIMULATOR",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black,
-                            color = theme.coolColor,
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Interactive Update Test Harness",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
 
-                    Icon(
-                        imageVector = Icons.Default.BugReport,
-                        contentDescription = null,
-                        tint = theme.coolColor,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(color = theme.coolColor.copy(alpha = 0.15f))
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                    text = "Verify real-time delivery pipelines without deploying physical changes to your GitHub branch. Running simulation mimics standard download & install packages dynamically.",
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.65f),
-                    lineHeight = 16.sp
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            viewModel.simulateSoftwareUpdateDetected()
-                            android.widget.Toast.makeText(context, "Software update simulation triggered!", android.widget.Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = theme.coolColor.copy(alpha = 0.15f),
-                            contentColor = Color.White
-                        ),
-                        border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.4f)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("MOCK CORE PUSH", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -5855,6 +5779,319 @@ fun HvacSettingsDialog(
                             ) {
                                 Text("RESTORE DEFAULT", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                             }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                // Geolocation Monitoring & HA integration
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
+                        Text(
+                            text = "GEOLOCATION & TRACKING SYSTEMS",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Enable background telemetry to synchronize mobile node location with Home Assistant trackers",
+                            fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.4f)
+                        )
+                    }
+
+                    val context = LocalContext.current
+                    val locationMonitoringEnabled by viewModel.locationMonitoringEnabled.collectAsStateWithLifecycle()
+                    val locationDeviceId by viewModel.locationDeviceId.collectAsStateWithLifecycle()
+                    val locationInterval by viewModel.locationInterval.collectAsStateWithLifecycle()
+                    val lastKnownLocation by viewModel.lastKnownLocation.collectAsStateWithLifecycle()
+                    val lastLocationPushStatus by viewModel.lastLocationPushStatus.collectAsStateWithLifecycle()
+
+                    var devIdText by remember(locationDeviceId) { mutableStateOf(locationDeviceId) }
+
+                    // Permissions Setup Launcher
+                    val permissionLauncher = rememberLauncherForActivityResult(
+                        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+                        onResult = { permissions ->
+                            val fineG = permissions[android.Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+                            val coarseG = permissions[android.Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+                            if (fineG || coarseG) {
+                                viewModel.setLocationMonitoringEnabled(true)
+                                Toast.makeText(context, "Location tracking allowed!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Permission denied.", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    )
+
+                    val fineGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    val coarseGranted = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context, android.Manifest.permission.ACCESS_COARSE_LOCATION
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    val isLocPermGranted = fineGranted || coarseGranted
+
+                    // Status Panel Row (Switch and Permission Label)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.03f))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Background Telemetry",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (isLocPermGranted) "System permissions: GRANTED" else "Requires: Location Permissions",
+                                fontSize = 10.sp,
+                                color = if (isLocPermGranted) theme.ecoColor else theme.coolColor
+                            )
+                        }
+
+                        Switch(
+                            checked = locationMonitoringEnabled,
+                            onCheckedChange = { checkState ->
+                                if (checkState) {
+                                    if (isLocPermGranted) {
+                                        viewModel.setLocationMonitoringEnabled(true)
+                                    } else {
+                                        permissionLauncher.launch(
+                                            arrayOf(
+                                                android.Manifest.permission.ACCESS_FINE_LOCATION,
+                                                android.Manifest.permission.ACCESS_COARSE_LOCATION
+                                            )
+                                        )
+                                    }
+                                } else {
+                                    viewModel.setLocationMonitoringEnabled(false)
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = theme.ecoColor,
+                                checkedTrackColor = theme.ecoColor.copy(alpha = 0.3f),
+                                uncheckedThumbColor = Color.White.copy(alpha = 0.5f),
+                                uncheckedTrackColor = Color.White.copy(alpha = 0.15f)
+                            )
+                        )
+                    }
+
+                    // Device Tracker Entity Slug Text Field
+                    OutlinedTextField(
+                        value = devIdText,
+                        onValueChange = { devIdText = it },
+                        label = { Text("HA Tracker ID (device_tracker.<slug>)", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedIndicatorColor = theme.coolColor,
+                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("location_device_id_input"),
+                        leadingIcon = {
+                            Icon(Icons.Default.Navigation, contentDescription = null, tint = theme.coolColor.copy(alpha = 0.8f))
+                        },
+                        trailingIcon = {
+                            if (devIdText != locationDeviceId) {
+                                IconButton(onClick = {
+                                    viewModel.setLocationDeviceId(devIdText)
+                                    Toast.makeText(context, "Tracker ID updated!", Toast.LENGTH_SHORT).show()
+                                }) {
+                                    Icon(Icons.Default.Check, contentDescription = "Save ID", tint = theme.ecoColor)
+                                }
+                            }
+                        }
+                    )
+
+                    // Interval Selection
+                    Column {
+                        Text(
+                            text = "REPORTING FREQUENCY",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val intervals = listOf(
+                                Triple(1, "1 MIN", "Real-time query"),
+                                Triple(5, "5 MIN", "Active navigation"),
+                                Triple(15, "15 MIN", "Balanced tracker"),
+                                Triple(30, "30 MIN", "Comfort sync"),
+                                Triple(60, "1 HR", "Battery saver")
+                            )
+                            intervals.forEach { (mins, label, _) ->
+                                val isSel = locationInterval == mins
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isSel) theme.coolColor.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f))
+                                        .border(
+                                            1.dp,
+                                            if (isSel) theme.coolColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.1f),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .clickable {
+                                            viewModel.setLocationInterval(mins)
+                                            Toast.makeText(context, "Interval set to $mins minutes", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSel) theme.coolColor else Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Feedbacks and Coordinates Box
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.Black.copy(alpha = 0.2f))
+                            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "TELEMETRY CONSOLE",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = theme.coolColor,
+                                letterSpacing = 1.sp
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (locationMonitoringEnabled) theme.ecoColor.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.1f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (locationMonitoringEnabled) "ACTIVE MONITORING" else "PAUSED",
+                                    fontSize = 7.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (locationMonitoringEnabled) theme.ecoColor else Color.White.copy(alpha = 0.4f)
+                                )
+                            }
+                        }
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.MyLocation,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.4f),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = lastKnownLocation ?: "No GPS data coordinates resolved yet",
+                                fontSize = 10.sp,
+                                color = if (lastKnownLocation == null) Color.White.copy(alpha = 0.4f) else Color.White
+                            )
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CloudUpload,
+                                contentDescription = null,
+                                tint = Color.White.copy(alpha = 0.4f),
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Status: $lastLocationPushStatus",
+                                fontSize = 10.sp,
+                                color = if (lastLocationPushStatus.contains("Success", ignoreCase = true)) theme.ecoColor else Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+
+                    // Action buttons
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                viewModel.triggerManualLocationPush()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = theme.coolColor.copy(alpha = 0.15f),
+                                contentColor = theme.coolColor
+                            ),
+                            border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(imageVector = Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("PUSH TELEMETRY NOW", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                        }
+
+                        // Web/Map Intent Button if location is available
+                        val hasCoords = lastKnownLocation?.contains("Lat:") == true
+                        Button(
+                            onClick = {
+                                lastKnownLocation?.let { locStr ->
+                                    try {
+                                        // Simple parsing of "Lat: XX.XXX, Lon: YY.YYY"
+                                        val latPart = locStr.substringAfter("Lat: ").substringBefore(",")
+                                        val lonPart = locStr.substringAfter("Lon: ").substringBefore(" ")
+                                        val mapUri = Uri.parse("geo:$latPart,$lonPart?q=$latPart,$lonPart(Current Location)")
+                                        val intent = Intent(Intent.ACTION_VIEW, mapUri).apply {
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Unable to map location", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            enabled = hasCoords,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (hasCoords) Color.White.copy(alpha = 0.05f) else Color.White.copy(alpha = 0.02f),
+                                contentColor = if (hasCoords) Color.White else Color.White.copy(alpha = 0.2f)
+                            ),
+                            border = BorderStroke(1.dp, if (hasCoords) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.05f)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Map, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("VIEW MAP", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                         }
                     }
                 }
