@@ -4506,6 +4506,7 @@ fun HvacSettingsDialog(
     onDismiss: () -> Unit
 ) {
     val forceScreenOn by viewModel.forceScreenOn.collectAsState()
+    val forceFullScreen by viewModel.forceFullScreen.collectAsState()
     val darkModeEnabled by viewModel.darkModeEnabled.collectAsState()
     val theme = LocalHvacTheme.current
     val configuration = LocalConfiguration.current
@@ -4680,6 +4681,61 @@ fun HvacSettingsDialog(
                                 uncheckedThumbColor = Color(0xFF64748B),
                                 uncheckedTrackColor = Color(0xFF1E293B)
                              )
+                        )
+                    }
+
+                    // Toggle 1.5: Force Full Screen Mode
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(hvacCardBgColor(), hvacCardShape(16))
+                            .border(BorderStroke(1.dp, hvacBorderAlphaColor()), hvacCardShape(16))
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(Color(0xFF3B82F6).copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Fullscreen,
+                                    contentDescription = null,
+                                    tint = Color(0xFF3B82F6),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = "Force Full Screen Mode",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "Hides system and navigation status bars",
+                                    fontSize = 10.sp,
+                                    color = Color.White.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = forceFullScreen,
+                            onCheckedChange = { viewModel.setForceFullScreen(it) },
+                            modifier = Modifier.testTag("force_full_screen_switch"),
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF10B981),
+                                checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.3f),
+                                uncheckedThumbColor = Color(0xFF64748B),
+                                uncheckedTrackColor = Color(0xFF1E293B)
+                            )
                         )
                     }
 
