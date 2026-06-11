@@ -26,8 +26,10 @@ object GithubClient {
                 .header("Expires", "0")
 
             val url = request.url.toString()
-            if (url.contains("api.github.com")) {
-                requestBuilder.header("Accept", "application/vnd.github.v3+json")
+            if (url.contains("api.github.com") || url.contains("raw.githubusercontent.com")) {
+                if (url.contains("api.github.com")) {
+                    requestBuilder.header("Accept", "application/vnd.github.v3+json")
+                }
                 tokenProvider?.invoke()?.let { token ->
                     val trimmed = token.trim()
                     val isInvalid = trimmed.isBlank() ||
