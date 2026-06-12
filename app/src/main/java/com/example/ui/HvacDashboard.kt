@@ -1257,7 +1257,7 @@ fun DynamicTabContent(
                         } else if (section.lowercase().trim() == "pool") {
                             item {
                                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                    PoolDataPlaceholder(theme = theme)
+                                    PoolDashboardView(viewModel = viewModel)
                                 }
                             }
                         }

@@ -188,3 +188,25 @@ data class CoverControl(
     val name: String,
     val state: String = "closed" // open, closed, opening, closing
 )
+
+data class PoolHistoryPoint(
+    val timestamp: String,
+    val temp: Float,
+    val ph: Float,
+    val orp: Float
+)
+
+data class PoolState(
+    val waterTemperature: Double? = null,
+    val ph: Double? = null,
+    val orp: Double? = null,
+    val battery: Double? = null,
+    val lastSynced: String? = null,
+    val lastUpdated: String? = null,
+    val monitorSerial: String? = null,
+    val sensorSerial: String? = null,
+    val wifiSignal: Int? = null,
+    val waterStatus: String? = null,
+    val actionsPending: Int? = null
+)
+

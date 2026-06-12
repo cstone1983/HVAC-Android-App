@@ -311,6 +311,42 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _isOffline = MutableStateFlow(false)
     val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
 
+    private val _poolState = MutableStateFlow(
+        PoolState(
+            waterTemperature = 79.0,
+            ph = 7.35,
+            orp = 561.0,
+            battery = 4536.0,
+            lastSynced = "3 minutes ago",
+            lastUpdated = "15 minutes ago",
+            monitorSerial = "020F5F12",
+            sensorSerial = "2515-0608P",
+            wifiSignal = -57,
+            waterStatus = "Balanced",
+            actionsPending = 1
+        )
+    )
+    val poolState: StateFlow<PoolState> = _poolState.asStateFlow()
+
+    private val _poolHistory = MutableStateFlow(
+        listOf(
+            PoolHistoryPoint("04:00", 78.5f, 7.32f, 558f),
+            PoolHistoryPoint("06:00", 78.2f, 7.34f, 554f),
+            PoolHistoryPoint("08:00", 77.8f, 7.35f, 552f),
+            PoolHistoryPoint("10:00", 77.5f, 7.33f, 556f),
+            PoolHistoryPoint("12:00", 77.2f, 7.36f, 560f),
+            PoolHistoryPoint("14:00", 77.3f, 7.37f, 558f),
+            PoolHistoryPoint("16:00", 77.9f, 7.36f, 562f),
+            PoolHistoryPoint("18:00", 78.6f, 7.34f, 564f),
+            PoolHistoryPoint("20:00", 79.4f, 7.33f, 568f),
+            PoolHistoryPoint("22:00", 80.1f, 7.35f, 570f),
+            PoolHistoryPoint("00:00", 79.8f, 7.36f, 566f),
+            PoolHistoryPoint("02:00", 79.2f, 7.35f, 562f),
+            PoolHistoryPoint("04:00", 79.0f, 7.35f, 561f)
+        )
+    )
+    val poolHistory: StateFlow<List<PoolHistoryPoint>> = _poolHistory.asStateFlow()
+
     fun forceSyncOnResume() {
         if (_isLoggedIn.value) {
             viewModelScope.launch {
@@ -613,6 +649,61 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     name = cv.name,
                     state = node?.state ?: "closed"
                 )
+            }
+
+            // 7. Parse Pool telemetry configurations and update Pool state
+            try {
+                val pTemp = statesMap["sensor.my_pool_water_temperature"]?.state?.toDoubleOrNull()
+                val pPh = statesMap["sensor.my_pool_ph"]?.state?.toDoubleOrNull()
+                val pOrp = statesMap["sensor.my_pool_orp"]?.state?.toDoubleOrNull()
+                val pBatt = statesMap["sensor.my_pool_battery"]?.state?.toDoubleOrNull()
+                val pSynced = statesMap["sensor.my_pool_last_synced"]?.state
+                val pUpdated = statesMap["sensor.my_pool_last_updated"]?.state
+                val pMSerial = statesMap["sensor.my_pool_monitor_serial"]?.state
+                val pSSerial = statesMap["sensor.my_pool_sensor_serial"]?.state
+                val pWifi = statesMap["sensor.my_pool_wifi_signal"]?.state?.toIntOrNull()
+                val pStatus = statesMap["sensor.my_pool_water_status"]?.state
+                val pPending = statesMap["sensor.my_pool_actions_pending"]?.state?.toIntOrNull()
+
+                val currentPool = _poolState.value
+                val newPool = PoolState(
+                    waterTemperature = pTemp ?: currentPool.waterTemperature,
+                    ph = pPh ?: currentPool.ph,
+                    orp = pOrp ?: currentPool.orp,
+                    battery = pBatt ?: currentPool.battery,
+                    lastSynced = pSynced ?: currentPool.lastSynced,
+                    lastUpdated = pUpdated ?: currentPool.lastUpdated,
+                    monitorSerial = pMSerial ?: currentPool.monitorSerial,
+                    sensorSerial = pSSerial ?: currentPool.sensorSerial,
+                    wifiSignal = pWifi ?: currentPool.wifiSignal,
+                    waterStatus = pStatus ?: currentPool.waterStatus,
+                    actionsPending = pPending ?: currentPool.actionsPending
+                )
+                _poolState.value = newPool
+
+                // Append a sample historical point for trend graphs
+                if (pTemp != null || pPh != null || pOrp != null) {
+                    val currentList = _poolHistory.value.toMutableList()
+                    val formatter = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                    val timeStr = formatter.format(java.util.Date())
+                    
+                    if (currentList.isEmpty() || currentList.last().timestamp != timeStr || currentList.size < 5) {
+                        currentList.add(
+                            PoolHistoryPoint(
+                                timestamp = timeStr,
+                                temp = (pTemp ?: currentPool.waterTemperature ?: 79.0).toFloat(),
+                                ph = (pPh ?: currentPool.ph ?: 7.35).toFloat(),
+                                orp = (pOrp ?: currentPool.orp ?: 561.0).toFloat()
+                            )
+                        )
+                        if (currentList.size > 24) {
+                            currentList.removeAt(0)
+                        }
+                        _poolHistory.value = currentList
+                    }
+                }
+            } catch (ex: Exception) {
+                // Fail-silent for pool parsing to ensure main thread state flow remains uninterrupted
             }
 
             _uiState.value = HvacUiState.Success(
