@@ -1240,24 +1240,26 @@ fun DynamicTabContent(
                     }
                 }
                 else -> {
-                    val dynamicSection = layoutConfig.dynamicSections?.find { it.id.lowercase().trim() == section.lowercase().trim() }
-                    if (dynamicSection != null) {
+                    if (section.lowercase().trim() == "pool") {
                         item {
                             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                DynamicSectionRenderer(sectionConfig = dynamicSection, theme = theme)
+                                PoolDashboardView(viewModel = viewModel)
                             }
                         }
                     } else {
-                        if (section.lowercase().trim() == "solar") {
+                        val dynamicSection = layoutConfig.dynamicSections?.find { it.id.lowercase().trim() == section.lowercase().trim() }
+                        if (dynamicSection != null) {
                             item {
                                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                    SolarDataPlaceholder(theme = theme)
+                                    DynamicSectionRenderer(sectionConfig = dynamicSection, theme = theme)
                                 }
                             }
-                        } else if (section.lowercase().trim() == "pool") {
-                            item {
-                                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                    PoolDashboardView(viewModel = viewModel)
+                        } else {
+                            if (section.lowercase().trim() == "solar") {
+                                item {
+                                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                        SolarDataPlaceholder(theme = theme)
+                                    }
                                 }
                             }
                         }
