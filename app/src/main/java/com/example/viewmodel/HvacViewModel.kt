@@ -1140,7 +1140,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 // Read from remote GitHub repository bypass CDN cache
                 val response = com.example.api.GithubClient.service.getLayoutConfig(url, System.currentTimeMillis())
                 if (response.isSuccessful && response.body() != null) {
-                    val remoteConfig = response.body()!!
+                    val remoteConfig = ensureSolarAndPoolTabs(response.body()!!)
                     val remoteJson = layoutConfigAdapter.toJson(remoteConfig)
                     
                     _updateState.value = UpdateState.Downloading(100, 100, 100)
@@ -1311,10 +1311,155 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         return false
     }
 
+    private fun ensureSolarAndPoolTabs(config: com.example.model.HvacLayoutConfig): com.example.model.HvacLayoutConfig {
+        val currentTabs = config.tabs ?: emptyList()
+        val hasSolar = currentTabs.any { it.id.lowercase().trim() == "solar" }
+        val hasPool = currentTabs.any { it.id.lowercase().trim() == "pool" }
+        
+        val finalTabs = if (hasSolar && hasPool) {
+            currentTabs
+        } else {
+            val newTabs = currentTabs.toMutableList()
+            val updatesIndex = newTabs.indexOfFirst { it.id.lowercase().trim() == "updates" }
+            
+            val solarTab = com.example.model.TabConfig(
+                id = "solar",
+                title = "SOLAR & ENERGY",
+                icon = "solar_power",
+                sections = listOf("solar")
+            )
+            
+            val poolTab = com.example.model.TabConfig(
+                id = "pool",
+                title = "POOL DATA",
+                icon = "pool",
+                sections = listOf("pool")
+            )
+            
+            if (!hasSolar) {
+                if (updatesIndex != -1) {
+                    newTabs.add(updatesIndex, solarTab)
+                } else {
+                    newTabs.add(solarTab)
+                }
+            }
+            
+            val newUpdatesIndex = newTabs.indexOfFirst { it.id.lowercase().trim() == "updates" }
+            if (!hasPool) {
+                if (newUpdatesIndex != -1) {
+                    newTabs.add(newUpdatesIndex, poolTab)
+                } else {
+                    newTabs.add(poolTab)
+                }
+            }
+            newTabs
+        }
+
+        val currentSections = config.dynamicSections ?: emptyList()
+        val hasSolarSection = currentSections.any { it.id.lowercase().trim() == "solar" }
+        val hasPoolSection = currentSections.any { it.id.lowercase().trim() == "pool" }
+        
+        val finalSections = if (hasSolarSection && hasPoolSection) {
+            currentSections
+        } else {
+            val newSections = currentSections.toMutableList()
+            if (!hasSolarSection) {
+                newSections.add(
+                    com.example.model.DynamicSectionConfig(
+                        id = "solar",
+                        title = "Solar Energy Dashboard",
+                        cards = listOf(
+                            com.example.model.DynamicCardConfig(
+                                type = "placeholder",
+                                title = "INTEGRATION PENDING",
+                                subtitle = "Solar Array & Inverter Telemetry",
+                                icon = "solar_power",
+                                tintColor = "eco",
+                                statusText = "Awaiting local inverter connection"
+                            ),
+                            com.example.model.DynamicCardConfig(
+                                type = "stats_row",
+                                title = "Current Production & Grid Flow",
+                                stats = listOf(
+                                    com.example.model.DynamicStatConfig(
+                                        label = "CURRENT PRODUCTION",
+                                        value = "Pending API Setup",
+                                        icon = "wb_sunny",
+                                        tintColor = "eco"
+                                    ),
+                                    com.example.model.DynamicStatConfig(
+                                        label = "GRID STATUS",
+                                        value = "Monitoring Offline",
+                                        icon = "bolt",
+                                        tintColor = "cool"
+                                    )
+                                )
+                            ),
+                            com.example.model.DynamicCardConfig(
+                                type = "chart",
+                                title = "HISTORICAL TRENDS (COMING SOON)",
+                                subtitle = "Daily solar yields and consumption patterns across seasons",
+                                icon = "trending_up"
+                            )
+                        )
+                    )
+                )
+            }
+            if (!hasPoolSection) {
+                newSections.add(
+                    com.example.model.DynamicSectionConfig(
+                        id = "pool",
+                        title = "Pool Automation Dashboard",
+                        cards = listOf(
+                            com.example.model.DynamicCardConfig(
+                                type = "placeholder",
+                                title = "INTEGRATION PENDING",
+                                subtitle = "Pool Automation & Chemistry Hub",
+                                icon = "pool",
+                                tintColor = "cool",
+                                statusText = "Connecting to local Automation adapter"
+                            ),
+                            com.example.model.DynamicCardConfig(
+                                type = "stats_row",
+                                title = "Chemistry & Equipment Status",
+                                stats = listOf(
+                                    com.example.model.DynamicStatConfig(
+                                        label = "PH & CHLORINE",
+                                        value = "pH: -- / Cl: -- ppm",
+                                        icon = "science",
+                                        tintColor = "accent"
+                                    ),
+                                    com.example.model.DynamicStatConfig(
+                                        label = "PUMP & HEATER STATUS",
+                                        value = "Pump: Off / Heater: Standby",
+                                        icon = "settings",
+                                        tintColor = "eco"
+                                    )
+                                )
+                            ),
+                            com.example.model.DynamicCardConfig(
+                                type = "chart",
+                                title = "TEMPERATURE HISTORICAL TRENDS",
+                                subtitle = "Pool temperature patterns and active heater runtime metrics",
+                                icon = "show_chart"
+                            )
+                        )
+                    )
+                )
+            }
+            newSections
+        }
+
+        return config.copy(
+            tabs = finalTabs,
+            dynamicSections = finalSections
+        )
+    }
+
     fun getActiveLayoutConfig(): com.example.model.HvacLayoutConfig {
         val builtIn = getBuiltInDefaultLayoutConfig()
         val savedJson = sharedPrefs.getString("layout_config_json", null)
-        if (!savedJson.isNullOrBlank()) {
+        val finalConfig = if (!savedJson.isNullOrBlank()) {
             try {
                 val config = layoutConfigAdapter.fromJson(savedJson)
                 if (config != null) {
@@ -1327,25 +1472,29 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         if (b > c) { builtInIsNewer = true; break }
                         else if (c > b) break
                     }
-                    if (!builtInIsNewer && config.version == builtIn.version) return config
-                    if (!builtInIsNewer) return config
+                    if (!builtInIsNewer) config else builtIn
+                } else {
+                    builtIn
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+                builtIn
             }
+        } else {
+            builtIn
         }
-        return builtIn
+        return ensureSolarAndPoolTabs(finalConfig)
     }
 
     fun getBuiltInDefaultLayoutConfig(): com.example.model.HvacLayoutConfig {
         try {
             val jsonString = getApplication<Application>().assets.open("layout_config.json").bufferedReader().use { it.readText() }
             val config = layoutConfigAdapter.fromJson(jsonString)
-            if (config != null) return config
+            if (config != null) return ensureSolarAndPoolTabs(config)
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return getBuiltInDefaultLayoutConfigFallback()
+        return ensureSolarAndPoolTabs(getBuiltInDefaultLayoutConfigFallback())
     }
 
     fun getBuiltInDefaultLayoutConfigFallback(): com.example.model.HvacLayoutConfig {
