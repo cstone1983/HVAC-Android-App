@@ -22,6 +22,39 @@ data class TabConfig(
 )
 
 @JsonClass(generateAdapter = true)
+data class DynamicChartPointConfig(
+    val label: String,
+    val value: Float
+)
+
+@JsonClass(generateAdapter = true)
+data class DynamicStatConfig(
+    val label: String,
+    val value: String,
+    val icon: String? = null,
+    val tintColor: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DynamicCardConfig(
+    val type: String, // "placeholder", "stats_row", "chart", "info_list", "status_panel"
+    val title: String? = null,
+    val subtitle: String? = null,
+    val icon: String? = null,
+    val tintColor: String? = null, // "eco", "cool", "heating", "accent", etc.
+    val statusText: String? = null,
+    val stats: List<DynamicStatConfig>? = null,
+    val chartData: List<DynamicChartPointConfig>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DynamicSectionConfig(
+    val id: String,
+    val title: String? = null,
+    val cards: List<DynamicCardConfig> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
 data class HvacLayoutConfig(
     val version: String,
     val roomSensors: List<RoomSensorConfig>,
@@ -32,6 +65,7 @@ data class HvacLayoutConfig(
     val appTitle: String? = "Home Control",
     val appSubtitle: String? = "HVAC SYSTEM CONTROLLER",
     val theme: HvacThemeConfig? = HvacThemeConfig(),
+    val dynamicSections: List<DynamicSectionConfig>? = emptyList(),
     val tabs: List<TabConfig>? = listOf(
         TabConfig("zones", "ZONES & UNITS", "layers", listOf("sensors", "zones")),
         TabConfig("aux", "POWER CONTROL", "lightbulb", listOf("condensed_power")),

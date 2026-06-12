@@ -821,6 +821,7 @@ fun DynamicTabContent(
 ) {
     val context = LocalContext.current
     val theme = LocalHvacTheme.current
+    val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
     var activeZoneDetail by remember { mutableStateOf<ClimateZone?>(null) }
     var activeLightPopupId by remember { mutableStateOf<String?>(null) }
     var activeSwitchPopupId by remember { mutableStateOf<String?>(null) }
@@ -1231,24 +1232,34 @@ fun DynamicTabContent(
                         }
                     }
                 }
-                "solar" -> {
-                    item {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                            SolarDataPlaceholder(theme = theme)
-                        }
-                    }
-                }
-                "pool" -> {
-                    item {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                            PoolDataPlaceholder(theme = theme)
-                        }
-                    }
-                }
                 "updates" -> {
                     item {
                         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                             UpdatesTab(viewModel = viewModel)
+                        }
+                    }
+                }
+                else -> {
+                    val dynamicSection = layoutConfig.dynamicSections?.find { it.id.lowercase().trim() == section.lowercase().trim() }
+                    if (dynamicSection != null) {
+                        item {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                DynamicSectionRenderer(sectionConfig = dynamicSection, theme = theme)
+                            }
+                        }
+                    } else {
+                        if (section.lowercase().trim() == "solar") {
+                            item {
+                                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                    SolarDataPlaceholder(theme = theme)
+                                }
+                            }
+                        } else if (section.lowercase().trim() == "pool") {
+                            item {
+                                Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                    PoolDataPlaceholder(theme = theme)
+                                }
+                            }
                         }
                     }
                 }
@@ -4073,7 +4084,59 @@ fun UpdatesTab(
             }
         }
 
+        // RESTORE BUILT-IN LAYOUT ACTION
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+            shape = hvacCardShape(12),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "LAYOUT SYNC FIX",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White.copy(alpha = 0.4f),
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "Restore app's built-in layout configuration template",
+                        fontSize = 11.sp,
+                        color = Color.White.copy(alpha = 0.7f)
+                    )
+                }
 
+                Button(
+                    onClick = {
+                        viewModel.resetLayoutToDefault()
+                        android.widget.Toast.makeText(context, "Layout has been reset to Default v5.1.0!", android.widget.Toast.LENGTH_LONG).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Transparent,
+                        contentColor = theme.coolColor
+                    ),
+                    border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Restore Default",
+                        modifier = Modifier.size(13.dp),
+                        tint = theme.coolColor
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("RESTORE DEFAULT", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = theme.coolColor)
+                }
+            }
+        }
     }
 }
 

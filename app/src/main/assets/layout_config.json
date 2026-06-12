@@ -1,5 +1,5 @@
 {
-  "version": "5.0.0",
+  "version": "5.1.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "theme": {
@@ -247,6 +247,84 @@
     {
       "entityId": "switch.pool_pump",
       "name": "Pool Pump"
+    }
+  ],
+  "dynamicSections": [
+    {
+      "id": "solar",
+      "title": "Solar Energy Dashboard",
+      "cards": [
+        {
+          "type": "placeholder",
+          "title": "INTEGRATION PENDING",
+          "subtitle": "Solar Array & Inverter Telemetry",
+          "icon": "solar_power",
+          "tintColor": "eco",
+          "statusText": "Awaiting local inverter connection"
+        },
+        {
+          "type": "stats_row",
+          "title": "Current Production & Grid Flow",
+          "stats": [
+            {
+              "label": "CURRENT PRODUCTION",
+              "value": "Pending API Setup",
+              "icon": "wb_sunny",
+              "tintColor": "eco"
+            },
+            {
+              "label": "GRID STATUS",
+              "value": "Monitoring Offline",
+              "icon": "bolt",
+              "tintColor": "cool"
+            }
+          ]
+        },
+        {
+          "type": "chart",
+          "title": "HISTORICAL TRENDS (COMING SOON)",
+          "subtitle": "Daily solar yields and consumption patterns across seasons",
+          "icon": "trending_up"
+        }
+      ]
+    },
+    {
+      "id": "pool",
+      "title": "Pool Automation Dashboard",
+      "cards": [
+        {
+          "type": "placeholder",
+          "title": "INTEGRATION PENDING",
+          "subtitle": "Pool Automation & Chemistry Hub",
+          "icon": "pool",
+          "tintColor": "cool",
+          "statusText": "Connecting to local Automation adapter"
+        },
+        {
+          "type": "stats_row",
+          "title": "Chemistry & Equipment Status",
+          "stats": [
+            {
+              "label": "PH & CHLORINE",
+              "value": "pH: -- / Cl: -- ppm",
+              "icon": "science",
+              "tintColor": "accent"
+            },
+            {
+              "label": "PUMP & HEATER STATUS",
+              "value": "Pump: Off / Heater: Standby",
+              "icon": "settings",
+              "tintColor": "eco"
+            }
+          ]
+        },
+        {
+          "type": "chart",
+          "title": "TEMPERATURE HISTORICAL TRENDS",
+          "subtitle": "Pool temperature patterns and active heater runtime metrics",
+          "icon": "show_chart"
+        }
+      ]
     }
   ],
   "covers": [

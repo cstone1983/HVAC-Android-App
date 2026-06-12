@@ -1444,7 +1444,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             ),
             covers = listOf(
                 com.example.model.CoverControlConfig("cover.konnected_d332ec_garage_door", "Garage South")
-            )
+            ),
+            dynamicSections = emptyList()
         )
     }
 
