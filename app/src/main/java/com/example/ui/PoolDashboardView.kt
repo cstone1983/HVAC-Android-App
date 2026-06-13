@@ -30,6 +30,82 @@ import com.example.ui.theme.LocalHvacTheme
 import com.example.ui.theme.HvacThemeColors
 import com.example.ui.theme.hvacCardShape
 
+fun formatFriendlyTime(rawInput: String?): String {
+    if (rawInput == null || rawInput.isBlank()) return "15 Min ago"
+
+    // Try parsing Unix timestamp as a Float or Double (e.g. seconds format "1718280000" or milliseconds)
+    val doubleVal = rawInput.toDoubleOrNull()
+    if (doubleVal != null) {
+        val ms = (doubleVal * 1000).toLong()
+        return calculateFriendlyTime(ms)
+    }
+
+    val longVal = rawInput.toLongOrNull()
+    if (longVal != null) {
+        val ms = if (longVal < 100000000000L) longVal * 1000 else longVal
+        return calculateFriendlyTime(ms)
+    }
+
+    // Try parsing ISO formats
+    val formats = listOf(
+        "yyyy-MM-dd'T'HH:mm:ssXXX",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+        "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX",
+        "yyyy-MM-dd'T'HH:mm:ss'Z'",
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        "yyyy-MM-dd HH:mm:ss",
+        "yyyy-MM-dd'T'HH:mm:ss"
+    )
+
+    for (format in formats) {
+        try {
+            val sdf = java.text.SimpleDateFormat(format, java.util.Locale.US)
+            if (format.endsWith("'Z'")) {
+                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            val date = sdf.parse(rawInput)
+            if (date != null) {
+                return calculateFriendlyTime(date.time)
+            }
+        } catch (e: Exception) {
+            // Check next format
+        }
+    }
+
+    // fallback matching for common relative words
+    val lower = rawInput.lowercase().trim()
+    if (lower.contains("minute") || lower.contains("min")) {
+        val num = lower.replace(Regex("[^0-9]"), "")
+        if (num.isNotEmpty()) return "$num Min ago"
+    }
+    if (lower.contains("hour") || lower.contains("hr")) {
+        val num = lower.replace(Regex("[^0-9]"), "")
+        if (num.isNotEmpty()) return "$num Hr ago"
+    }
+    if (lower.contains("second") || lower.contains("sec")) {
+        return "Just Now"
+    }
+
+    return rawInput
+}
+
+private fun calculateFriendlyTime(epochMs: Long): String {
+    val diffMs = System.currentTimeMillis() - epochMs
+    if (diffMs < 0) return "Just Now"
+
+    val diffSeconds = diffMs / 1000
+    val diffMinutes = diffSeconds / 60
+    val diffHours = diffMinutes / 60
+    val diffDays = diffHours / 24
+
+    return when {
+        diffMinutes < 1 -> "Just Now"
+        diffMinutes < 60 -> "$diffMinutes Min ago"
+        diffHours < 24 -> "$diffHours Hr ago"
+        else -> "$diffDays Day ago"
+    }
+}
+
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun PoolDashboardView(
@@ -199,7 +275,7 @@ fun PoolDashboardView(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = (poolState.lastUpdated ?: "15 min ago").uppercase(),
+                        text = formatFriendlyTime(poolState.lastUpdated).uppercase(),
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White.copy(alpha = 0.35f)
@@ -953,8 +1029,8 @@ fun PoolDashboardView(
                 DiagnosticItem("Monitor Serial", poolState.monitorSerial ?: "020F5F12", Icons.Outlined.Monitor, theme)
                 DiagnosticItem("Sensor Serial", poolState.sensorSerial ?: "2515-0608P", Icons.Outlined.QrCodeScanner, theme)
                 DiagnosticItem("WiFi Signal Link", "${poolState.wifiSignal ?: -57} dBm", Icons.Outlined.CellTower, theme)
-                DiagnosticItem("Last Device Sync", poolState.lastSynced ?: "3 minutes ago", Icons.Outlined.CloudSync, theme)
-                DiagnosticItem("Last Updated", poolState.lastUpdated ?: "15 minutes ago", Icons.Outlined.History, theme)
+                DiagnosticItem("Last Device Sync", formatFriendlyTime(poolState.lastSynced), Icons.Outlined.CloudSync, theme)
+                DiagnosticItem("Last Updated", formatFriendlyTime(poolState.lastUpdated), Icons.Outlined.History, theme)
             }
         }
     }
