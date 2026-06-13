@@ -287,11 +287,31 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         if (_isLoggedIn.value) {
             viewModelScope.launch {
                 try {
-                    HomeAssistantClient.service.callService(
-                        "input_number",
-                        "set_value",
-                        mapOf("entity_id" to entityId, "value" to value)
-                    )
+                    try {
+                        HomeAssistantClient.service.callService(
+                            "input_number",
+                            "set_value",
+                            mapOf("entity_id" to entityId, "value" to value)
+                        )
+                    } catch (e: Exception) {
+                        // Failover target retry
+                        val token = sharedPrefs.getString("ha_token", "") ?: ""
+                        val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                        if (token.isNotEmpty() && alternateUrl.isNotEmpty()) {
+                            HomeAssistantClient.initialize(alternateUrl, token)
+                            try {
+                                HomeAssistantClient.service.callService(
+                                    "input_number",
+                                    "set_value",
+                                    mapOf("entity_id" to entityId, "value" to value)
+                                )
+                                _usingBackupUrl.value = !_usingBackupUrl.value
+                            } catch (e2: Exception) {
+                                val originalUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                                HomeAssistantClient.initialize(originalUrl, token)
+                            }
+                        }
+                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -302,13 +322,33 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _haUrl = MutableStateFlow(sharedPrefs.getString("ha_url", null) ?: (try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }))
     val haUrl: StateFlow<String> = _haUrl.asStateFlow()
 
+    private val _backupHaUrl = MutableStateFlow(sharedPrefs.getString("backup_ha_url", "http://10.10.1.116:8123/") ?: "http://10.10.1.116:8123/")
+    val backupHaUrl: StateFlow<String> = _backupHaUrl.asStateFlow()
+
+    private val _usingBackupUrl = MutableStateFlow(false)
+    val usingBackupUrl: StateFlow<Boolean> = _usingBackupUrl.asStateFlow()
+
+    fun updateBackupHaUrl(newUrl: String) {
+        val formattedUrl = HomeAssistantClient.formatBaseUrl(newUrl)
+        sharedPrefs.edit().putString("backup_ha_url", formattedUrl).apply()
+        _backupHaUrl.value = formattedUrl
+        
+        if (_usingBackupUrl.value && _isLoggedIn.value) {
+            val token = sharedPrefs.getString("ha_token", "") ?: ""
+            if (token.isNotEmpty()) {
+                HomeAssistantClient.initialize(formattedUrl, token)
+                startSync()
+            }
+        }
+    }
+
     fun updateHaUrl(newUrl: String) {
         val formattedUrl = HomeAssistantClient.formatBaseUrl(newUrl)
         sharedPrefs.edit().putString("ha_url", formattedUrl).apply()
         _haUrl.value = formattedUrl
         
         val token = sharedPrefs.getString("ha_token", "") ?: ""
-        if (token.isNotEmpty() && _isLoggedIn.value) {
+        if (token.isNotEmpty() && _isLoggedIn.value && !_usingBackupUrl.value) {
             HomeAssistantClient.initialize(formattedUrl, token)
             startSync()
         }
@@ -579,7 +619,36 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 lastException = e
                 if (attempt < maxAttempts) {
-                    delay(3000) // quiet reconnection wait
+                    delay(2000) // quiet reconnection wait
+                }
+            }
+        }
+
+        // If fetch failed, try to flip to the alternative connection address (backup vs primary)
+        if (responseList == null && _isLoggedIn.value) {
+            val token = sharedPrefs.getString("ha_token", "") ?: ""
+            if (token.isNotEmpty()) {
+                val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                if (alternateUrl.isNotEmpty() && alternateUrl != "https://localhost/") {
+                    HomeAssistantClient.initialize(alternateUrl, token)
+                    for (attempt in 1..maxAttempts) {
+                        try {
+                            responseList = HomeAssistantClient.service.getStates()
+                            _usingBackupUrl.value = !_usingBackupUrl.value
+                            lastException = null
+                            break
+                        } catch (e: Exception) {
+                            lastException = e
+                            if (attempt < maxAttempts) {
+                                delay(2000)
+                            }
+                        }
+                    }
+                    if (responseList == null) {
+                        // Revert back to original url client state
+                        val originalUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                        HomeAssistantClient.initialize(originalUrl, token)
+                    }
                 }
             }
         }
@@ -986,8 +1055,36 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         _actionFeedback.value = feedbackMessage
         viewModelScope.launch {
             try {
-                val response = HomeAssistantClient.service.callService(domain, service, payload)
-                if (response.isSuccessful) {
+                var success = false
+                try {
+                    val response = HomeAssistantClient.service.callService(domain, service, payload)
+                    if (response.isSuccessful) {
+                        success = true
+                    }
+                } catch (e: Exception) {
+                    // Try to failover to primary or backup depending on which is currently configured and inactive
+                    val token = sharedPrefs.getString("ha_token", "") ?: ""
+                    val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                    if (token.isNotEmpty() && alternateUrl.isNotEmpty() && alternateUrl != "https://localhost/") {
+                        HomeAssistantClient.initialize(alternateUrl, token)
+                        try {
+                            val response = HomeAssistantClient.service.callService(domain, service, payload)
+                            if (response.isSuccessful) {
+                                success = true
+                                _usingBackupUrl.value = !_usingBackupUrl.value
+                            }
+                        } catch (e2: Exception) {
+                            // Restore original Client if alternate failed
+                            val originalUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                            HomeAssistantClient.initialize(originalUrl, token)
+                            throw e2
+                        }
+                    } else {
+                        throw e
+                    }
+                }
+
+                if (success) {
                     fetchStates() // immediately sync to get final states
                 } else {
                     _actionFeedback.value = "Failed to apply state (API returned error)"

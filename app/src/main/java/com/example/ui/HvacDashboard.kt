@@ -5941,13 +5941,39 @@ fun HvacSettingsDialog(
 
                     val context = LocalContext.current
                     val currentHaUrl by viewModel.haUrl.collectAsState()
+                    val backupHaUrl by viewModel.backupHaUrl.collectAsState()
+                    val usingBackupUrl by viewModel.usingBackupUrl.collectAsState()
                     val defaultHaUrl = remember { viewModel.getDefaultHaUrl() }
                     var urlText by remember(currentHaUrl) { mutableStateOf(currentHaUrl) }
+                    var backupUrlText by remember(backupHaUrl) { mutableStateOf(backupHaUrl) }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(6.dp))
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (usingBackupUrl) Color(0xFF10B981) else Color(0xFF2196F3))
+                        )
+                        Text(
+                            text = if (usingBackupUrl) "CONNECTED TO BACKUP SERVER" else "CONNECTED TO PRIMARY SERVER",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (usingBackupUrl) Color(0xFF10B981) else Color(0xFF2196F3),
+                            letterSpacing = 0.5.sp
+                        )
+                    }
 
                     OutlinedTextField(
                         value = urlText,
                         onValueChange = { urlText = it },
-                        label = { Text("Server Base URL", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                        label = { Text("Primary Server Base URL", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
@@ -5965,6 +5991,27 @@ fun HvacSettingsDialog(
                         }
                     )
 
+                    OutlinedTextField(
+                        value = backupUrlText,
+                        onValueChange = { backupUrlText = it },
+                        label = { Text("Backup Server Base URL", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedIndicatorColor = Color(0xFF10B981),
+                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("ha_backup_url_input"),
+                        leadingIcon = {
+                            Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF10B981).copy(alpha = 0.8f))
+                        }
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -5973,7 +6020,8 @@ fun HvacSettingsDialog(
                             onClick = {
                                 if (urlText.isNotBlank()) {
                                     viewModel.updateHaUrl(urlText)
-                                    Toast.makeText(context, "Server URL updated & reconnected!", Toast.LENGTH_SHORT).show()
+                                    viewModel.updateBackupHaUrl(backupUrlText)
+                                    Toast.makeText(context, "Connectivity parameters saved & applied!", Toast.LENGTH_SHORT).show()
                                 } else {
                                     Toast.makeText(context, "URL cannot be empty", Toast.LENGTH_SHORT).show()
                                 }
