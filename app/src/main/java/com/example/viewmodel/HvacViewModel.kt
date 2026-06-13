@@ -182,6 +182,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _layoutUpdateError = MutableStateFlow<String?>(null)
     val layoutUpdateError: StateFlow<String?> = _layoutUpdateError.asStateFlow()
 
+    private val _recentCommits = MutableStateFlow<List<com.example.model.GithubCommit>>(emptyList())
+    val recentCommits: StateFlow<List<com.example.model.GithubCommit>> = _recentCommits.asStateFlow()
+
     fun updateGithubSettings(repo: String, branch: String, token: String) {
         val cleanRepo = repo.trim().removePrefix("https://github.com/").removeSuffix(".git").trim()
         val cleanBranch = branch.trim()
@@ -905,7 +908,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 var checkFailureDetails: String? = null
 
                 try {
-                    val commitUrl = "https://api.github.com/repos/$repo/commits/$branch"
+                    val commitUrl = "https://api.github.com/repos/$repo/commits/$branch?t=${System.currentTimeMillis()}"
                     val commitResponse = com.example.api.GithubClient.service.getLatestCommit(commitUrl)
                     if (commitResponse.isSuccessful && commitResponse.body() != null) {
                         val commitObj = commitResponse.body()!!
@@ -934,6 +937,18 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (e: Exception) {
                     e.printStackTrace()
                     checkFailureDetails = "Connection failure: ${e.localizedMessage ?: "Unknown network failure"}"
+                }
+
+                if (sha.isNotEmpty()) {
+                    try {
+                        val recentCommitsUrl = "https://api.github.com/repos/$repo/commits?sha=$branch&per_page=6&t=${System.currentTimeMillis()}"
+                        val recentResponse = com.example.api.GithubClient.service.getRecentCommits(recentCommitsUrl)
+                        if (recentResponse.isSuccessful && recentResponse.body() != null) {
+                            _recentCommits.value = recentResponse.body()!!
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
 
                 if (sha.isEmpty()) {
@@ -1008,13 +1023,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun downloadUpdateAndInstall(context: Context, downloadUrl: String, fileName: String = "layout_config.json") {
+    fun downloadUpdateAndInstall(context: Context, downloadUrl: String, commitSha: String? = null, fileName: String = "layout_config.json") {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
             try {
                 _updateState.value = UpdateState.Downloading(0, 100, 0)
                 
                 val repo = _githubRepo.value
-                val sha = pendingSoftwareCommit.ifEmpty { _githubBranch.value }
+                val sha = commitSha ?: pendingSoftwareCommit.ifEmpty { _githubBranch.value }
                 val url = "https://raw.githubusercontent.com/$repo/$sha/layout_config.json"
                 
                 // Read from remote GitHub repository bypass CDN cache

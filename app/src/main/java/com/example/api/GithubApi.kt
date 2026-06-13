@@ -18,6 +18,9 @@ interface GithubApi {
     suspend fun getLatestCommit(@Url url: String): Response<com.example.model.GithubCommit>
 
     @GET
+    suspend fun getRecentCommits(@Url url: String): Response<List<com.example.model.GithubCommit>>
+
+    @GET
     suspend fun getLayoutConfig(@Url url: String, @retrofit2.http.Query("t") timestamp: Long): Response<com.example.model.HvacLayoutConfig>
 
     @Streaming

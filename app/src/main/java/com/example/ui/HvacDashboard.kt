@@ -3511,6 +3511,7 @@ fun UpdatesTab(
     val githubRepo by viewModel.githubRepo.collectAsStateWithLifecycle()
     val githubBranch by viewModel.githubBranch.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val recentCommits by viewModel.recentCommits.collectAsStateWithLifecycle()
 
     fun formatBytes(bytes: Long): String {
         if (bytes <= 0) return "0 B"
@@ -4080,6 +4081,152 @@ fun UpdatesTab(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("INITIALIZE BROAD UPDATE SCAN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (recentCommits.isNotEmpty()) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+                border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+                shape = hvacCardShape(16),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "RECENT OTA UPDATE HISTORY",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black,
+                                color = theme.coolColor,
+                                letterSpacing = 1.sp
+                            )
+                            Text(
+                                text = "Last ${recentCommits.size} layout updates on '$githubBranch'",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.5f)
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = "History Icon",
+                            tint = theme.coolColor,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+
+                    recentCommits.forEach { commit ->
+                        val shortSha = commit.sha.take(7)
+                        val commitMsg = commit.commit?.message?.lines()?.firstOrNull() ?: "No message"
+                        val author = commit.commit?.author?.name ?: "Unknown"
+                        val commitDateStr = commit.commit?.author?.date ?: ""
+                        
+                        val cleanDate = remember(commitDateStr) {
+                            if (commitDateStr.contains("T")) {
+                                val parts = commitDateStr.split("T")
+                                val datePart = parts[0]
+                                val timePart = parts[1].take(5)
+                                "$datePart $timePart"
+                            } else {
+                                commitDateStr
+                            }
+                        }
+
+                        val isActive = activeVersion.contains(shortSha)
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (isActive) Color.White.copy(alpha = 0.04f) else Color.Transparent,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    if (isActive) theme.ecoColor.copy(alpha = 0.15f) else Color.Transparent,
+                                    RoundedCornerShape(8.dp)
+                                )
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = shortSha,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isActive) theme.ecoColor else theme.coolColor
+                                    )
+                                    if (isActive) {
+                                        Box(
+                                            modifier = Modifier
+                                                .background(theme.ecoColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                                .border(1.dp, theme.ecoColor.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = "ACTIVE",
+                                                fontSize = 7.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = theme.ecoColor
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = commitMsg,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "by $author • $cleanDate",
+                                    fontSize = 9.sp,
+                                    color = Color.White.copy(alpha = 0.4f)
+                                )
+                            }
+
+                            if (!isActive) {
+                                val configUrl = "https://raw.githubusercontent.com/$githubRepo/${commit.sha}/layout_config.json"
+                                IconButton(
+                                    onClick = {
+                                        viewModel.downloadUpdateAndInstall(context, configUrl, commitSha = commit.sha)
+                                        android.widget.Toast.makeText(context, "Pulling layout config for $shortSha...", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(Color.White.copy(alpha = 0.05f), CircleShape)
+                                        .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDownload,
+                                        contentDescription = "Apply dynamic update",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
