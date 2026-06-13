@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -38,6 +39,15 @@ fun PoolDashboardView(
     val theme = LocalHvacTheme.current
     val poolState by viewModel.poolState.collectAsStateWithLifecycle()
     val poolHistory by viewModel.poolHistory.collectAsStateWithLifecycle()
+
+    val poolTempMin by viewModel.poolTempMin.collectAsStateWithLifecycle()
+    val poolTempMax by viewModel.poolTempMax.collectAsStateWithLifecycle()
+    val poolPhMin by viewModel.poolPhMin.collectAsStateWithLifecycle()
+    val poolPhMax by viewModel.poolPhMax.collectAsStateWithLifecycle()
+    val poolOrpMin by viewModel.poolOrpMin.collectAsStateWithLifecycle()
+    val poolOrpMax by viewModel.poolOrpMax.collectAsStateWithLifecycle()
+    val poolBatteryMin by viewModel.poolBatteryMin.collectAsStateWithLifecycle()
+    val poolBatteryMax by viewModel.poolBatteryMax.collectAsStateWithLifecycle()
 
     var activeTrendTab by remember { mutableStateOf(0) } // 0 = Temp, 1 = pH, 2 = ORP
     var activeTimeFrame by remember { mutableStateOf(0) } // 0 = 24h, 1 = 1 Week, 2 = 1 Month
@@ -237,12 +247,12 @@ fun PoolDashboardView(
                     Text("pH LEVEL", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.4f))
                     Icon(Icons.Default.WaterDrop, contentDescription = null, tint = theme.coolColor, modifier = Modifier.size(12.dp))
                 }
-                Spacer(modifier = Modifier.height(4.dp))
-                val ph = poolState.ph ?: 7.35
-                Text("${String.format("%.2f", ph)}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                 Spacer(modifier = Modifier.height(4.dp))
+                 val ph = poolState.ph ?: 7.35
+                 Text("${String.format("%.2f", ph)}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 
                 Spacer(modifier = Modifier.height(4.dp))
-                val isPhIdeal = ph in 7.2..7.6
+                val isPhIdeal = ph >= poolPhMin && ph <= poolPhMax
                 Text(
                     text = if (isPhIdeal) "• IDEAL" else "• ADJUST REQ",
                     fontSize = 8.sp,
@@ -250,7 +260,7 @@ fun PoolDashboardView(
                     color = if (isPhIdeal) theme.ecoColor else theme.heatColor
                 )
             }
-
+ 
             // ORP CARD
             Column(
                 modifier = Modifier
@@ -273,7 +283,7 @@ fun PoolDashboardView(
                 Text("${orp.toInt()} mV", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 
                 Spacer(modifier = Modifier.height(4.dp))
-                val isOrpIdeal = orp in 550.0..750.0
+                val isOrpIdeal = orp >= poolOrpMin && orp <= poolOrpMax
                 Text(
                     text = if (isOrpIdeal) "• ADEQUATE" else "• LOW SANITIZER",
                     fontSize = 8.sp,
@@ -409,6 +419,17 @@ fun PoolDashboardView(
                 }
             }
 
+            val rangeMin = when (activeTrendTab) {
+                0 -> poolTempMin
+                1 -> poolPhMin
+                else -> poolOrpMin
+            }
+            val rangeMax = when (activeTrendTab) {
+                0 -> poolTempMax
+                1 -> poolPhMax
+                else -> poolOrpMax
+            }
+
             // Calculation of chart ranges
             val originalValues = displayHistory.map { pt ->
                 when (activeTrendTab) {
@@ -418,8 +439,8 @@ fun PoolDashboardView(
                 }
             }
 
-            val minVal = originalValues.minOrNull() ?: 0f
-            val maxVal = originalValues.maxOrNull() ?: 100f
+            val minVal = minOf(originalValues.minOrNull() ?: 0f, rangeMin)
+            val maxVal = maxOf(originalValues.maxOrNull() ?: 100f, rangeMax)
             val range = if (maxVal - minVal == 0f) 1f else maxVal - minVal
 
             // Canvas & Y-Axis container
@@ -491,6 +512,32 @@ fun PoolDashboardView(
                             start = Offset(0f, pad + effH),
                             end = Offset(width, pad + effH),
                             strokeWidth = 1f
+                        )
+
+                        // Draw set target range background
+                        val yMinBound = pad + (1f - (rangeMin - minVal) / range) * effH
+                        val yMaxBound = pad + (1f - (rangeMax - minVal) / range) * effH
+                        val heightDiff = if (yMinBound > yMaxBound) yMinBound - yMaxBound else yMaxBound - yMinBound
+                        
+                        drawRect(
+                            color = theme.ecoColor.copy(alpha = 0.08f),
+                            topLeft = Offset(0f, if (yMinBound < yMaxBound) yMinBound else yMaxBound),
+                            size = Size(width, heightDiff)
+                        )
+                        
+                        drawLine(
+                            color = theme.ecoColor.copy(alpha = 0.25f),
+                            start = Offset(0f, yMinBound),
+                            end = Offset(width, yMinBound),
+                            strokeWidth = 1.dp.toPx(),
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
+                        )
+                        drawLine(
+                            color = theme.ecoColor.copy(alpha = 0.25f),
+                            start = Offset(0f, yMaxBound),
+                            end = Offset(width, yMaxBound),
+                            strokeWidth = 1.dp.toPx(),
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
                         )
 
                         if (displayHistory.isNotEmpty()) {
@@ -593,6 +640,289 @@ fun PoolDashboardView(
             }
         }
 
+        // --- 3.5. POOL THRESHOLDS & SETTINGS PANEL ---
+        var isSettingsExpanded by remember { mutableStateOf(false) }
+        
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = theme.cardOpacity)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.07f)),
+            shape = hvacCardShape(14),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isSettingsExpanded = !isSettingsExpanded },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = "Tune Icon",
+                            tint = theme.coolColor,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Column {
+                            Text(
+                                text = "POOL TARGET THRESHOLDS",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 9.sp,
+                                color = theme.coolColor,
+                                letterSpacing = 1.sp
+                            )
+                            Text(
+                                text = "Configure safe ranges for automated balanced checks",
+                                fontSize = 10.sp,
+                                color = Color.White.copy(alpha = 0.4f)
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = if (isSettingsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = "Expand/Collapse",
+                        tint = Color.White.copy(alpha = 0.4f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                if (isSettingsExpanded) {
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+
+                    var tempMinStr by remember(poolTempMin) { mutableStateOf(poolTempMin.toString()) }
+                    var tempMaxStr by remember(poolTempMax) { mutableStateOf(poolTempMax.toString()) }
+
+                    var phMinStr by remember(poolPhMin) { mutableStateOf(String.format("%.2f", poolPhMin)) }
+                    var phMaxStr by remember(poolPhMax) { mutableStateOf(String.format("%.2f", poolPhMax)) }
+
+                    var orpMinStr by remember(poolOrpMin) { mutableStateOf(poolOrpMin.toInt().toString()) }
+                    var orpMaxStr by remember(poolOrpMax) { mutableStateOf(poolOrpMax.toInt().toString()) }
+
+                    var batteryMinStr by remember(poolBatteryMin) { mutableStateOf(poolBatteryMin.toInt().toString()) }
+                    var batteryMaxStr by remember(poolBatteryMax) { mutableStateOf(poolBatteryMax.toInt().toString()) }
+
+                    val context = LocalContext.current
+
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // WATER TEMPERATURE RANGE
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "Water Temperature Range (°F)",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = tempMinStr,
+                                    onValueChange = { tempMinStr = it },
+                                    label = { Text("Min Temp", color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = theme.coolColor,
+                                        unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = tempMaxStr,
+                                    onValueChange = { tempMaxStr = it },
+                                    label = { Text("Max Temp", color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = theme.coolColor,
+                                        unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        // PH LEVEL RANGE
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "pH Cleanliness Range",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = phMinStr,
+                                    onValueChange = { phMinStr = it },
+                                    label = { Text("Min pH", color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = theme.ecoColor,
+                                        unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = phMaxStr,
+                                    onValueChange = { phMaxStr = it },
+                                    label = { Text("Max pH", color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = theme.ecoColor,
+                                        unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        // ORP ACCENT RANGE
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "ORP Sanitizer Range (mV)",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = orpMinStr,
+                                    onValueChange = { orpMinStr = it },
+                                    label = { Text("Min ORP", color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = theme.heatColor,
+                                        unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = orpMaxStr,
+                                    onValueChange = { orpMaxStr = it },
+                                    label = { Text("Max ORP", color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = theme.heatColor,
+                                        unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        // BATTERY VOLTAGE RANGE
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                "Pool Monitor Battery Range (mV)",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = batteryMinStr,
+                                    onValueChange = { batteryMinStr = it },
+                                    label = { Text("Min Battery", color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = theme.coolColor,
+                                        unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = batteryMaxStr,
+                                    onValueChange = { batteryMaxStr = it },
+                                    label = { Text("Max Battery", color = Color.White.copy(alpha = 0.3f), fontSize = 10.sp) },
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = theme.coolColor,
+                                        unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                                    ),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        // Apply ranges button
+                        Button(
+                            onClick = {
+                                val tMin = tempMinStr.toFloatOrNull() ?: poolTempMin
+                                val tMax = tempMaxStr.toFloatOrNull() ?: poolTempMax
+                                val pMin = phMinStr.toFloatOrNull() ?: poolPhMin
+                                val pMax = phMaxStr.toFloatOrNull() ?: poolPhMax
+                                val oMin = orpMinStr.toFloatOrNull() ?: poolOrpMin
+                                val oMax = orpMaxStr.toFloatOrNull() ?: poolOrpMax
+                                val bMin = batteryMinStr.toFloatOrNull() ?: poolBatteryMin
+                                val bMax = batteryMaxStr.toFloatOrNull() ?: poolBatteryMax
+
+                                if (tMin <= tMax && pMin <= pMax && oMin <= oMax && bMin <= bMax) {
+                                    viewModel.setPoolTempRange(tMin, tMax)
+                                    viewModel.setPoolPhRange(pMin, pMax)
+                                    viewModel.setPoolOrpRange(oMin, oMax)
+                                    viewModel.setPoolBatteryRange(bMin, bMax)
+                                    android.widget.Toast.makeText(context, "Telemetry threshold ranges updated successfully", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "Invalid boundaries: Min must be less than Max", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = theme.ecoColor,
+                                contentColor = Color.Black
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Black)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("SAVE TARGET RANGES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        }
+                    }
+                }
+            }
+        }
+
         // --- 4. DIAGNOTICS & NODE DETAILS PANEL ---
         Column(
             modifier = Modifier
@@ -614,7 +944,12 @@ fun PoolDashboardView(
             Column(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                DiagnosticItem("Battery Volts", "${String.format("%.0f", poolState.battery ?: 4536.0)} mV", Icons.Outlined.BatteryFull, theme)
+                val battVal = poolState.battery ?: 4536.0
+                val isBattIdeal = battVal >= poolBatteryMin && battVal <= poolBatteryMax
+                val batteryColor = if (isBattIdeal) theme.ecoColor else theme.heatColor
+                val batteryText = "${String.format("%.0f", battVal)} mV" + (if (isBattIdeal) " • IDEAL" else " • ADJUST REQ")
+
+                DiagnosticItem("Battery Volts", batteryText, Icons.Outlined.BatteryFull, theme, valueColor = batteryColor)
                 DiagnosticItem("Monitor Serial", poolState.monitorSerial ?: "020F5F12", Icons.Outlined.Monitor, theme)
                 DiagnosticItem("Sensor Serial", poolState.sensorSerial ?: "2515-0608P", Icons.Outlined.QrCodeScanner, theme)
                 DiagnosticItem("WiFi Signal Link", "${poolState.wifiSignal ?: -57} dBm", Icons.Outlined.CellTower, theme)
@@ -630,7 +965,8 @@ private fun DiagnosticItem(
     label: String,
     value: String,
     icon: ImageVector,
-    theme: HvacThemeColors
+    theme: HvacThemeColors,
+    valueColor: Color = Color.White
 ) {
     Row(
         modifier = Modifier
@@ -661,7 +997,7 @@ private fun DiagnosticItem(
             text = value,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White
+            color = valueColor
         )
     }
 }

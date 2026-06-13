@@ -227,6 +227,78 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _darkModeEnabled = MutableStateFlow(sharedPrefs.getBoolean("dark_mode_enabled", true))
     val darkModeEnabled: StateFlow<Boolean> = _darkModeEnabled.asStateFlow()
 
+    private val _poolTempMin = MutableStateFlow(sharedPrefs.getFloat("pool_temp_min", 78.0f))
+    val poolTempMin: StateFlow<Float> = _poolTempMin.asStateFlow()
+
+    private val _poolTempMax = MutableStateFlow(sharedPrefs.getFloat("pool_temp_max", 85.0f))
+    val poolTempMax: StateFlow<Float> = _poolTempMax.asStateFlow()
+
+    private val _poolPhMin = MutableStateFlow(sharedPrefs.getFloat("pool_ph_min", 7.20f))
+    val poolPhMin: StateFlow<Float> = _poolPhMin.asStateFlow()
+
+    private val _poolPhMax = MutableStateFlow(sharedPrefs.getFloat("pool_ph_max", 7.80f))
+    val poolPhMax: StateFlow<Float> = _poolPhMax.asStateFlow()
+
+    private val _poolOrpMin = MutableStateFlow(sharedPrefs.getFloat("pool_orp_min", 650.0f))
+    val poolOrpMin: StateFlow<Float> = _poolOrpMin.asStateFlow()
+
+    private val _poolOrpMax = MutableStateFlow(sharedPrefs.getFloat("pool_orp_max", 800.0f))
+    val poolOrpMax: StateFlow<Float> = _poolOrpMax.asStateFlow()
+
+    private val _poolBatteryMin = MutableStateFlow(sharedPrefs.getFloat("pool_battery_min", 3500.0f))
+    val poolBatteryMin: StateFlow<Float> = _poolBatteryMin.asStateFlow()
+
+    private val _poolBatteryMax = MutableStateFlow(sharedPrefs.getFloat("pool_battery_max", 5000.0f))
+    val poolBatteryMax: StateFlow<Float> = _poolBatteryMax.asStateFlow()
+
+    fun setPoolTempRange(min: Float, max: Float) {
+        sharedPrefs.edit().putFloat("pool_temp_min", min).putFloat("pool_temp_max", max).apply()
+        _poolTempMin.value = min
+        _poolTempMax.value = max
+        syncThresholdToHa("input_number.pool_temp_low_limit", min.toDouble())
+        syncThresholdToHa("input_number.pool_temp_high_limit", max.toDouble())
+    }
+
+    fun setPoolPhRange(min: Float, max: Float) {
+        sharedPrefs.edit().putFloat("pool_ph_min", min).putFloat("pool_ph_max", max).apply()
+        _poolPhMin.value = min
+        _poolPhMax.value = max
+        syncThresholdToHa("input_number.pool_ph_low_limit", min.toDouble())
+        syncThresholdToHa("input_number.pool_ph_high_limit", max.toDouble())
+    }
+
+    fun setPoolOrpRange(min: Float, max: Float) {
+        sharedPrefs.edit().putFloat("pool_orp_min", min).putFloat("pool_orp_max", max).apply()
+        _poolOrpMin.value = min
+        _poolOrpMax.value = max
+        syncThresholdToHa("input_number.pool_orp_low_limit", min.toDouble())
+        syncThresholdToHa("input_number.pool_orp_high_limit", max.toDouble())
+    }
+
+    fun setPoolBatteryRange(min: Float, max: Float) {
+        sharedPrefs.edit().putFloat("pool_battery_min", min).putFloat("pool_battery_max", max).apply()
+        _poolBatteryMin.value = min
+        _poolBatteryMax.value = max
+        syncThresholdToHa("input_number.pool_battery_low_limit", min.toDouble())
+        syncThresholdToHa("input_number.pool_battery_high_limit", max.toDouble())
+    }
+
+    private fun syncThresholdToHa(entityId: String, value: Double) {
+        if (_isLoggedIn.value) {
+            viewModelScope.launch {
+                try {
+                    HomeAssistantClient.service.callService(
+                        "input_number",
+                        "set_value",
+                        mapOf("entity_id" to entityId, "value" to value)
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
     private val _haUrl = MutableStateFlow(sharedPrefs.getString("ha_url", null) ?: (try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }))
     val haUrl: StateFlow<String> = _haUrl.asStateFlow()
 
@@ -527,6 +599,56 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
         try {
             val statesMap = responseList.associateBy { it.entity_id }
+
+            // Sync Pool telemetry Threshold input_numbers from Home Assistant if available
+            statesMap["input_number.pool_temp_low_limit"]?.state?.toFloatOrNull()?.let {
+                if (_poolTempMin.value != it) {
+                    _poolTempMin.value = it
+                    sharedPrefs.edit().putFloat("pool_temp_min", it).apply()
+                }
+            }
+            statesMap["input_number.pool_temp_high_limit"]?.state?.toFloatOrNull()?.let {
+                if (_poolTempMax.value != it) {
+                    _poolTempMax.value = it
+                    sharedPrefs.edit().putFloat("pool_temp_max", it).apply()
+                }
+            }
+            statesMap["input_number.pool_ph_low_limit"]?.state?.toFloatOrNull()?.let {
+                if (_poolPhMin.value != it) {
+                    _poolPhMin.value = it
+                    sharedPrefs.edit().putFloat("pool_ph_min", it).apply()
+                }
+            }
+            statesMap["input_number.pool_ph_high_limit"]?.state?.toFloatOrNull()?.let {
+                if (_poolPhMax.value != it) {
+                    _poolPhMax.value = it
+                    sharedPrefs.edit().putFloat("pool_ph_max", it).apply()
+                }
+            }
+            statesMap["input_number.pool_orp_low_limit"]?.state?.toFloatOrNull()?.let {
+                if (_poolOrpMin.value != it) {
+                    _poolOrpMin.value = it
+                    sharedPrefs.edit().putFloat("pool_orp_min", it).apply()
+                }
+            }
+            statesMap["input_number.pool_orp_high_limit"]?.state?.toFloatOrNull()?.let {
+                if (_poolOrpMax.value != it) {
+                    _poolOrpMax.value = it
+                    sharedPrefs.edit().putFloat("pool_orp_max", it).apply()
+                }
+            }
+            statesMap["input_number.pool_battery_low_limit"]?.state?.toFloatOrNull()?.let {
+                if (_poolBatteryMin.value != it) {
+                    _poolBatteryMin.value = it
+                    sharedPrefs.edit().putFloat("pool_battery_min", it).apply()
+                }
+            }
+            statesMap["input_number.pool_battery_high_limit"]?.state?.toFloatOrNull()?.let {
+                if (_poolBatteryMax.value != it) {
+                    _poolBatteryMax.value = it
+                    sharedPrefs.edit().putFloat("pool_battery_max", it).apply()
+                }
+            }
 
             // 1. Global settings parsing
             val houseSchedule = statesMap["input_select.house_schedule_state"]?.state ?: "Day"
