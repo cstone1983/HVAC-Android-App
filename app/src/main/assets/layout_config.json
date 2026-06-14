@@ -2,6 +2,9 @@
   "version": "6.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
+  "showWeatherCard": true,
+  "weatherLatitude": 37.7749,
+  "weatherLongitude": -122.4194,
   "theme": {
     "accentColorHex": "#10B981",
     "coolColorHex": "#6366F1",

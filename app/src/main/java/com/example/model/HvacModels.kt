@@ -66,6 +66,9 @@ data class HvacLayoutConfig(
     val appSubtitle: String? = "HVAC SYSTEM CONTROLLER",
     val theme: HvacThemeConfig? = HvacThemeConfig(),
     val dynamicSections: List<DynamicSectionConfig>? = emptyList(),
+    val showWeatherCard: Boolean? = true,
+    val weatherLatitude: Double? = 37.7749,
+    val weatherLongitude: Double? = -122.4194,
     val tabs: List<TabConfig>? = listOf(
         TabConfig("zones", "ZONES & UNITS", "layers", listOf("sensors", "zones")),
         TabConfig("aux", "POWER CONTROL", "lightbulb", listOf("condensed_power")),

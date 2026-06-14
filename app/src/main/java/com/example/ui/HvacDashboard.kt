@@ -1750,6 +1750,16 @@ fun HvacDashboardContent(
 
             Spacer(modifier = Modifier.height(8.dp))
 
+            // Added ThreeDayWeatherCard integrating Open-Meteo & MET Norway
+            if (layoutConfig.showWeatherCard != false) {
+                val weatherState by viewModel.weatherState.collectAsStateWithLifecycle()
+                ThreeDayWeatherCard(
+                    weatherState = weatherState,
+                    onRefresh = { scope.launch { viewModel.fetchWeather() } }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
             // Custom compact tab row navigation mimicking the hot water mode option buttons layout
             Row(
                 modifier = Modifier
@@ -6204,6 +6214,246 @@ fun CondensedPowerGroup(
                     }
                 }
                 repeat(3 - rowCovers.size) { Spacer(modifier = Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+fun ThreeDayWeatherCard(
+    weatherState: com.example.model.WeatherForecastState,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val theme = LocalHvacTheme.current
+    val shape = hvacCardShape(defaultDp = 12)
+    val bgColor = hvacCardBgColor()
+    val borderColor = hvacBorderAlphaColor()
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        shape = shape,
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            // Header row with Icon, title and Refresh button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Cloud,
+                        contentDescription = "Weather Icon",
+                        tint = theme.coolColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "INTEGRATED WEATHER FORECAST",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White.copy(alpha = 0.8f),
+                        letterSpacing = 1.2.sp
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(theme.ecoColor.copy(alpha = 0.15f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "AVG OF 2 SOURCES",
+                            fontSize = 6.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = theme.ecoColor
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    if (weatherState.isLoading) {
+                        CircularProgressIndicator(
+                            color = theme.coolColor,
+                            strokeWidth = 1.5.dp,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh weather",
+                            tint = Color.White.copy(alpha = 0.6f),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (weatherState.error != null && weatherState.days.isEmpty()) {
+                Text(
+                    text = weatherState.error,
+                    fontSize = 11.sp,
+                    color = Color(0xFFEF4444),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            } else if (weatherState.days.isEmpty() && weatherState.isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(68.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            color = theme.coolColor,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Aggregating Open-Meteo & MET Norway feeds...",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    weatherState.days.take(3).forEach { day ->
+                        WeatherForecastDayColumn(
+                            day = day,
+                            themeColors = theme,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WeatherForecastDayColumn(
+    day: com.example.model.WeatherDay,
+    themeColors: com.example.ui.theme.HvacThemeColors,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.04f)),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp, horizontal = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = day.dayLabel,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.8.sp,
+                color = if (day.dayLabel == "TODAY") themeColors.heatColor else Color.White.copy(alpha = 0.6f)
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Icon(
+                imageVector = when (day.iconName) {
+                    "sunny" -> Icons.Default.WbSunny
+                    "cloudy" -> Icons.Default.Cloud
+                    "rainy" -> Icons.Default.WaterDrop
+                    "snowy" -> Icons.Default.Grain
+                    "stormy" -> Icons.Default.Thunderstorm
+                    else -> Icons.Default.Cloud
+                },
+                contentDescription = day.condition,
+                tint = when (day.iconName) {
+                    "sunny" -> themeColors.heatColor
+                    "cloudy" -> Color.White.copy(alpha = 0.7f)
+                    "rainy" -> themeColors.coolColor
+                    "snowy" -> Color(0xFFE2E8F0)
+                    "stormy" -> Color(0xFFA855F7)
+                    else -> Color.White.copy(alpha = 0.7f)
+                },
+                modifier = Modifier.size(18.dp)
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            Text(
+                text = day.condition,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Temperatures Display: HIGH and LOW
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "${day.avgHighTemp.toInt()}°",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+                Text(
+                    text = "${day.avgLowTemp.toInt()}°",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.4f)
+                )
+            }
+
+            // Sources info (mini text)
+            Row(
+                modifier = Modifier.padding(top = 2.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(3.dp)
+                        .clip(CircleShape)
+                        .background(themeColors.coolColor)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = "OM:${day.openMeteoHigh?.toInt() ?: "--"}°|MN:${day.metNoHigh?.toInt() ?: "--"}°",
+                    fontSize = 5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White.copy(alpha = 0.3f),
+                    maxLines = 1
+                )
             }
         }
     }
