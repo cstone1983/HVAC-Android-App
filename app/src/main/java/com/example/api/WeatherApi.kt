@@ -62,6 +62,23 @@ data class MetNoSummary(
     val symbol_code: String? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class GeocodingResult(
+    val id: Long? = null,
+    val name: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val country: String? = null,
+    val admin1: String? = null,
+    val admin2: String? = null,
+    val admin3: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GeocodingResponse(
+    val results: List<GeocodingResult>? = null
+)
+
 interface WeatherApi {
     @GET
     suspend fun getOpenMeteo(@Url url: String): Response<OpenMeteoResponse>
@@ -71,4 +88,7 @@ interface WeatherApi {
         @Url url: String,
         @Header("User-Agent") userAgent: String
     ): Response<MetNoResponse>
+
+    @GET
+    suspend fun searchLocation(@Url url: String): Response<GeocodingResponse>
 }

@@ -51,6 +51,15 @@ interface HomeAssistantApi {
     @GET("api/states")
     suspend fun getStates(): List<EntityState>
 
+    @GET("api/history/period/{timestamp}")
+    suspend fun getHistory(
+        @Path("timestamp") timestamp: String,
+        @retrofit2.http.Query("filter_entity_id") filterEntityId: String,
+        @retrofit2.http.Query("end_time") endTime: String? = null,
+        @retrofit2.http.Query("minimal_response") minimalResponse: String? = null,
+        @retrofit2.http.Query("no_attributes") noAttributes: String? = null
+    ): List<List<EntityState>>
+
     @POST("api/services/{domain}/{service}")
     @JvmSuppressWildcards
     suspend fun callService(

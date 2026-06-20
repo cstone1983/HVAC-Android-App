@@ -6,8 +6,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.graphics.Color
@@ -244,15 +244,23 @@ fun HvacDashboard(
     val isLoggedIn by viewModel.isLoggedIn.collectAsStateWithLifecycle()
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val actionFeedback by viewModel.actionFeedback.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    LaunchedEffect(actionFeedback) {
-        actionFeedback?.let { msg ->
-            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
-            viewModel.clearFeedback()
-        }
+    val sharedPrefsSetup = remember { context.getSharedPreferences("hvac_settings", android.content.Context.MODE_PRIVATE) }
+    var showFirstTimeDialog by remember {
+        mutableStateOf(!sharedPrefsSetup.getBoolean("first_time_setup_completed_v3", false))
     }
+
+    if (showFirstTimeDialog) {
+        FirstTimeSetupDialog(
+            onDismiss = {},
+            onComplete = {
+                sharedPrefsSetup.edit().putBoolean("first_time_setup_completed_v3", true).apply()
+                showFirstTimeDialog = false
+            }
+        )
+    }
+
     val scope = rememberCoroutineScope()
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -2302,11 +2310,62 @@ fun ConsolidatedZoneCard(
         else -> theme.heatColor
     }
 
+    // Advanced Compose Animations: Thermal Aura Gradient and Pulsing Vector Indicators
+    val infiniteTransition = rememberInfiniteTransition(label = "zone_aura")
+    val auraPulse by infiniteTransition.animateFloat(
+        initialValue = 0.05f,
+        targetValue = if (zone.currentHvacMode.lowercase() != "off") 0.22f else 0.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "aura_pulse"
+    )
+    val auraScale by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "aura_scale"
+    )
+
+    val activeHvacIsRunning = zone.currentHvacMode.lowercase() in listOf("heat", "cool")
+    val iconPulse by infiniteTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "icon_pulse"
+    )
+    val runningModifier = if (activeHvacIsRunning) {
+        Modifier.graphicsLayer(scaleX = iconPulse, scaleY = iconPulse)
+    } else {
+        Modifier
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .testTag("zone_card_${zone.key}"),
+            .testTag("zone_card_${zone.key}")
+            .drawBehind {
+                if (zone.currentHvacMode.lowercase() != "off") {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                activeColor.copy(alpha = auraPulse),
+                                Color.Transparent
+                            ),
+                            center = androidx.compose.ui.geometry.Offset(size.width * 0.85f, size.height * 0.5f),
+                            radius = size.width * 0.55f * auraScale
+                        )
+                    )
+                }
+            },
         colors = CardDefaults.cardColors(
             containerColor = if (zone.overrideOn) {
                 hvacActiveCardBgColor(theme.heatColor)
@@ -2350,7 +2409,7 @@ fun ConsolidatedZoneCard(
                         },
                         contentDescription = null,
                         tint = activeColor,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(14.dp).then(runningModifier)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
@@ -2650,6 +2709,62 @@ fun ZoneDetailPopup(
         else -> Color(0xFFF59E0B)
     }
 
+    val actionFeedback by viewModel.actionFeedback.collectAsStateWithLifecycle()
+    var bannerMessage by remember { mutableStateOf<String?>(null) }
+    var bannerVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(actionFeedback) {
+        if (actionFeedback != null) {
+            bannerMessage = actionFeedback
+            bannerVisible = true
+            viewModel.clearFeedback()
+        }
+    }
+
+    LaunchedEffect(bannerVisible, bannerMessage) {
+        if (bannerVisible && bannerMessage != null) {
+            kotlinx.coroutines.delay(4000L)
+            bannerVisible = false
+        }
+    }
+
+    // Creative and robust Material 3 animations inside popup
+    val infiniteTransition = rememberInfiniteTransition(label = "detail_animations")
+    val isRunning = zone.currentHvacMode.lowercase() in listOf("heat", "cool")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.9f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "icon_pulse"
+    )
+    val headerIconModifier = if (isRunning) {
+        Modifier.graphicsLayer(scaleX = pulseScale, scaleY = pulseScale)
+    } else {
+        Modifier
+    }
+
+    val detailAuraAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.06f,
+        targetValue = if (zone.currentHvacMode.lowercase() != "off") 0.28f else 0.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "detail_aura_alpha"
+    )
+    val detailAuraScale by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "detail_aura_scale"
+    )
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
             modifier = Modifier
@@ -2670,9 +2785,9 @@ fun ZoneDetailPopup(
             ) {
                 // Main Header Row: Icon, zone name + close button
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                     horizontalArrangement = Arrangement.SpaceBetween,
+                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         Box(
@@ -2690,7 +2805,7 @@ fun ZoneDetailPopup(
                                 },
                                 contentDescription = null,
                                 tint = activeColor,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(18.dp).then(headerIconModifier)
                             )
                         }
 
@@ -2742,12 +2857,38 @@ fun ZoneDetailPopup(
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.08f), modifier = Modifier.padding(bottom = 12.dp))
 
-                // Temps row & power button layout
+                // Temps row & power button layout with dual Thermal Aura Gradients
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(14.dp))
                         .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(14.dp))
+                        .drawBehind {
+                            if (zone.currentHvacMode.lowercase() != "off") {
+                                // Left Current Temp Aura Pool
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(
+                                            activeColor.copy(alpha = detailAuraAlpha),
+                                            Color.Transparent
+                                        ),
+                                        radius = size.width * 0.45f * detailAuraScale
+                                    ),
+                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.5f)
+                                )
+                                // Right Target Temp Aura Pool
+                                drawCircle(
+                                    brush = Brush.radialGradient(
+                                        colors = listOf(
+                                            activeColor.copy(alpha = detailAuraAlpha * 0.8f),
+                                            Color.Transparent
+                                        ),
+                                        radius = size.width * 0.4f * detailAuraScale
+                                    ),
+                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.85f, size.height * 0.5f)
+                                )
+                            }
+                        }
                         .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -2837,10 +2978,33 @@ fun ZoneDetailPopup(
                     Triple("NIGHT", blockPresets.nightValue, activeScheduleState == "Night"),
                     Triple("AWAY", blockPresets.awayValue, activeScheduleState == "Away")
                 ).forEach { (label, value, isActive) ->
+                    // Spring-Physics Morphing presets scale / opacity animation card pop
+                    val springScale by animateFloatAsState(
+                        targetValue = if (isActive) 1.02f else 1.00f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        label = "preset_scale_${label}"
+                    )
+                    val springAlpha by animateFloatAsState(
+                        targetValue = if (isActive) 1f else 0.82f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        ),
+                        label = "preset_alpha_${label}"
+                    )
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 4.dp)
+                            .graphicsLayer(
+                                scaleX = springScale,
+                                scaleY = springScale,
+                                alpha = springAlpha
+                            ),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isActive) activeColor.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.02f)
                         ),
@@ -2964,6 +3128,84 @@ fun ZoneDetailPopup(
                                         modifier = Modifier.size(12.dp)
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+
+                val isDebouncing by viewModel.isDebouncing.collectAsStateWithLifecycle()
+                val activeBannerShow = bannerVisible || isDebouncing
+
+                AnimatedVisibility(
+                    visible = activeBannerShow,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                    modifier = Modifier.padding(vertical = 4.dp)
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF0F172A).copy(alpha = 0.96f)
+                        ),
+                        border = BorderStroke(
+                            1.dp,
+                            if (isDebouncing) activeColor.copy(alpha = 0.6f) else Color(0xFF10B981).copy(alpha = 0.6f)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (isDebouncing) {
+                                val pulseTransition = rememberInfiniteTransition(label = "banner_pulse")
+                                val dotAlpha by pulseTransition.animateFloat(
+                                    initialValue = 0.3f,
+                                    targetValue = 1f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(durationMillis = 800, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    ),
+                                    label = "dot_alpha"
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(activeColor.copy(alpha = dotAlpha), CircleShape)
+                                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)), CircleShape)
+                                )
+                                Text(
+                                    text = "Holding adjustments... Syncing in 2s",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .background(Color(0xFF10B981).copy(alpha = 0.15f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = "Success",
+                                        tint = Color(0xFF10B981),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                                Text(
+                                    text = bannerMessage ?: "Settings synced",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
                     }
@@ -4672,6 +4914,9 @@ fun HvacSettingsDialog(
     val weatherLonFlow by viewModel.weatherLongitude.collectAsStateWithLifecycle()
     var latText by remember(weatherLatFlow) { mutableStateOf(weatherLatFlow.toString()) }
     var lonText by remember(weatherLonFlow) { mutableStateOf(weatherLonFlow.toString()) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchResults by remember { mutableStateOf<List<com.example.api.GeocodingResult>>(emptyList()) }
+    var isSearching by remember { mutableStateOf(false) }
     val theme = LocalHvacTheme.current
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
@@ -6041,10 +6286,147 @@ fun HvacSettingsDialog(
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Manually configure coords to override default Open-Meteo & MET Norway forecast deck settings",
+                            text = "Search for a place (e.g. \"China, Maine\") or manually configure coordinates below to update forecast deck settings",
                             fontSize = 10.sp,
                             color = Color.White.copy(alpha = 0.4f)
                         )
+                    }
+
+                    // Search input & button Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val context = LocalContext.current
+                        val cScope = rememberCoroutineScope()
+
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Search location (e.g. China, Maine)", color = Color.White.copy(alpha = 0.3f), fontSize = 12.sp) },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedIndicatorColor = theme.coolColor,
+                                unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                            ),
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("location_search_input"),
+                            leadingIcon = {
+                                Icon(Icons.Default.Search, contentDescription = null, tint = theme.coolColor.copy(alpha = 0.8f), modifier = Modifier.size(16.dp))
+                            }
+                        )
+
+                        Button(
+                            onClick = {
+                                if (searchQuery.isNotBlank()) {
+                                    isSearching = true
+                                    cScope.launch {
+                                        try {
+                                            val queryUrl = "https://geocoding-api.open-meteo.com/v1/search?name=${java.net.URLEncoder.encode(searchQuery, "UTF-8")}&count=5"
+                                            val response = com.example.api.WeatherClient.service.searchLocation(queryUrl)
+                                            if (response.isSuccessful) {
+                                                val results = response.body()?.results
+                                                if (results != null && results.isNotEmpty()) {
+                                                    searchResults = results
+                                                } else {
+                                                    searchResults = emptyList()
+                                                    Toast.makeText(context, "No results found for '$searchQuery'", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, "Search failed: ${response.code()}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            e.printStackTrace()
+                                            Toast.makeText(context, "Search error: ${e.localizedMessage ?: "Unknown error"}", Toast.LENGTH_SHORT).show()
+                                        } finally {
+                                            isSearching = false
+                                        }
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Please enter a place name first", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = theme.coolColor,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            enabled = !isSearching
+                        ) {
+                            if (isSearching) {
+                                CircularProgressIndicator(modifier = Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                            } else {
+                                Text("SEARCH", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                            }
+                        }
+                    }
+
+                    // Display results if active
+                    if (searchResults.isNotEmpty()) {
+                        val context = LocalContext.current
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                                .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), RoundedCornerShape(12.dp))
+                                .padding(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                "MATCHING PLACES:",
+                                color = Color.White.copy(alpha = 0.4f),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 0.5.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                            searchResults.forEach { result ->
+                                val displayName = buildString {
+                                    append(result.name ?: "")
+                                    if (!result.admin1.isNullOrBlank()) append(", ").append(result.admin1)
+                                    if (!result.country.isNullOrBlank()) append(", ").append(result.country)
+                                }
+                                val displayCoords = "(${String.format(java.util.Locale.US, "%.4f", result.latitude)}, ${String.format(java.util.Locale.US, "%.4f", result.longitude)})"
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            val rLat = result.latitude
+                                            val rLon = result.longitude
+                                            if (rLat != null && rLon != null) {
+                                                latText = rLat.toString()
+                                                lonText = rLon.toString()
+                                                viewModel.updateWeatherLocation(rLat, rLon)
+                                                searchResults = emptyList() // Close options
+                                                searchQuery = "" // Reset lookup query
+                                                Toast.makeText(context, "Forecast synced to $displayName!", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        .padding(8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = theme.coolColor, modifier = Modifier.size(14.dp))
+                                        Text(displayName, color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(displayCoords, color = Color.White.copy(alpha = 0.4f), fontSize = 10.sp)
+                                }
+                            }
+                        }
                     }
 
                     Row(
@@ -6666,6 +7048,274 @@ fun WeatherForecastDayColumn(
                     color = Color.White.copy(alpha = 0.3f),
                     maxLines = 1
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun FirstTimeSetupDialog(
+    onDismiss: () -> Unit,
+    onComplete: () -> Unit
+) {
+    val context = LocalContext.current
+    val powerManager = remember { context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager }
+    var isIgnoringBattery by remember {
+        mutableStateOf(
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                powerManager.isIgnoringBatteryOptimizations(context.packageName)
+            } else {
+                true
+            }
+        )
+    }
+
+    var isNotificationGranted by remember {
+        mutableStateOf(
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        )
+    }
+
+    val requestNotificationLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        isNotificationGranted = granted
+        if (granted) {
+            try {
+                com.example.service.HvacForegroundService.startService(context)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                isIgnoringBattery = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                    powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                } else {
+                    true
+                }
+                isNotificationGranted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.POST_NOTIFICATIONS
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                } else {
+                    true
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
+    ) {
+        Card(
+            modifier = Modifier
+                .widthIn(max = 500.dp)
+                .fillMaxWidth()
+                .padding(16.dp)
+                .border(BorderStroke(2.dp, Color(0xFF2196F3).copy(alpha = 0.5f)), RoundedCornerShape(28.dp)),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF0F172A)
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(28.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .background(Color(0xFF2196F3).copy(alpha = 0.1f), androidx.compose.foundation.shape.CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = Color(0xFF2196F3),
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                Text(
+                    text = "Welcome to Home HVAC!",
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+
+                Text(
+                    text = "To ensure uninterrupted connection with your smart thermostat and live updates in the background, please complete the two critical permission checks below.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Item 1: Notifications
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(16.dp))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "1. Enable Notifications",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = if (isNotificationGranted) "Permission granted" else "Required to show active thermostat connection",
+                            fontSize = 11.sp,
+                            color = if (isNotificationGranted) Color(0xFF10B981) else Color.White.copy(alpha = 0.5f)
+                        )
+                    }
+
+                    if (!isNotificationGranted) {
+                        Button(
+                            onClick = {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                    requestNotificationLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    isNotificationGranted = true
+                                    try {
+                                        com.example.service.HvacForegroundService.startService(context)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF2196F3).copy(alpha = 0.15f),
+                                contentColor = Color(0xFF2196F3)
+                            ),
+                            border = BorderStroke(1.dp, Color(0xFF2196F3).copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("GRANT", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                // Item 2: Unrestricted Battery Mode
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(16.dp))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "2. Unrestricted Battery",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = if (isIgnoringBattery) "App is whitelisted" else "Bypass standby to keep active connection alive",
+                            fontSize = 11.sp,
+                            color = if (isIgnoringBattery) Color(0xFF10B981) else Color.White.copy(alpha = 0.5f)
+                        )
+                    }
+
+                    if (!isIgnoringBattery) {
+                        Button(
+                            onClick = {
+                                try {
+                                    val intent = android.content.Intent().apply {
+                                        action = android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                                        data = android.net.Uri.parse("package:${context.packageName}")
+                                    }
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    try {
+                                        val fallbackIntent = android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                        context.startActivity(fallbackIntent)
+                                    } catch (ex: Exception) {
+                                        android.widget.Toast.makeText(context, "Could not open settings automatically", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                isIgnoringBattery = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                    powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                                } else {
+                                    true
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF2196F3).copy(alpha = 0.15f),
+                                contentColor = Color(0xFF2196F3)
+                            ),
+                            border = BorderStroke(1.dp, Color(0xFF2196F3).copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("OPTIMIZE", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF10B981),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Bottom Done Button
+                Button(
+                    onClick = {
+                        onComplete()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF2196F3)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("DONE & CONTINUE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
             }
         }
     }

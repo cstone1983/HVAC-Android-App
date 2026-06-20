@@ -105,30 +105,23 @@ class HvacForegroundService : Service() {
         try {
             val notification = buildHvacNotification()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // On API 31+ or 34+, we must handle foreground service types strictly
-                    startForeground(
-                        NOTIFICATION_ID,
-                        notification,
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-                    )
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    startForeground(
-                        NOTIFICATION_ID,
-                        notification,
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-                    )
-                } else {
-                    startForeground(NOTIFICATION_ID, notification)
-                }
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                )
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
         } catch (e: Exception) {
-            android.util.Log.e("HvacForegroundService", "Failed to start foreground service", e)
-            // If starting the foreground service fails (e.g., of type connectedDevice due to background start restrictions),
-            // we stop self rather than crash the whole application context.
-            stopSelf()
+            android.util.Log.e("HvacForegroundService", "Failed to start foreground service, posting fallback notification", e)
+            try {
+                // Post as standard persistent notification so user still sees it
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.notify(NOTIFICATION_ID, buildHvacNotification())
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+            }
         }
     }
 

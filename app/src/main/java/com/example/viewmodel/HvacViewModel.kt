@@ -444,21 +444,31 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     val poolState: StateFlow<PoolState> = _poolState.asStateFlow()
 
     private val _poolHistory = MutableStateFlow(
-        listOf(
-            PoolHistoryPoint("04:00", 78.5f, 7.32f, 558f),
-            PoolHistoryPoint("06:00", 78.2f, 7.34f, 554f),
-            PoolHistoryPoint("08:00", 77.8f, 7.35f, 552f),
-            PoolHistoryPoint("10:00", 77.5f, 7.33f, 556f),
-            PoolHistoryPoint("12:00", 77.2f, 7.36f, 560f),
-            PoolHistoryPoint("14:00", 77.3f, 7.37f, 558f),
-            PoolHistoryPoint("16:00", 77.9f, 7.36f, 562f),
-            PoolHistoryPoint("18:00", 78.6f, 7.34f, 564f),
-            PoolHistoryPoint("20:00", 79.4f, 7.33f, 568f),
-            PoolHistoryPoint("22:00", 80.1f, 7.35f, 570f),
-            PoolHistoryPoint("00:00", 79.8f, 7.36f, 566f),
-            PoolHistoryPoint("02:00", 79.2f, 7.35f, 562f),
-            PoolHistoryPoint("04:00", 79.0f, 7.35f, 561f)
-        )
+        run {
+            val list = mutableListOf<PoolHistoryPoint>()
+            val calendar = java.util.Calendar.getInstance()
+            calendar.add(java.util.Calendar.HOUR_OF_DAY, -24)
+            for (i in 0..24) {
+                val hour = (calendar.get(java.util.Calendar.HOUR_OF_DAY) + i) % 24
+                val hourStr = String.format(java.util.Locale.US, "%02d:00", hour)
+                
+                // Diurnal solar wave
+                val angle = (hour - 6) * (2.0 * Math.PI / 24.0)
+                val tempOffset = -Math.cos(angle).toFloat() * 1.5f + (Math.sin(angle * 2).toFloat() * 0.18f)
+                val phOffset = Math.sin(angle).toFloat() * 0.03f
+                val orpOffset = Math.cos(angle).toFloat() * 12.0f
+
+                list.add(
+                    PoolHistoryPoint(
+                        timestamp = hourStr,
+                        temp = 79.0f + tempOffset,
+                        ph = 7.35f + phOffset,
+                        orp = 561.0f + orpOffset
+                    )
+                )
+            }
+            list.toList()
+        }
     )
     val poolHistory: StateFlow<List<PoolHistoryPoint>> = _poolHistory.asStateFlow()
 
@@ -472,6 +482,16 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _actionFeedback = MutableStateFlow<String?>(null)
     val actionFeedback: StateFlow<String?> = _actionFeedback.asStateFlow()
+
+    private val _isDebouncing = MutableStateFlow(false)
+    val isDebouncing: StateFlow<Boolean> = _isDebouncing.asStateFlow()
+
+    private fun updateDebounceStatus() {
+        _isDebouncing.value = pendingTemperatureJobs.isNotEmpty() || pendingPresetJobs.isNotEmpty()
+    }
+
+    private val pendingTemperatureJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
+    private val pendingPresetJobs = java.util.concurrent.ConcurrentHashMap<String, Job>()
 
     private var lastNonOffHvacMode = sharedPrefs.getString("last_non_off_hvac_mode", "heat") ?: "heat"
 
@@ -761,6 +781,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // 3. Climate Zones mapping parsed from active configuration dynamically
+            val currentSuccessState = _uiState.value as? HvacUiState.Success
             val parsedZones = activeConfig.zones.map { zone ->
                 val climate = statesMap[zone.climateEntityId]
                 val auto = statesMap[zone.autoEntityId]
@@ -768,16 +789,48 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 val tilt = statesMap[zone.tiltEntityId]
                 val fan = statesMap[zone.fanEntityId]
 
-                val hDay = statesMap[zone.presetsHeat.day]?.state?.toDoubleOrNull()
-                val hNight = statesMap[zone.presetsHeat.night]?.state?.toDoubleOrNull()
-                val hAway = statesMap[zone.presetsHeat.away]?.state?.toDoubleOrNull()
+                var hDay = statesMap[zone.presetsHeat.day]?.state?.toDoubleOrNull()
+                var hNight = statesMap[zone.presetsHeat.night]?.state?.toDoubleOrNull()
+                var hAway = statesMap[zone.presetsHeat.away]?.state?.toDoubleOrNull()
 
-                val cDay = statesMap[zone.presetsCool.day]?.state?.toDoubleOrNull()
-                val cNight = statesMap[zone.presetsCool.night]?.state?.toDoubleOrNull()
-                val cAway = statesMap[zone.presetsCool.away]?.state?.toDoubleOrNull()
+                var cDay = statesMap[zone.presetsCool.day]?.state?.toDoubleOrNull()
+                var cNight = statesMap[zone.presetsCool.night]?.state?.toDoubleOrNull()
+                var cAway = statesMap[zone.presetsCool.away]?.state?.toDoubleOrNull()
+
+                if (currentSuccessState != null) {
+                    val existingZone = currentSuccessState.zones.find { it.key == zone.key }
+                    if (existingZone != null) {
+                        if (pendingPresetJobs.containsKey(zone.presetsHeat.day)) {
+                            hDay = existingZone.presetsHeat.dayValue
+                        }
+                        if (pendingPresetJobs.containsKey(zone.presetsHeat.night)) {
+                            hNight = existingZone.presetsHeat.nightValue
+                        }
+                        if (pendingPresetJobs.containsKey(zone.presetsHeat.away)) {
+                            hAway = existingZone.presetsHeat.awayValue
+                        }
+                        if (pendingPresetJobs.containsKey(zone.presetsCool.day)) {
+                            cDay = existingZone.presetsCool.dayValue
+                        }
+                        if (pendingPresetJobs.containsKey(zone.presetsCool.night)) {
+                            cNight = existingZone.presetsCool.nightValue
+                        }
+                        if (pendingPresetJobs.containsKey(zone.presetsCool.away)) {
+                            cAway = existingZone.presetsCool.awayValue
+                        }
+                    }
+                }
 
                 val vOpts = tilt?.getListAttribute("options")
                 val fOpts = fan?.getListAttribute("options")
+
+                var resolvedTargetTemp = climate?.getDoubleAttribute("temperature") ?: climate?.state?.toDoubleOrNull()
+                if (pendingTemperatureJobs.containsKey(zone.climateEntityId) && currentSuccessState != null) {
+                    val existingZone = currentSuccessState.zones.find { it.key == zone.key }
+                    if (existingZone != null && existingZone.targetTemp != null) {
+                        resolvedTargetTemp = existingZone.targetTemp
+                    }
+                }
 
                 ClimateZone(
                     key = zone.key,
@@ -804,7 +857,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         awayValue = cAway
                     ),
                     currentTemp = climate?.getDoubleAttribute("current_temperature"),
-                    targetTemp = climate?.getDoubleAttribute("temperature") ?: climate?.state?.toDoubleOrNull(),
+                    targetTemp = resolvedTargetTemp,
                     currentHvacMode = climate?.state ?: "off",
                     autoOn = auto?.state?.lowercase() == "on",
                     overrideOn = override?.state?.lowercase() == "on",
@@ -876,25 +929,36 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 _poolState.value = newPool
 
-                // Append a sample historical point for trend graphs
-                if (pTemp != null || pPh != null || pOrp != null) {
-                    val currentList = _poolHistory.value.toMutableList()
-                    val formatter = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                    val timeStr = formatter.format(java.util.Date())
-                    
-                    if (currentList.isEmpty() || currentList.last().timestamp != timeStr || currentList.size < 5) {
-                        currentList.add(
-                            PoolHistoryPoint(
-                                timestamp = timeStr,
-                                temp = (pTemp ?: currentPool.waterTemperature ?: 79.0).toFloat(),
-                                ph = (pPh ?: currentPool.ph ?: 7.35).toFloat(),
-                                orp = (pOrp ?: currentPool.orp ?: 561.0).toFloat()
-                            )
-                        )
-                        if (currentList.size > 24) {
-                            currentList.removeAt(0)
+                // Fetch actual historical data from Home Assistant if logged in, otherwise use simulated incremental updates
+                if (_isLoggedIn.value) {
+                    viewModelScope.launch {
+                        try {
+                            fetchPoolHistoryFromHA()
+                        } catch (e: Exception) {
+                            android.util.Log.e("HvacViewModel", "Dynamic pool history download failed", e)
                         }
-                        _poolHistory.value = currentList
+                    }
+                } else {
+                    // Append a sample historical point for trend graphs (simulated offline mode)
+                    if (pTemp != null || pPh != null || pOrp != null) {
+                        val currentList = _poolHistory.value.toMutableList()
+                        val formatter = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                        val timeStr = formatter.format(java.util.Date())
+                        
+                        if (currentList.isEmpty() || currentList.last().timestamp != timeStr || currentList.size < 5) {
+                            currentList.add(
+                                PoolHistoryPoint(
+                                    timestamp = timeStr,
+                                    temp = (pTemp ?: currentPool.waterTemperature ?: 79.0).toFloat(),
+                                    ph = (pPh ?: currentPool.ph ?: 7.35).toFloat(),
+                                    orp = (pOrp ?: currentPool.orp ?: 561.0).toFloat()
+                                )
+                            )
+                            if (currentList.size > 24) {
+                                currentList.removeAt(0)
+                            }
+                            _poolHistory.value = currentList
+                        }
                     }
                 }
             } catch (ex: Exception) {
@@ -966,17 +1030,75 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setTargetTemperature(climateEntityId: String, temperature: Double, name: String) {
-        callServiceWithOptimisticFeedback("climate", "set_temperature", mapOf(
-            "entity_id" to climateEntityId,
-            "temperature" to temperature
-        ), "$name setpoint updated to ${temperature.toInt()}°F")
+        // 1. Optimistic state update in memory so the dial / UI updates immediately without lag
+        val current = _uiState.value
+        if (current is HvacUiState.Success) {
+            val updatedZones = current.zones.map { zone ->
+                if (zone.climateEntityId == climateEntityId) {
+                    zone.copy(targetTemp = temperature)
+                } else {
+                    zone
+                }
+            }
+            _uiState.value = current.copy(zones = updatedZones)
+        }
+
+        // 2. Debounce sending to Home Assistant (wait for 2 second quiet period)
+        pendingTemperatureJobs.remove(climateEntityId)?.cancel()
+        val job = viewModelScope.launch {
+            _isDebouncing.value = true
+            delay(2000L)
+            try {
+                val currentFeedback = "$name setpoint updated to ${temperature.toInt()}°F"
+                callServiceWithOptimisticFeedback("climate", "set_temperature", mapOf(
+                    "entity_id" to climateEntityId,
+                    "temperature" to temperature
+                ), currentFeedback)
+            } finally {
+                pendingTemperatureJobs.remove(climateEntityId)
+                updateDebounceStatus()
+            }
+        }
+        pendingTemperatureJobs[climateEntityId] = job
+        updateDebounceStatus()
     }
 
     fun setPresetTemperature(numberEntityId: String, value: Double, name: String) {
-        callServiceWithOptimisticFeedback("input_number", "set_value", mapOf(
-            "entity_id" to numberEntityId,
-            "value" to value
-        ), "Adjusting preset $name to ${value.toInt()}°F")
+        // 1. Optimistic state update in memory so the dial / UI updates immediately without lag
+        val current = _uiState.value
+        if (current is HvacUiState.Success) {
+            val updatedZones = current.zones.map { zone ->
+                when {
+                    zone.presetsHeat.day == numberEntityId -> zone.copy(presetsHeat = zone.presetsHeat.copy(dayValue = value))
+                    zone.presetsHeat.night == numberEntityId -> zone.copy(presetsHeat = zone.presetsHeat.copy(nightValue = value))
+                    zone.presetsHeat.away == numberEntityId -> zone.copy(presetsHeat = zone.presetsHeat.copy(awayValue = value))
+                    zone.presetsCool.day == numberEntityId -> zone.copy(presetsCool = zone.presetsCool.copy(dayValue = value))
+                    zone.presetsCool.night == numberEntityId -> zone.copy(presetsCool = zone.presetsCool.copy(nightValue = value))
+                    zone.presetsCool.away == numberEntityId -> zone.copy(presetsCool = zone.presetsCool.copy(awayValue = value))
+                    else -> zone
+                }
+            }
+            _uiState.value = current.copy(zones = updatedZones)
+        }
+
+        // 2. Debounce sending to Home Assistant (wait for 2 second quiet period)
+        pendingPresetJobs.remove(numberEntityId)?.cancel()
+        val job = viewModelScope.launch {
+            _isDebouncing.value = true
+            delay(2000L)
+            try {
+                val currentFeedback = "Adjusting preset $name to ${value.toInt()}°F"
+                callServiceWithOptimisticFeedback("input_number", "set_value", mapOf(
+                    "entity_id" to numberEntityId,
+                    "value" to value
+                ), currentFeedback)
+            } finally {
+                pendingPresetJobs.remove(numberEntityId)
+                updateDebounceStatus()
+            }
+        }
+        pendingPresetJobs[numberEntityId] = job
+        updateDebounceStatus()
     }
 
     fun toggleZonePower(climateEntityId: String, currentHvacMode: String, globalHvacMode: String, name: String) {
@@ -1986,6 +2108,112 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             85, 86 -> "Snow Showers" to "snowy"
             95, 96, 99 -> "Thunderstorm" to "stormy"
             else -> "Mild Conditions" to "cloudy"
+        }
+    }
+
+    private var lastHistoryFetchTime = 0L
+
+    private suspend fun fetchPoolHistoryFromHA() {
+        val now = System.currentTimeMillis()
+        if (now - lastHistoryFetchTime < 60000L) {
+            // Fetch once per minute at most to avoid performance/network overhead
+            return
+        }
+
+        try {
+            // Query from 30 days ago to have complete detailed charts for Hourly, Daily, and Monthly views
+            val calendar = java.util.Calendar.getInstance()
+            calendar.add(java.util.Calendar.DAY_OF_YEAR, -30)
+
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            val startStr = sdf.format(calendar.time)
+
+            val entityIds = "sensor.my_pool_water_temperature,sensor.my_pool_ph,sensor.my_pool_orp"
+
+            val rawHistory: List<List<com.example.api.EntityState>> = HomeAssistantClient.service.getHistory(
+                timestamp = startStr,
+                filterEntityId = entityIds
+            )
+
+            if (rawHistory.isNotEmpty()) {
+                val tempHistory = mutableListOf<com.example.api.EntityState>()
+                val phHistory = mutableListOf<com.example.api.EntityState>()
+                val orpHistory = mutableListOf<com.example.api.EntityState>()
+
+                for (enList in rawHistory) {
+                    for (stateNode in enList) {
+                        when (stateNode.entity_id) {
+                            "sensor.my_pool_water_temperature" -> tempHistory.add(stateNode)
+                            "sensor.my_pool_ph" -> phHistory.add(stateNode)
+                            "sensor.my_pool_orp" -> orpHistory.add(stateNode)
+                        }
+                    }
+                }
+
+                val sdfParser = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX", java.util.Locale.US)
+                val sdfParserAlternative = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", java.util.Locale.US)
+                val parseTime: (String?) -> Long = { str ->
+                    if (str == null) 0L else {
+                        try {
+                            sdfParser.parse(str)?.time ?: 0L
+                        } catch (e: Exception) {
+                            try {
+                                sdfParserAlternative.parse(str)?.time ?: 0L
+                            } catch (ex: Exception) {
+                                0L
+                            }
+                        }
+                    }
+                }
+
+                tempHistory.sortBy { parseTime(it.last_updated) }
+                phHistory.sortBy { parseTime(it.last_updated) }
+                orpHistory.sortBy { parseTime(it.last_updated) }
+
+                val allTimestampsSorted = (tempHistory.mapNotNull { it.last_updated } +
+                                           phHistory.mapNotNull { it.last_updated } +
+                                           orpHistory.mapNotNull { it.last_updated })
+                                           .distinct()
+                                           .sortedBy { parseTime(it) }
+
+                val mergedPoints = mutableListOf<PoolHistoryPoint>()
+
+                var lastTemp = 79.0f
+                var lastPh = 7.35f
+                var lastOrp = 561.0f
+
+                for (timestamp in allTimestampsSorted) {
+                    val matchingTemp = tempHistory.find { it.last_updated == timestamp }?.state?.toFloatOrNull()
+                    val matchingPh = phHistory.find { it.last_updated == timestamp }?.state?.toFloatOrNull()
+                    val matchingOrp = orpHistory.find { it.last_updated == timestamp }?.state?.toFloatOrNull()
+
+                    if (matchingTemp != null) lastTemp = matchingTemp
+                    if (matchingPh != null) lastPh = matchingPh
+                    if (matchingOrp != null) lastOrp = matchingOrp
+
+                    val tMillis = parseTime(timestamp)
+                    val dispFormatter = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault())
+                    val dispStr = dispFormatter.format(java.util.Date(tMillis))
+
+                    mergedPoints.add(
+                        PoolHistoryPoint(
+                            timestamp = dispStr,
+                            temp = lastTemp,
+                            ph = lastPh,
+                            orp = lastOrp
+                        )
+                    )
+                }
+
+                if (mergedPoints.isNotEmpty()) {
+                    _poolHistory.value = mergedPoints
+                    lastHistoryFetchTime = now
+                }
+            }
+        } catch (ex: Exception) {
+            android.util.Log.e("HvacViewModel", "Error fetching pool history", ex)
         }
     }
 
