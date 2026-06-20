@@ -4,6 +4,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:allowBackup="true"
@@ -49,6 +53,11 @@
                 <category android:name="androidx.car.app.category.IOT" />
             </intent-filter>
         </service>
+
+        <service
+            android:name="com.example.service.HvacForegroundService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="false" />
     </application>
 
 </manifest>

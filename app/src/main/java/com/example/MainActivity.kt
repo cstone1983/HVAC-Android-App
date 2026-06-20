@@ -18,10 +18,49 @@ import androidx.core.view.WindowInsetsCompat
 import com.example.ui.HvacDashboard
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.HvacViewModel
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
+  private val requestPermissionLauncher = registerForActivityResult(
+    ActivityResultContracts.RequestPermission()
+  ) { isGranted: Boolean ->
+    if (isGranted) {
+      try {
+        com.example.service.HvacForegroundService.startService(this)
+      } catch (e: Exception) {
+        android.util.Log.e("MainActivity", "Failed to start FGS on grant", e)
+      }
+    }
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+      if (ContextCompat.checkSelfPermission(
+          this,
+          Manifest.permission.POST_NOTIFICATIONS
+        ) != PackageManager.PERMISSION_GRANTED
+      ) {
+        requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+      } else {
+        try {
+          com.example.service.HvacForegroundService.startService(this)
+        } catch (e: Exception) {
+          android.util.Log.e("MainActivity", "Failed to start FGS", e)
+        }
+      }
+    } else {
+      try {
+        com.example.service.HvacForegroundService.startService(this)
+      } catch (e: Exception) {
+        android.util.Log.e("MainActivity", "Failed to start FGS", e)
+      }
+    }
+
     enableEdgeToEdge()
     setContent {
       val viewModel: HvacViewModel = viewModel()

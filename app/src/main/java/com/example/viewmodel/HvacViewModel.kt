@@ -1722,6 +1722,50 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _weatherState = MutableStateFlow(com.example.model.WeatherForecastState())
     val weatherState: StateFlow<com.example.model.WeatherForecastState> = _weatherState.asStateFlow()
 
+    fun getWeatherLatitude(): Double {
+        if (sharedPrefs.contains("weather_latitude")) {
+            return sharedPrefs.getFloat("weather_latitude", 37.7749f).toDouble()
+        }
+        return getActiveLayoutConfig().weatherLatitude ?: 37.7749
+    }
+
+    fun getWeatherLongitude(): Double {
+        if (sharedPrefs.contains("weather_longitude")) {
+            return sharedPrefs.getFloat("weather_longitude", -122.4194f).toDouble()
+        }
+        return getActiveLayoutConfig().weatherLongitude ?: -122.4194
+    }
+
+    private val _weatherLatitude = MutableStateFlow(getWeatherLatitude())
+    val weatherLatitude: StateFlow<Double> = _weatherLatitude.asStateFlow()
+
+    private val _weatherLongitude = MutableStateFlow(getWeatherLongitude())
+    val weatherLongitude: StateFlow<Double> = _weatherLongitude.asStateFlow()
+
+    fun updateWeatherLocation(lat: Double, lon: Double) {
+        sharedPrefs.edit()
+            .putFloat("weather_latitude", lat.toFloat())
+            .putFloat("weather_longitude", lon.toFloat())
+            .apply()
+        _weatherLatitude.value = lat
+        _weatherLongitude.value = lon
+        viewModelScope.launch {
+            fetchWeather()
+        }
+    }
+
+    fun resetWeatherLocation() {
+        sharedPrefs.edit()
+            .remove("weather_latitude")
+            .remove("weather_longitude")
+            .apply()
+        _weatherLatitude.value = getWeatherLatitude()
+        _weatherLongitude.value = getWeatherLongitude()
+        viewModelScope.launch {
+            fetchWeather()
+        }
+    }
+
     private var weatherSyncJob: Job? = null
 
     fun startWeatherSync() {
@@ -1741,10 +1785,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun fetchWeather() {
         _weatherState.value = _weatherState.value.copy(isLoading = true, error = null)
         try {
-            // Defaulting coordinates to active layout configuration, OTA configurable
-            val activeConfig = getActiveLayoutConfig()
-            val lat = activeConfig.weatherLatitude ?: 37.7749
-            val lon = activeConfig.weatherLongitude ?: -122.4194
+            // Defaulting coordinates to active layout configuration (either from OTA or local preferences)
+            val lat = getWeatherLatitude()
+            val lon = getWeatherLongitude()
 
             val openMeteoUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&daily=temperature_2m_max,temperature_2m_min,weathercode&temperature_unit=fahrenheit&timezone=auto"
             val metNoUrl = "https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=$lat&lon=$lon"

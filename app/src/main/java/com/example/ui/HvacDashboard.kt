@@ -911,7 +911,7 @@ fun DynamicTabContent(
                     }
 
                     val chunkedZones = state.zones.chunked(2)
-                    items(chunkedZones) { pair ->
+                    items(chunkedZones, key = { pair -> pair.joinToString("-") { it.key } }) { pair ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -980,7 +980,7 @@ fun DynamicTabContent(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                items(interiorLights) { light ->
+                                items(interiorLights, key = { it.entityId }) { light ->
                                     Card(
                                         modifier = Modifier
                                             .testTag("light_card_${light.entityId}")
@@ -1042,7 +1042,7 @@ fun DynamicTabContent(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                items(exteriorItems) { light ->
+                                items(exteriorItems, key = { it.entityId }) { light ->
                                     Card(
                                         modifier = Modifier
                                             .testTag("exterior_card_${light.entityId}")
@@ -1166,7 +1166,7 @@ fun DynamicTabContent(
                             )
                         }
 
-                        items(state.covers) { cover ->
+                        items(state.covers, key = { it.entityId }) { cover ->
                             val isOpen = cover.state.lowercase() == "open" || cover.state.lowercase() == "opening"
                             Box(modifier = Modifier.padding(horizontal = 16.dp)) {
                                 Card(
@@ -2266,7 +2266,7 @@ fun ClimateZonesTab(
         }
 
         val chunkedZones = state.zones.chunked(2)
-        items(chunkedZones) { pair ->
+        items(chunkedZones, key = { pair -> pair.joinToString("-") { it.key } }) { pair ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -3269,7 +3269,7 @@ fun AuxiliariesTab(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(interiorLights) { light ->
+                items(interiorLights, key = { it.entityId }) { light ->
                     Card(
                         modifier = Modifier
                             .testTag("light_card_${light.entityId}")
@@ -3328,7 +3328,7 @@ fun AuxiliariesTab(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(exteriorItems) { light ->
+                items(exteriorItems, key = { it.entityId }) { light ->
                     Card(
                         modifier = Modifier
                             .testTag("exterior_card_${light.entityId}")
@@ -3444,7 +3444,7 @@ fun AuxiliariesTab(
             Spacer(modifier = Modifier.height(6.dp))
         }
 
-        items(state.covers) { cover ->
+        items(state.covers, key = { it.entityId }) { cover ->
             val isOpen = cover.state.lowercase() == "open" || cover.state.lowercase() == "opening"
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
@@ -4668,6 +4668,10 @@ fun HvacSettingsDialog(
     val forceScreenOn by viewModel.forceScreenOn.collectAsState()
     val forceFullScreen by viewModel.forceFullScreen.collectAsState()
     val darkModeEnabled by viewModel.darkModeEnabled.collectAsState()
+    val weatherLatFlow by viewModel.weatherLatitude.collectAsStateWithLifecycle()
+    val weatherLonFlow by viewModel.weatherLongitude.collectAsStateWithLifecycle()
+    var latText by remember(weatherLatFlow) { mutableStateOf(weatherLatFlow.toString()) }
+    var lonText by remember(weatherLonFlow) { mutableStateOf(weatherLonFlow.toString()) }
     val theme = LocalHvacTheme.current
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
@@ -4791,8 +4795,102 @@ fun HvacSettingsDialog(
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                    // Toggle 1: Force Screen On
-                    Row(
+                        // Battery Optimization / Background Exclusion control card (low-perf client enhancement)
+                        val context = LocalContext.current
+                        val powerManager = remember { context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager }
+                        var isIgnoringBattery by remember {
+                            mutableStateOf(
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                    powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                                } else {
+                                    true
+                                }
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(hvacCardBgColor(), hvacCardShape(16))
+                                .border(BorderStroke(1.dp, hvacBorderAlphaColor()), hvacCardShape(16))
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .background(if (isIgnoringBattery) Color(0xFF10B981).copy(alpha = 0.1f) else Color(0xFFEF4444).copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (isIgnoringBattery) Icons.Default.BatteryChargingFull else Icons.Default.BatteryAlert,
+                                        contentDescription = null,
+                                        tint = if (isIgnoringBattery) Color(0xFF10B981) else Color(0xFFEF4444),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Column {
+                                    Text(
+                                        text = "Unrestricted Battery Mode",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        text = if (isIgnoringBattery) "App is allowed to run uninterrupted in background" else "Recommended: bypass standby to maintain steady integration",
+                                        fontSize = 10.sp,
+                                        color = if (isIgnoringBattery) Color(0xFF10B981).copy(alpha = 0.8f) else Color.White.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+                            
+                            if (!isIgnoringBattery) {
+                                Button(
+                                    onClick = {
+                                        try {
+                                            val intent = Intent().apply {
+                                                action = android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                                                data = android.net.Uri.parse("package:${context.packageName}")
+                                            }
+                                            context.startActivity(intent)
+                                            isIgnoringBattery = powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                                        } catch (e: Exception) {
+                                            try {
+                                                val fallbackIntent = Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                                context.startActivity(fallbackIntent)
+                                            } catch (ex: Exception) {
+                                                Toast.makeText(context, "Could not open settings automatically", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = theme.coolColor.copy(alpha = 0.15f),
+                                        contentColor = theme.coolColor
+                                    ),
+                                    border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.3f)),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("SET EXCLUSION", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(14.dp))
+                                    Text("ACTIVE", color = Color(0xFF10B981), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // Toggle 1: Force Screen On
+                        Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(hvacCardBgColor(), hvacCardShape(16))
@@ -5236,7 +5334,7 @@ fun HvacSettingsDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth().height(56.dp)
                         ) {
-                            items(designOptions) { (key, title, desc) ->
+                            items(designOptions, key = { it.first }) { (key, title, desc) ->
                                 val isChosen = activeDesign == key
                                 Card(
                                     modifier = Modifier
@@ -5922,6 +6020,120 @@ fun HvacSettingsDialog(
                             Icon(Icons.Default.TrendingUp, contentDescription = null, modifier = Modifier.size(12.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("MOCK BUMP (+0.0.1)", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                // Weather Forecast Location Parameter Overrides
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column {
+                        Text(
+                            text = "WEATHER FORECAST LOCATION",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Manually configure coords to override default Open-Meteo & MET Norway forecast deck settings",
+                            fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.4f)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = latText,
+                            onValueChange = { latText = it },
+                            label = { Text("Latitude", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedIndicatorColor = theme.coolColor,
+                                unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                            ),
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("weather_lat_input"),
+                            leadingIcon = {
+                                Icon(Icons.Default.LocationOn, contentDescription = null, tint = theme.coolColor.copy(alpha = 0.8f), modifier = Modifier.size(16.dp))
+                            }
+                        )
+
+                        OutlinedTextField(
+                            value = lonText,
+                            onValueChange = { lonText = it },
+                            label = { Text("Longitude", color = Color.White.copy(alpha = 0.4f), fontSize = 11.sp) },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedIndicatorColor = theme.coolColor,
+                                unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
+                            ),
+                            singleLine = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("weather_lon_input"),
+                            leadingIcon = {
+                                Icon(Icons.Default.LocationOn, contentDescription = null, tint = theme.coolColor.copy(alpha = 0.8f), modifier = Modifier.size(16.dp))
+                            }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val context = LocalContext.current
+                        Button(
+                            onClick = {
+                                val latDouble = latText.toDoubleOrNull()
+                                val lonDouble = lonText.toDoubleOrNull()
+                                if (latDouble != null && lonDouble != null) {
+                                    viewModel.updateWeatherLocation(latDouble, lonDouble)
+                                    Toast.makeText(context, "Weather location saved and forecast updated!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Please enter valid numeric coordinates", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = theme.coolColor.copy(alpha = 0.15f),
+                                contentColor = theme.coolColor
+                            ),
+                            border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("SAVE LOCATION", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.resetWeatherLocation()
+                                Toast.makeText(context, "Location coordinates reset to defaults!", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFD32F2F).copy(alpha = 0.15f),
+                                contentColor = Color(0xFFEF5350)
+                            ),
+                            border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("RESET TO DEFAULT", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                         }
                     }
                 }
