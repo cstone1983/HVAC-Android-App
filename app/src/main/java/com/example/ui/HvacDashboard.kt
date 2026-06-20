@@ -31,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -2765,12 +2766,35 @@ fun ZoneDetailPopup(
         label = "detail_aura_scale"
     )
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp)
-                .testTag("zone_detail_popup_${zone.key}"),
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                ),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Card(
+                modifier = Modifier
+                    .widthIn(max = 500.dp)
+                    .fillMaxWidth(0.9f)
+                    .heightIn(max = screenHeight * 0.85f)
+                    .padding(top = 40.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {} // Intercept clicks inside Card
+                    )
+                    .testTag("zone_detail_popup_${zone.key}"),
             colors = CardDefaults.cardColors(
                 containerColor = Color(0xFF1E293B) // slate dark background
             ),
@@ -3394,6 +3418,7 @@ fun ZoneDetailPopup(
             }
         }
     }
+}
 }
 
 @Composable
