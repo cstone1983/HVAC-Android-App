@@ -1255,20 +1255,18 @@ fun DynamicTabContent(
                                 PoolDashboardView(viewModel = viewModel)
                             }
                         }
+                    } else if (section.lowercase().trim() == "solar") {
+                        item {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                SolarDashboardView(viewModel = viewModel, theme = theme)
+                            }
+                        }
                     } else {
                         val dynamicSection = layoutConfig.dynamicSections?.find { it.id.lowercase().trim() == section.lowercase().trim() }
                         if (dynamicSection != null) {
                             item {
                                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                                     DynamicSectionRenderer(sectionConfig = dynamicSection, theme = theme)
-                                }
-                            }
-                        } else {
-                            if (section.lowercase().trim() == "solar") {
-                                item {
-                                    Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                        SolarDataPlaceholder(theme = theme)
-                                    }
                                 }
                             }
                         }
@@ -1762,11 +1760,15 @@ fun HvacDashboardContent(
             // Added ThreeDayWeatherCard integrating Open-Meteo & MET Norway
             if (layoutConfig.showWeatherCard != false) {
                 val weatherState by viewModel.weatherState.collectAsStateWithLifecycle()
+                val isMinimized by viewModel.weatherCardMinimized.collectAsStateWithLifecycle()
                 ThreeDayWeatherCard(
                     weatherState = weatherState,
-                    onRefresh = { scope.launch { viewModel.fetchWeather() } }
+                    isMinimized = isMinimized,
+                    onToggleMinimize = { viewModel.setWeatherCardMinimized(!isMinimized) },
+                    onRefresh = { scope.launch { viewModel.fetchWeather() } },
+                    modifier = Modifier.testTag("weather_card")
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(if (isMinimized) 6.dp else 10.dp))
             }
 
             // Custom compact tab row navigation mimicking the hot water mode option buttons layout
@@ -6841,6 +6843,8 @@ fun CondensedPowerGroup(
 @Composable
 fun ThreeDayWeatherCard(
     weatherState: com.example.model.WeatherForecastState,
+    isMinimized: Boolean,
+    onToggleMinimize: () -> Unit,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -6862,7 +6866,7 @@ fun ThreeDayWeatherCard(
                 .fillMaxWidth()
                 .padding(12.dp)
         ) {
-            // Header row with Icon, title and Refresh button
+            // Header row with Icon, title, Refresh button and Minimize toggle button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -6870,7 +6874,8 @@ fun ThreeDayWeatherCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Cloud,
@@ -6900,70 +6905,127 @@ fun ThreeDayWeatherCard(
                     }
                 }
 
-                IconButton(
-                    onClick = onRefresh,
-                    modifier = Modifier.size(28.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    if (weatherState.isLoading) {
-                        CircularProgressIndicator(
-                            color = theme.coolColor,
-                            strokeWidth = 1.5.dp,
-                            modifier = Modifier.size(12.dp)
-                        )
-                    } else {
+                    IconButton(
+                        onClick = onRefresh,
+                        modifier = Modifier.size(28.dp).testTag("weather_refresh_button")
+                    ) {
+                        if (weatherState.isLoading) {
+                            CircularProgressIndicator(
+                                color = theme.coolColor,
+                                strokeWidth = 1.5.dp,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Refresh weather",
+                                tint = Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onToggleMinimize,
+                        modifier = Modifier.size(28.dp).testTag("weather_minimize_toggle")
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh weather",
+                            imageVector = if (isMinimized) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                            contentDescription = if (isMinimized) "Expand weather" else "Minimize weather",
                             tint = Color.White.copy(alpha = 0.6f),
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            if (!isMinimized) {
+                Spacer(modifier = Modifier.height(8.dp))
 
-            if (weatherState.error != null && weatherState.days.isEmpty()) {
-                Text(
-                    text = weatherState.error,
-                    fontSize = 11.sp,
-                    color = Color(0xFFEF4444),
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-            } else if (weatherState.days.isEmpty() && weatherState.isLoading) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(68.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                if (weatherState.error != null && weatherState.days.isEmpty()) {
+                    Text(
+                        text = weatherState.error,
+                        fontSize = 11.sp,
+                        color = Color(0xFFEF4444),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                } else if (weatherState.days.isEmpty() && weatherState.isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(68.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(
-                            color = theme.coolColor,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "Aggregating Open-Meteo & MET Norway feeds...",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = Color.White.copy(alpha = 0.6f)
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                color = theme.coolColor,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Aggregating Open-Meteo & MET Norway feeds...",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        weatherState.days.take(3).forEach { day ->
+                            WeatherForecastDayColumn(
+                                day = day,
+                                themeColors = theme,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
             } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    weatherState.days.take(3).forEach { day ->
-                        WeatherForecastDayColumn(
-                            day = day,
-                            themeColors = theme,
-                            modifier = Modifier.weight(1f)
+                // Minimized view: show a compact today forecast summary to save space
+                if (weatherState.days.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val today = weatherState.days.first()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = when (today.iconName.lowercase()) {
+                                "sunny" -> Icons.Default.WbSunny
+                                "cloudy" -> Icons.Default.Cloud
+                                "rainy" -> Icons.Default.WaterDrop
+                                "snowy" -> Icons.Default.Grain
+                                "stormy" -> Icons.Default.Thunderstorm
+                                else -> Icons.Default.Cloud
+                            },
+                            contentDescription = today.condition,
+                            tint = when (today.iconName.lowercase()) {
+                                "sunny" -> theme.heatColor
+                                "cloudy" -> Color.White.copy(alpha = 0.7f)
+                                "rainy" -> theme.coolColor
+                                "snowy" -> Color(0xFFE2E8F0)
+                                "stormy" -> Color(0xFFA855F7)
+                                else -> Color.White.copy(alpha = 0.7f)
+                            },
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = "Today: ${today.condition} · High: ${today.avgHighTemp.toInt()}°F · Low: ${today.avgLowTemp.toInt()}°F",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(alpha = 0.6f)
                         )
                     }
                 }
