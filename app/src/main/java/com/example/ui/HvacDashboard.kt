@@ -655,24 +655,6 @@ fun HvacDashboard(
                                     )
                                 }
 
-                                // Logout Button
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.06f))
-                                        .clickable { viewModel.logout() }
-                                        .testTag("logout_button"),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ExitToApp,
-                                        contentDescription = "Log out",
-                                        tint = Color.White.copy(alpha = 0.85f),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
                                 // Connection / sync state node indicator
                                 val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
                                 val connectionColor = if (isOffline) {
@@ -807,6 +789,85 @@ fun HvacDashboard(
                     }
 
                     is HvacUiState.Success -> {
+                        val showModeConfirmDialog by viewModel.showModeConfirmDialog.collectAsStateWithLifecycle()
+                        val pendingHvacMode by viewModel.pendingHvacMode.collectAsStateWithLifecycle()
+
+                        if (showModeConfirmDialog && pendingHvacMode != null) {
+                            Dialog(onDismissRequest = { viewModel.cancelGlobalHvacModeChange() }) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp)
+                                        .testTag("mode_change_confirm_dialog"),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = Color(0xFF1E293B)
+                                    ),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+                                    shape = RoundedCornerShape(20.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(24.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Warning,
+                                            contentDescription = "Warning",
+                                            tint = Color(0xFFF59E0B),
+                                            modifier = Modifier.size(40.dp)
+                                        )
+                                        Text(
+                                            text = "Confirm Mode Change",
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        val currentLabel = state.globalSettings.lastNonOffHvacMode.lowercase().replaceFirstChar { it.uppercase() }
+                                        val targetLabel = pendingHvacMode!!.lowercase().replaceFirstChar { it.uppercase() }
+                                        Text(
+                                            text = "Are you sure you want to change the system mode from $currentLabel to $targetLabel?",
+                                            fontSize = 14.sp,
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            TextButton(
+                                                onClick = {
+                                                    viewModel.cancelGlobalHvacModeChange()
+                                                },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(44.dp)
+                                                    .testTag("mode_change_cancel_button")
+                                            ) {
+                                                Text("Cancel", color = Color.White.copy(alpha = 0.6f))
+                                            }
+                                            Button(
+                                                onClick = {
+                                                    viewModel.confirmGlobalHvacModeChange()
+                                                },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (pendingHvacMode!!.lowercase() == "cool") Color(0xFF2196F3) else Color(0xFFF59E0B)
+                                                ),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(44.dp)
+                                                    .testTag("mode_change_confirm_button")
+                                            ) {
+                                                Text("Confirm", color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         HvacDashboardContent(
                             state = state,
                             viewModel = viewModel,
@@ -1559,22 +1620,7 @@ fun HvacDashboardContent(
                                     )
                                 }
 
-                                Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(CircleShape)
-                                        .background(Color.White.copy(alpha = 0.06f))
-                                        .clickable { viewModel.logout() }
-                                        .testTag("logout_button"),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ExitToApp,
-                                        contentDescription = "Log out",
-                                        tint = Color.White.copy(alpha = 0.85f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
+
                             }
                         }
                     } else {
@@ -1611,22 +1657,7 @@ fun HvacDashboardContent(
                             )
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.06f))
-                                .clickable { viewModel.logout() }
-                                .testTag("logout_button"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ExitToApp,
-                                contentDescription = "Log out",
-                                tint = Color.White.copy(alpha = 0.85f),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
+
                     }
                 }
             }
@@ -2138,7 +2169,9 @@ fun GlobalSettingsQuickControl(
                                 .background(
                                     if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
                                 )
-                                .clickable { viewModel.selectGlobalHvacMode(label) }
+                                .clickable {
+                                    viewModel.requestGlobalHvacMode(label)
+                                }
                                 .testTag("main_hvac_mode_btn_${label.lowercase()}"),
                             contentAlignment = Alignment.Center
                         ) {
@@ -4575,8 +4608,8 @@ fun HvacLoginScreen(
     glowColor: Color,
     bgGradient: Brush
 ) {
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var token by remember { mutableStateOf("") }
+    var tokenVisible by remember { mutableStateOf(false) }
     val loginError by viewModel.loginErrorMessage.collectAsStateWithLifecycle()
     val isConnecting by viewModel.isLoggingIn.collectAsStateWithLifecycle()
 
@@ -4651,7 +4684,7 @@ fun HvacLoginScreen(
                     modifier = Modifier.padding(20.dp)
                 ) {
                     Text(
-                        "SECURE SYSTEM LOGIN",
+                        "SECURE SYSTEM ACCESS",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White.copy(alpha = 0.7f),
@@ -4659,12 +4692,12 @@ fun HvacLoginScreen(
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
 
-                    // Username input
+                    // Long-lived access token input
                     OutlinedTextField(
-                        value = username,
-                        onValueChange = { username = it },
-                        label = { Text("Username", color = Color.White.copy(alpha = 0.4f)) },
-                        placeholder = { Text("admin", color = Color.White.copy(alpha = 0.2f)) },
+                        value = token,
+                        onValueChange = { token = it },
+                        label = { Text("Long-Lived Access Token", color = Color.White.copy(alpha = 0.4f)) },
+                        placeholder = { Text("ey...", color = Color.White.copy(alpha = 0.2f)) },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent,
                             unfocusedContainerColor = Color.Transparent,
@@ -4674,38 +4707,20 @@ fun HvacLoginScreen(
                             unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
                         ),
                         singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("username_input"),
-                        leadingIcon = {
-                            Icon(Icons.Default.Person, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Password input
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        label = { Text("Password", color = Color.White.copy(alpha = 0.4f)) },
-                        placeholder = { Text("••••••••", color = Color.White.copy(alpha = 0.2f)) },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.Transparent,
-                            unfocusedContainerColor = Color.Transparent,
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedIndicatorColor = Color(0xFF10B981),
-                            unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
-                        ),
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = if (tokenVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("password_input"),
+                            .testTag("ha_token_input"),
                         leadingIcon = {
                             Icon(Icons.Default.Lock, contentDescription = null, tint = Color.White.copy(alpha = 0.5f))
+                        },
+                        trailingIcon = {
+                            val image = if (tokenVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                            val description = if (tokenVisible) "Hide token" else "Show token"
+                            IconButton(onClick = { tokenVisible = !tokenVisible }) {
+                                Icon(imageVector = image, contentDescription = description, tint = Color.White.copy(alpha = 0.5f))
+                            }
                         }
                     )
 
@@ -4731,7 +4746,7 @@ fun HvacLoginScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "Enter your Home Assistant username and password credentials. The configured server address is managed securely in the background.",
+                                "Enter your Home Assistant Long-Lived Access Token. You can generate this token in your Home Assistant profile settings at the bottom of the page.",
                                 fontSize = 9.sp,
                                 color = Color.White.copy(alpha = 0.5f),
                                 lineHeight = 12.sp
@@ -4761,9 +4776,9 @@ fun HvacLoginScreen(
 
                     // Buttons
                     Button(
-                        onClick = { viewModel.login(username, password) },
+                        onClick = { viewModel.login(token) },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("login_button"),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         if (isConnecting) {
@@ -4779,6 +4794,33 @@ fun HvacLoginScreen(
                                 letterSpacing = 1.sp
                             )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedButton(
+                        onClick = { viewModel.clearSessions() },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color.White.copy(alpha = 0.7f)
+                        ),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                        modifier = Modifier.fillMaxWidth().testTag("clear_sessions_button"),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Clear Sessions",
+                            modifier = Modifier.size(14.dp),
+                            tint = Color.White.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "CLEAR SESSIONS / TOKENS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.7f),
+                            letterSpacing = 1.sp
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))

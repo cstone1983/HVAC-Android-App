@@ -20,6 +20,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.drawText
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -126,7 +134,7 @@ fun PoolDashboardView(
     val poolBatteryMax by viewModel.poolBatteryMax.collectAsStateWithLifecycle()
 
     var activeTrendTab by remember { mutableStateOf(0) } // 0 = Temp, 1 = pH, 2 = ORP
-    var activeTimeFrame by remember { mutableStateOf(0) } // 0 = 24h, 1 = 1 Week, 2 = 1 Month
+    var activeTimeFrame by remember { mutableStateOf(1) } // 0 = 6h, 1 = 24h, 2 = 7d
 
     val currentTemp = poolState.waterTemperature?.toFloat() ?: 79.0f
     val currentPh = poolState.ph?.toFloat() ?: 7.35f
@@ -137,14 +145,17 @@ fun PoolDashboardView(
     val displayHistory = remember(poolHistory, activeTimeFrame, currentTemp, currentPh, currentOrp) {
         if (poolHistory.isNotEmpty()) {
             val nowMs = System.currentTimeMillis()
+            val estTz = java.util.TimeZone.getTimeZone("America/New_York")
             val parsePointTime: (String) -> Long = { ts ->
                 try {
                     if (ts.contains("/")) {
-                        val sdf = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault())
+                        val sdf = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.US).apply {
+                            timeZone = estTz
+                        }
                         val parsed = sdf.parse(ts)
                         if (parsed != null) {
-                            val cal = java.util.Calendar.getInstance()
-                            val parsedCal = java.util.Calendar.getInstance().apply { time = parsed }
+                            val cal = java.util.Calendar.getInstance(estTz)
+                            val parsedCal = java.util.Calendar.getInstance(estTz).apply { time = parsed }
                             cal.set(java.util.Calendar.MONTH, parsedCal.get(java.util.Calendar.MONTH))
                             cal.set(java.util.Calendar.DAY_OF_MONTH, parsedCal.get(java.util.Calendar.DAY_OF_MONTH))
                             cal.set(java.util.Calendar.HOUR_OF_DAY, parsedCal.get(java.util.Calendar.HOUR_OF_DAY))
@@ -154,11 +165,13 @@ fun PoolDashboardView(
                             0L
                         }
                     } else {
-                        val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                        val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).apply {
+                            timeZone = estTz
+                        }
                         val parsed = sdf.parse(ts)
                         if (parsed != null) {
-                            val cal = java.util.Calendar.getInstance()
-                            val parsedCal = java.util.Calendar.getInstance().apply { time = parsed }
+                            val cal = java.util.Calendar.getInstance(estTz)
+                            val parsedCal = java.util.Calendar.getInstance(estTz).apply { time = parsed }
                             cal.set(java.util.Calendar.HOUR_OF_DAY, parsedCal.get(java.util.Calendar.HOUR_OF_DAY))
                             cal.set(java.util.Calendar.MINUTE, parsedCal.get(java.util.Calendar.MINUTE))
                             cal.timeInMillis
@@ -173,11 +186,16 @@ fun PoolDashboardView(
 
             val filteredPoints = when (activeTimeFrame) {
                 0 -> {
+                    // Granular (past 6h): points within last 6h
+                    val sixHoursAgo = nowMs - 6 * 60 * 60 * 1000L
+                    poolHistory.filter { parsePointTime(it.timestamp) >= sixHoursAgo || parsePointTime(it.timestamp) == 0L }
+                }
+                1 -> {
                     // Hourly (past 24h): points within last 24h
                     val oneDayAgo = nowMs - 24 * 60 * 60 * 1000L
                     poolHistory.filter { parsePointTime(it.timestamp) >= oneDayAgo || parsePointTime(it.timestamp) == 0L }
                 }
-                1 -> {
+                2 -> {
                     // Weekly (past 7 days): points within last 7 days
                     val sevenDaysAgo = nowMs - 7 * 24 * 60 * 60 * 1000L
                     val points = poolHistory.filter { parsePointTime(it.timestamp) >= sevenDaysAgo || parsePointTime(it.timestamp) == 0L }
@@ -188,30 +206,71 @@ fun PoolDashboardView(
                         points
                     }
                 }
-                else -> {
-                    // Monthly (past 30 days): all points
-                    if (poolHistory.size > 80) {
-                        val step = poolHistory.size / 40
-                        poolHistory.filterIndexed { index, _ -> index % step == 0 }
-                    } else {
-                        poolHistory
-                    }
-                }
+                else -> poolHistory
             }
 
             if (filteredPoints.isNotEmpty()) filteredPoints else poolHistory
         } else {
+            emptyList()
+            /*
             // BACKWARD MOCK FALLBACK: Use pristine beautiful generated curves if offline or not synced
+            val estTz = java.util.TimeZone.getTimeZone("America/New_York")
+            val calendar = java.util.Calendar.getInstance(estTz)
+            val nowMs = System.currentTimeMillis()
             when (activeTimeFrame) {
                 0 -> {
+                    // 6-Hour Fallback (granular, say every 10 mins)
                     val list = mutableListOf<PoolHistoryPoint>()
-                    val calendar = java.util.Calendar.getInstance()
-                    calendar.add(java.util.Calendar.HOUR_OF_DAY, -24)
-                    for (i in 0..24) {
-                        val hour = (calendar.get(java.util.Calendar.HOUR_OF_DAY) + i) % 24
-                        val hourStr = String.format(java.util.Locale.US, "%02d:00", hour)
+                    val intervalMinutes = 10
+                    val intervalMillis = intervalMinutes * 60 * 1000L
+                    val totalIntervals = (6 * 60) / intervalMinutes // 36 intervals
+                    val timeFormatter = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).apply {
+                        timeZone = estTz
+                    }
+                    for (i in totalIntervals downTo 0) {
+                        val tMillis = nowMs - i * intervalMillis
+                        calendar.timeInMillis = tMillis
+                        val hour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
+                        val minute = calendar.get(java.util.Calendar.MINUTE)
+                        val timeStr = timeFormatter.format(java.util.Date(tMillis))
                         
-                        // Solar heating/cooling diurnal cycle
+                        val tDecimal = hour + (minute / 60f)
+                        val angle = (tDecimal - 6) * (2.0 * Math.PI / 24.0)
+                        val tempOffset = -Math.cos(angle).toFloat() * 1.5f + (Math.sin(angle * 2).toFloat() * 0.2f)
+                        val phOffset = Math.sin(angle).toFloat() * 0.03f
+                        val orpOffset = Math.cos(angle).toFloat() * 12f
+
+                        // Add fine granular noise
+                        val noiseTemp = ((Math.random() - 0.5) * 0.04).toFloat()
+                        val noisePh = ((Math.random() - 0.5) * 0.004).toFloat()
+                        val noiseOrp = ((Math.random() - 0.5) * 0.8).toFloat()
+
+                        list.add(
+                            PoolHistoryPoint(
+                                timestamp = timeStr,
+                                temp = currentTemp + tempOffset + noiseTemp,
+                                ph = currentPh + phOffset + noisePh,
+                                orp = currentOrp + orpOffset + noiseOrp
+                            )
+                        )
+                    }
+                    list
+                }
+                1 -> {
+                    // 24-Hour Fallback
+                    val list = mutableListOf<PoolHistoryPoint>()
+                    val intervalMinutes = 60
+                    val intervalMillis = intervalMinutes * 60 * 1000L
+                    val totalIntervals = 24
+                    val timeFormatter = java.text.SimpleDateFormat("HH:00", java.util.Locale.US).apply {
+                        timeZone = estTz
+                    }
+                    for (i in totalIntervals downTo 0) {
+                        val tMillis = nowMs - i * intervalMillis
+                        calendar.timeInMillis = tMillis
+                        val hour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
+                        val timeStr = timeFormatter.format(java.util.Date(tMillis))
+                        
                         val angle = (hour - 6) * (2.0 * Math.PI / 24.0)
                         val tempOffset = -Math.cos(angle).toFloat() * 1.5f + (Math.sin(angle * 2).toFloat() * 0.2f)
                         val phOffset = Math.sin(angle).toFloat() * 0.03f
@@ -219,7 +278,7 @@ fun PoolDashboardView(
 
                         list.add(
                             PoolHistoryPoint(
-                                timestamp = hourStr,
+                                timestamp = timeStr,
                                 temp = currentTemp + tempOffset,
                                 ph = currentPh + phOffset,
                                 orp = currentOrp + orpOffset
@@ -228,64 +287,43 @@ fun PoolDashboardView(
                     }
                     list
                 }
-                1 -> {
+                2 -> {
+                    // 7-Day Fallback
                     val list = mutableListOf<PoolHistoryPoint>()
-                    val calendar = java.util.Calendar.getInstance()
-                    calendar.add(java.util.Calendar.DAY_OF_YEAR, -6)
-                    val dayFormatter = java.text.SimpleDateFormat("EEE", java.util.Locale.US)
-                    
-                    for (d in 0..6) {
-                        val dayName = dayFormatter.format(calendar.time)
-                        for (h in listOf(0, 6, 12, 18)) {
-                            val angle = (h - 6) * (2.0 * Math.PI / 24.0)
-                            val trendAngle = d * (2.0 * Math.PI / 7.0)
-                            
-                            val tempOffset = -Math.cos(angle).toFloat() * 1.1f + Math.sin(trendAngle).toFloat() * 1.5f + (Math.sin(angle * 3).toFloat() * 0.15f)
-                            val phOffset = Math.sin(angle).toFloat() * 0.03f + Math.cos(trendAngle).toFloat() * 0.015f
-                            val orpOffset = Math.cos(angle).toFloat() * 8f - Math.sin(trendAngle).toFloat() * 9f
-
-                            val timeLabel = if (h == 0) dayName else "$dayName ${String.format(java.util.Locale.US, "%02d:00", h)}"
-                            list.add(
-                                PoolHistoryPoint(
-                                    timestamp = timeLabel,
-                                    temp = currentTemp + tempOffset,
-                                    ph = currentPh + phOffset,
-                                    orp = currentOrp + orpOffset
-                                )
-                            )
-                        }
-                        calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
+                    val intervalHours = 6
+                    val intervalMillis = intervalHours * 60 * 60 * 1000L
+                    val totalIntervals = (7 * 24) / intervalHours // 28 intervals
+                    val dayFormatter = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.US).apply {
+                        timeZone = estTz
                     }
-                    list
-                }
-                else -> {
-                    val list = mutableListOf<PoolHistoryPoint>()
-                    val calendar = java.util.Calendar.getInstance()
-                    calendar.add(java.util.Calendar.DAY_OF_YEAR, -29)
-                    val dateFormatter = java.text.SimpleDateFormat("MM/dd", java.util.Locale.US)
-                    
-                    for (day in 0..29) {
-                        val dateLabel = dateFormatter.format(calendar.time)
-                        val trendAngle1 = day * (2.0 * Math.PI / 30.0)
-                        val trendAngle2 = day * (2.0 * Math.PI / 8.0)
+                    for (i in totalIntervals downTo 0) {
+                        val tMillis = nowMs - i * intervalMillis
+                        calendar.timeInMillis = tMillis
+                        val dayIndex = calendar.get(java.util.Calendar.DAY_OF_YEAR)
+                        val hour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
+                        val timeStr = dayFormatter.format(java.util.Date(tMillis))
                         
-                        val tempOffset = Math.sin(trendAngle1).toFloat() * 2.8f + Math.cos(trendAngle2).toFloat() * 0.8f
-                        val phOffset = -Math.cos(trendAngle1).toFloat() * 0.04f + Math.sin(trendAngle2).toFloat() * 0.015f
-                        val orpOffset = -Math.sin(trendAngle1).toFloat() * 16f - Math.cos(trendAngle2).toFloat() * 6f
+                        val angle = (hour - 6) * (2.0 * Math.PI / 24.0)
+                        val trendAngle = dayIndex * (2.0 * Math.PI / 7.0)
+                        
+                        val tempOffset = -Math.cos(angle).toFloat() * 1.1f + Math.sin(trendAngle).toFloat() * 1.5f + (Math.sin(angle * 3).toFloat() * 0.15f)
+                        val phOffset = Math.sin(angle).toFloat() * 0.03f + Math.cos(trendAngle).toFloat() * 0.015f
+                        val orpOffset = Math.cos(angle).toFloat() * 8f - Math.sin(trendAngle).toFloat() * 9f
 
                         list.add(
                             PoolHistoryPoint(
-                                timestamp = dateLabel,
+                                timestamp = timeStr,
                                 temp = currentTemp + tempOffset,
                                 ph = currentPh + phOffset,
                                 orp = currentOrp + orpOffset
                             )
                         )
-                        calendar.add(java.util.Calendar.DAY_OF_YEAR, 1)
                     }
                     list
                 }
+                else -> emptyList()
             }
+            */
         }
     }
 
@@ -580,7 +618,7 @@ fun PoolDashboardView(
                     color = Color.White.copy(alpha = 0.3f),
                     modifier = Modifier.padding(end = 4.dp)
                 )
-                val timeframes = listOf("24 HOURS", "1 WEEK", "1 MONTH")
+                val timeframes = listOf("6 HOURS", "24 HOURS", "7 DAYS")
                 timeframes.forEachIndexed { index, label ->
                     val isSel = activeTimeFrame == index
                     Box(
@@ -671,11 +709,76 @@ fun PoolDashboardView(
                 }
 
                 // --- CANVAS GRAPH CONTAINER ---
+                var selectedPointIndex by remember(displayHistory) { mutableStateOf<Int?>(null) }
+
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
+                        .pointerInput(displayHistory) {
+                            detectTapGestures(
+                                onPress = { offset ->
+                                    val width = size.width
+                                    if (width > 0 && displayHistory.isNotEmpty()) {
+                                        val fraction = (offset.x / width).coerceIn(0f, 1f)
+                                        val idx = (fraction * (displayHistory.size - 1)).roundToInt()
+                                        selectedPointIndex = idx.coerceIn(displayHistory.indices)
+                                    }
+                                }
+                            )
+                        }
+                        .pointerInput(displayHistory) {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    val width = size.width
+                                    if (width > 0 && displayHistory.isNotEmpty()) {
+                                        val fraction = (offset.x / width).coerceIn(0f, 1f)
+                                        val idx = (fraction * (displayHistory.size - 1)).roundToInt()
+                                        selectedPointIndex = idx.coerceIn(displayHistory.indices)
+                                    }
+                                },
+                                onDrag = { change, _ ->
+                                    val width = size.width
+                                    if (width > 0 && displayHistory.isNotEmpty()) {
+                                        val fraction = (change.position.x / width).coerceIn(0f, 1f)
+                                        val idx = (fraction * (displayHistory.size - 1)).roundToInt()
+                                        selectedPointIndex = idx.coerceIn(displayHistory.indices)
+                                    }
+                                },
+                                onDragEnd = {
+                                    selectedPointIndex = null
+                                },
+                                onDragCancel = {
+                                    selectedPointIndex = null
+                                }
+                            )
+                        }
                 ) {
+                    if (displayHistory.isEmpty()) {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudOff,
+                                contentDescription = "Offline",
+                                tint = Color.White.copy(alpha = 0.4f),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Text(
+                                text = "Home Assistant Connection Offline",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.5f)
+                            )
+                            Text(
+                                text = "Unable to retrieve pool historical metrics",
+                                fontSize = 8.sp,
+                                color = Color.White.copy(alpha = 0.35f)
+                            )
+                        }
+                    }
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val width = size.width
                         val height = size.height
@@ -801,6 +904,79 @@ fun PoolDashboardView(
                                         center = pt,
                                         style = Stroke(width = 1.dp.toPx())
                                     )
+                                }
+                            }
+
+                            // Draw vertical crosshair guide
+                            selectedPointIndex?.let { selIdx ->
+                                if (selIdx in points.indices) {
+                                    val selPt = points[selIdx]
+                                    drawLine(
+                                        color = Color.White.copy(alpha = 0.4f),
+                                        start = Offset(selPt.x, pad),
+                                        end = Offset(selPt.x, pad + effH),
+                                        strokeWidth = 1.dp.toPx()
+                                    )
+                                    drawCircle(
+                                        color = strokeColor,
+                                        radius = 6.dp.toPx(),
+                                        center = selPt
+                                    )
+                                    drawCircle(
+                                        color = Color.White,
+                                        radius = 2.5.dp.toPx(),
+                                        center = selPt
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Floating Tooltip Overlay
+                    selectedPointIndex?.let { selIdx ->
+                        if (selIdx in displayHistory.indices) {
+                            val pt = displayHistory[selIdx]
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = pt.timestamp.uppercase(),
+                                        fontSize = 9.sp,
+                                        color = Color.White.copy(alpha = 0.6f),
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Temp: ${String.format(java.util.Locale.US, "%.1f", pt.temp)}°F",
+                                            fontSize = 9.5.sp,
+                                            color = theme.coolColor,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        Text(
+                                            text = "pH: ${String.format(java.util.Locale.US, "%.2f", pt.ph)}",
+                                            fontSize = 9.5.sp,
+                                            color = theme.ecoColor,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        Text(
+                                            text = "ORP: ${pt.orp.toInt()}mV",
+                                            fontSize = 9.5.sp,
+                                            color = theme.heatColor,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
                                 }
                             }
                         }

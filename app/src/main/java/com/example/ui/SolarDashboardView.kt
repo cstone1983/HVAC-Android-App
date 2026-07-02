@@ -49,14 +49,16 @@ fun SolarDashboardView(
     modifier: Modifier = Modifier
 ) {
     val liveState by viewModel.solarLiveState.collectAsStateWithLifecycle()
+    val solar6HourHistory by viewModel.solar6HourHistory.collectAsStateWithLifecycle()
     val history24h by viewModel.solar24HourHistory.collectAsStateWithLifecycle()
+    val solar7DayPowerHistory by viewModel.solar7DayPowerHistory.collectAsStateWithLifecycle()
     val dailyHistory by viewModel.solarDailyHistory.collectAsStateWithLifecycle()
     val weeklyHistory by viewModel.solarWeeklyHistory.collectAsStateWithLifecycle()
     val isFetching by viewModel.isSolarFetching.collectAsStateWithLifecycle()
     val error by viewModel.solarError.collectAsStateWithLifecycle()
     val diagnosticInfo by viewModel.solarDiagnosticInfo.collectAsStateWithLifecycle()
 
-    var activeTrendTab by remember { mutableStateOf(0) } // 0: 24h, 1: Daily, 2: Weekly
+    var activeTrendTab by remember { mutableStateOf(1) } // 0: 6h, 1: 24h, 2: 7d
 
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -182,6 +184,45 @@ fun SolarDashboardView(
                 ) {
                     when (activeTrendTab) {
                         0 -> {
+                            val live6hHistory = remember(solar6HourHistory, liveState) {
+                                if (solar6HourHistory.isEmpty()) {
+                                    emptyList()
+                                } else {
+                                    val list = solar6HourHistory.toMutableList()
+                                    if (liveState.isFetched) {
+                                        val nowMs = System.currentTimeMillis()
+                                        val formattedNow = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).apply {
+                                            timeZone = java.util.TimeZone.getTimeZone("America/New_York")
+                                        }.format(java.util.Date(nowMs))
+                                        val lastPt = list.lastOrNull()
+                                        if (lastPt != null && nowMs - lastPt.epochMillis < 300000L) { // 5 mins
+                                            list[list.size - 1] = SolarLinePoint(
+                                                timestampLabel = formattedNow,
+                                                epochMillis = nowMs,
+                                                usageWatts = liveState.liveUsageWatts,
+                                                productionWatts = liveState.liveProductionWatts
+                                            )
+                                        } else {
+                                            list.add(
+                                                SolarLinePoint(
+                                                    timestampLabel = formattedNow,
+                                                    epochMillis = nowMs,
+                                                    usageWatts = liveState.liveUsageWatts,
+                                                    productionWatts = liveState.liveProductionWatts
+                                                )
+                                            )
+                                        }
+                                    }
+                                    list
+                                }
+                            }
+                            if (live6hHistory.isNotEmpty()) {
+                                LineChart6h(data = live6hHistory, theme = theme)
+                            } else {
+                                ChartEmptyState()
+                            }
+                        }
+                        1 -> {
                             val liveHistory = remember(history24h, liveState) {
                                 if (history24h.isEmpty()) {
                                     emptyList()
@@ -189,7 +230,9 @@ fun SolarDashboardView(
                                     val list = history24h.toMutableList()
                                     if (liveState.isFetched) {
                                         val nowMs = System.currentTimeMillis()
-                                        val formattedNow = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(nowMs))
+                                        val formattedNow = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).apply {
+                                            timeZone = java.util.TimeZone.getTimeZone("America/New_York")
+                                        }.format(java.util.Date(nowMs))
                                         val lastPt = list.lastOrNull()
                                         if (lastPt != null && nowMs - lastPt.epochMillis < 300000L) { // 5 mins
                                             list[list.size - 1] = SolarLinePoint(
@@ -218,16 +261,41 @@ fun SolarDashboardView(
                                 ChartEmptyState()
                             }
                         }
-                        1 -> {
-                            if (dailyHistory.isNotEmpty()) {
-                                HistoricalLineChart(data = dailyHistory, isMonth = false, theme = theme)
-                            } else {
-                                ChartEmptyState()
+                        2 -> {
+                            val live7DayHistory = remember(solar7DayPowerHistory, liveState) {
+                                if (solar7DayPowerHistory.isEmpty()) {
+                                    emptyList()
+                                } else {
+                                    val list = solar7DayPowerHistory.toMutableList()
+                                    if (liveState.isFetched) {
+                                        val nowMs = System.currentTimeMillis()
+                                        val formattedNow = java.text.SimpleDateFormat("EEE h:mm a", java.util.Locale.US).apply {
+                                            timeZone = java.util.TimeZone.getTimeZone("America/New_York")
+                                        }.format(java.util.Date(nowMs))
+                                        val lastPt = list.lastOrNull()
+                                        if (lastPt != null && nowMs - lastPt.epochMillis < 3600000L) { // 1 hour
+                                            list[list.size - 1] = SolarLinePoint(
+                                                timestampLabel = formattedNow,
+                                                epochMillis = nowMs,
+                                                usageWatts = liveState.liveUsageWatts,
+                                                productionWatts = liveState.liveProductionWatts
+                                            )
+                                        } else {
+                                            list.add(
+                                                SolarLinePoint(
+                                                    timestampLabel = formattedNow,
+                                                    epochMillis = nowMs,
+                                                    usageWatts = liveState.liveUsageWatts,
+                                                    productionWatts = liveState.liveProductionWatts
+                                                )
+                                            )
+                                        }
+                                    }
+                                    list
+                                }
                             }
-                        }
-                        else -> {
-                            if (weeklyHistory.isNotEmpty()) {
-                                HistoricalLineChart(data = weeklyHistory, isMonth = true, theme = theme)
+                            if (live7DayHistory.isNotEmpty()) {
+                                LineChart7d(data = live7DayHistory, theme = theme)
                             } else {
                                 ChartEmptyState()
                             }
@@ -370,7 +438,7 @@ fun SolarDashboardView(
                         Button(
                             onClick = {
                                 scope.launch {
-                                    viewModel.fetchSolarHistoryFromHA()
+                                    viewModel.fetchSolarHistoryFromHA(force = true)
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = theme.ecoColor.copy(alpha = 0.15f), contentColor = theme.ecoColor),
@@ -568,7 +636,7 @@ fun SegmentedButtonRow(
     theme: HvacThemeColors,
     modifier: Modifier = Modifier
 ) {
-    val segments = listOf("24-Hour", "7-Day", "1-Month")
+    val segments = listOf("6-Hour", "24-Hour", "7-Day")
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -605,16 +673,309 @@ fun SegmentedButtonRow(
 
 @Composable
 fun ChartEmptyState() {
-    Box(
+    Column(
         modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = "Data Unavailable",
-            fontSize = 13.sp,
-            color = Color.White.copy(alpha = 0.4f),
-            fontWeight = FontWeight.Bold
+        Icon(
+            imageVector = Icons.Default.CloudOff,
+            contentDescription = "Offline",
+            tint = Color.White.copy(alpha = 0.4f),
+            modifier = Modifier.size(24.dp)
         )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Home Assistant Connection Offline",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White.copy(alpha = 0.5f)
+        )
+        Text(
+            text = "Unable to retrieve solar historical metrics",
+            fontSize = 8.sp,
+            color = Color.White.copy(alpha = 0.35f)
+        )
+    }
+}
+
+@Composable
+fun LineChart6h(data: List<SolarLinePoint>, theme: HvacThemeColors) {
+    val textMeasurer = rememberTextMeasurer()
+    var selectedPointIndex by remember { mutableStateOf<Int?>(null) }
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(data) {
+                detectTapGestures(
+                    onPress = { offset ->
+                        val width = size.width
+                        val leftPad = 8.dp.toPx()
+                        val rightPad = 56.dp.toPx()
+                        val effW = width - leftPad - rightPad
+                        if (effW > 0 && data.isNotEmpty()) {
+                            val rawX = offset.x - leftPad
+                            val fraction = (rawX / effW).coerceIn(0f, 1f)
+                            val idx = (fraction * (data.size - 1)).roundToInt()
+                            selectedPointIndex = idx.coerceIn(data.indices)
+                        }
+                    }
+                )
+            }
+            .pointerInput(data) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        val width = size.width
+                        val leftPad = 8.dp.toPx()
+                        val rightPad = 56.dp.toPx()
+                        val effW = width - leftPad - rightPad
+                        if (effW > 0 && data.isNotEmpty()) {
+                            val rawX = offset.x - leftPad
+                            val fraction = (rawX / effW).coerceIn(0f, 1f)
+                            val idx = (fraction * (data.size - 1)).roundToInt()
+                            selectedPointIndex = idx.coerceIn(data.indices)
+                        }
+                    },
+                    onDrag = { change, _ ->
+                        val width = size.width
+                        val leftPad = 8.dp.toPx()
+                        val rightPad = 56.dp.toPx()
+                        val effW = width - leftPad - rightPad
+                        if (effW > 0 && data.isNotEmpty()) {
+                            val rawX = change.position.x - leftPad
+                            val fraction = (rawX / effW).coerceIn(0f, 1f)
+                            val idx = (fraction * (data.size - 1)).roundToInt()
+                            selectedPointIndex = idx.coerceIn(data.indices)
+                        }
+                    },
+                    onDragEnd = {
+                        selectedPointIndex = null
+                    },
+                    onDragCancel = {
+                        selectedPointIndex = null
+                    }
+                )
+            }
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("solar_6h_line_chart")
+        ) {
+            val width = size.width
+            val height = size.height
+            
+            val leftPad = 8.dp.toPx()
+            val rightPad = 56.dp.toPx()
+            val topPad = 12.dp.toPx()
+            val bottomPad = 24.dp.toPx()
+            
+            val effW = width - leftPad - rightPad
+            val effH = height - topPad - bottomPad
+    
+            val maxVal = data.maxOfOrNull { maxOf(it.usageWatts, it.productionWatts) }?.coerceAtLeast(100f) ?: 1000f
+    
+            val gridCount = 3
+            for (i in 0 until gridCount) {
+                val fraction = i.toFloat() / (gridCount - 1)
+                val y = topPad + fraction * effH
+                
+                drawLine(
+                    color = Color.White.copy(alpha = 0.08f),
+                    start = Offset(leftPad, y),
+                    end = Offset(leftPad + effW, y),
+                    strokeWidth = 1f
+                )
+                
+                val valAtGrid = maxVal * (1f - fraction)
+                val labelText = if (valAtGrid >= 1000f) {
+                    String.format(java.util.Locale.US, "%.1f kW", valAtGrid / 1000f)
+                } else {
+                    String.format(java.util.Locale.US, "%.0f W", valAtGrid)
+                }
+                
+                val textLayoutResult = textMeasurer.measure(
+                    text = labelText,
+                    style = TextStyle(
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                )
+                
+                drawText(
+                    textLayoutResult = textLayoutResult,
+                    topLeft = Offset(
+                        leftPad + effW + 6.dp.toPx(),
+                        y - textLayoutResult.size.height / 2f
+                    )
+                )
+            }
+    
+            if (data.size > 1) {
+                val prodPath = Path()
+                val usagePath = Path()
+    
+                data.forEachIndexed { idx, pt ->
+                    val x = leftPad + (effW / (data.size - 1)) * idx
+                    val yProd = topPad + (1f - (pt.productionWatts / maxVal)) * effH
+                    val yUsage = topPad + (1f - (pt.usageWatts / maxVal)) * effH
+    
+                    if (idx == 0) {
+                        prodPath.moveTo(x, yProd)
+                        usagePath.moveTo(x, yUsage)
+                    } else {
+                        prodPath.lineTo(x, yProd)
+                        usagePath.lineTo(x, yUsage)
+                    }
+                }
+    
+                drawPath(
+                    path = prodPath,
+                    color = theme.ecoColor,
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                )
+    
+                drawPath(
+                    path = usagePath,
+                    color = theme.coolColor,
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                )
+                
+                val firstPt = data.firstOrNull()
+                val lastPt = data.lastOrNull()
+                if (firstPt != null && lastPt != null) {
+                    val totalTime = lastPt.epochMillis - firstPt.epochMillis
+                    val divisions = 6
+                    val sdf12hr = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).apply {
+                        timeZone = java.util.TimeZone.getTimeZone("America/New_York")
+                    }
+                    
+                    for (i in 0..divisions) {
+                        val frac = i.toFloat() / divisions
+                        val targetTime = firstPt.epochMillis + (totalTime * frac).toLong()
+                        val x = leftPad + frac * effW
+                        
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.04f),
+                            start = Offset(x, topPad),
+                            end = Offset(x, topPad + effH),
+                            strokeWidth = 1f
+                        )
+                        
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.15f),
+                            start = Offset(x, topPad + effH),
+                            end = Offset(x, topPad + effH + 4.dp.toPx()),
+                            strokeWidth = 1f
+                        )
+                        
+                        val labelText = sdf12hr.format(java.util.Date(targetTime))
+                        val textLayoutResult = textMeasurer.measure(
+                            text = labelText,
+                            style = TextStyle(
+                                color = Color.White.copy(alpha = 0.5f),
+                                fontSize = 8.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        )
+                        
+                        drawText(
+                            textLayoutResult = textLayoutResult,
+                            topLeft = Offset(
+                                x - textLayoutResult.size.width / 2f,
+                                topPad + effH + 6.dp.toPx()
+                            )
+                        )
+                    }
+                }
+                
+                selectedPointIndex?.let { selIdx ->
+                    if (selIdx in data.indices) {
+                        val pt = data[selIdx]
+                        val x = leftPad + (effW / (data.size - 1)) * selIdx
+                        val yProd = topPad + (1f - (pt.productionWatts / maxVal)) * effH
+                        val yUsage = topPad + (1f - (pt.usageWatts / maxVal)) * effH
+                        
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.3f),
+                            start = Offset(x, topPad),
+                            end = Offset(x, topPad + effH),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                        
+                        drawCircle(
+                            color = theme.ecoColor,
+                            radius = 5.dp.toPx(),
+                            center = Offset(x, yProd)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 2.dp.toPx(),
+                            center = Offset(x, yProd)
+                        )
+                        
+                        drawCircle(
+                            color = theme.coolColor,
+                            radius = 5.dp.toPx(),
+                            center = Offset(x, yUsage)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 2.dp.toPx(),
+                            center = Offset(x, yUsage)
+                        )
+                    }
+                }
+            }
+        }
+        
+        selectedPointIndex?.let { selIdx ->
+            if (selIdx in data.indices) {
+                val pt = data[selIdx]
+                val formattedProd = if (pt.productionWatts >= 1000f) String.format(java.util.Locale.US, "%.2f kW", pt.productionWatts / 1000f) else String.format(java.util.Locale.US, "%.0f W", pt.productionWatts)
+                val formattedUsage = if (pt.usageWatts >= 1000f) String.format(java.util.Locale.US, "%.2f kW", pt.usageWatts / 1000f) else String.format(java.util.Locale.US, "%.0f W", pt.usageWatts)
+                
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 16.dp)
+                        .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = pt.timestampLabel,
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Prod: $formattedProd",
+                                fontSize = 10.sp,
+                                color = theme.ecoColor,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "Usage: $formattedUsage",
+                                fontSize = 10.sp,
+                                color = theme.coolColor,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -771,7 +1132,9 @@ fun LineChart24h(data: List<SolarLinePoint>, theme: HvacThemeColors) {
                 if (firstPt != null && lastPt != null) {
                     val totalTime = lastPt.epochMillis - firstPt.epochMillis
                     val divisions = 8
-                    val sdf12hr = java.text.SimpleDateFormat("h a", java.util.Locale.US)
+                    val sdf12hr = java.text.SimpleDateFormat("h a", java.util.Locale.US).apply {
+                        timeZone = java.util.TimeZone.getTimeZone("America/New_York")
+                    }
                     
                     for (i in 0..divisions) {
                         val frac = i.toFloat() / divisions
@@ -858,6 +1221,292 @@ fun LineChart24h(data: List<SolarLinePoint>, theme: HvacThemeColors) {
         }
         
         // Tooltip Overlay Composable
+        selectedPointIndex?.let { selIdx ->
+            if (selIdx in data.indices) {
+                val pt = data[selIdx]
+                val formattedProd = if (pt.productionWatts >= 1000f) String.format(java.util.Locale.US, "%.2f kW", pt.productionWatts / 1000f) else String.format(java.util.Locale.US, "%.0f W", pt.productionWatts)
+                val formattedUsage = if (pt.usageWatts >= 1000f) String.format(java.util.Locale.US, "%.2f kW", pt.usageWatts / 1000f) else String.format(java.util.Locale.US, "%.0f W", pt.usageWatts)
+                
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 16.dp)
+                        .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = pt.timestampLabel,
+                            fontSize = 9.sp,
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Prod: $formattedProd",
+                                fontSize = 10.sp,
+                                color = theme.ecoColor,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "Usage: $formattedUsage",
+                                fontSize = 10.sp,
+                                color = theme.coolColor,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LineChart7d(data: List<SolarLinePoint>, theme: HvacThemeColors) {
+    val textMeasurer = rememberTextMeasurer()
+    var selectedPointIndex by remember { mutableStateOf<Int?>(null) }
+    
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(data) {
+                detectTapGestures(
+                    onPress = { offset ->
+                        val width = size.width
+                        val leftPad = 8.dp.toPx()
+                        val rightPad = 56.dp.toPx()
+                        val effW = width - leftPad - rightPad
+                        if (effW > 0 && data.isNotEmpty()) {
+                            val rawX = offset.x - leftPad
+                            val fraction = (rawX / effW).coerceIn(0f, 1f)
+                            val idx = (fraction * (data.size - 1)).roundToInt()
+                            selectedPointIndex = idx.coerceIn(data.indices)
+                        }
+                    }
+                )
+            }
+            .pointerInput(data) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        val width = size.width
+                        val leftPad = 8.dp.toPx()
+                        val rightPad = 56.dp.toPx()
+                        val effW = width - leftPad - rightPad
+                        if (effW > 0 && data.isNotEmpty()) {
+                            val rawX = offset.x - leftPad
+                            val fraction = (rawX / effW).coerceIn(0f, 1f)
+                            val idx = (fraction * (data.size - 1)).roundToInt()
+                            selectedPointIndex = idx.coerceIn(data.indices)
+                        }
+                    },
+                    onDrag = { change, _ ->
+                        val width = size.width
+                        val leftPad = 8.dp.toPx()
+                        val rightPad = 56.dp.toPx()
+                        val effW = width - leftPad - rightPad
+                        if (effW > 0 && data.isNotEmpty()) {
+                            val rawX = change.position.x - leftPad
+                            val fraction = (rawX / effW).coerceIn(0f, 1f)
+                            val idx = (fraction * (data.size - 1)).roundToInt()
+                            selectedPointIndex = idx.coerceIn(data.indices)
+                        }
+                    },
+                    onDragEnd = {
+                        selectedPointIndex = null
+                    },
+                    onDragCancel = {
+                        selectedPointIndex = null
+                    }
+                )
+            }
+    ) {
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("solar_7d_line_chart")
+        ) {
+            val width = size.width
+            val height = size.height
+            
+            val leftPad = 8.dp.toPx()
+            val rightPad = 56.dp.toPx()
+            val topPad = 12.dp.toPx()
+            val bottomPad = 24.dp.toPx()
+            
+            val effW = width - leftPad - rightPad
+            val effH = height - topPad - bottomPad
+    
+            val maxVal = data.maxOfOrNull { maxOf(it.usageWatts, it.productionWatts) }?.coerceAtLeast(100f) ?: 1000f
+    
+            val gridCount = 3
+            for (i in 0 until gridCount) {
+                val fraction = i.toFloat() / (gridCount - 1)
+                val y = topPad + fraction * effH
+                
+                drawLine(
+                    color = Color.White.copy(alpha = 0.08f),
+                    start = Offset(leftPad, y),
+                    end = Offset(leftPad + effW, y),
+                    strokeWidth = 1f
+                )
+                
+                val valAtGrid = maxVal * (1f - fraction)
+                val labelText = if (valAtGrid >= 1000f) {
+                    String.format(java.util.Locale.US, "%.1f kW", valAtGrid / 1000f)
+                } else {
+                    String.format(java.util.Locale.US, "%.0f W", valAtGrid)
+                }
+                
+                val textLayoutResult = textMeasurer.measure(
+                    text = labelText,
+                    style = TextStyle(
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                )
+                
+                drawText(
+                    textLayoutResult = textLayoutResult,
+                    topLeft = Offset(
+                        leftPad + effW + 6.dp.toPx(),
+                        y - textLayoutResult.size.height / 2f
+                    )
+                )
+            }
+    
+            if (data.size > 1) {
+                val prodPath = Path()
+                val usagePath = Path()
+    
+                data.forEachIndexed { idx, pt ->
+                    val x = leftPad + (effW / (data.size - 1)) * idx
+                    val yProd = topPad + (1f - (pt.productionWatts / maxVal)) * effH
+                    val yUsage = topPad + (1f - (pt.usageWatts / maxVal)) * effH
+    
+                    if (idx == 0) {
+                        prodPath.moveTo(x, yProd)
+                        usagePath.moveTo(x, yUsage)
+                    } else {
+                        prodPath.lineTo(x, yProd)
+                        usagePath.lineTo(x, yUsage)
+                    }
+                }
+    
+                drawPath(
+                    path = prodPath,
+                    color = theme.ecoColor,
+                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
+                )
+    
+                drawPath(
+                    path = usagePath,
+                    color = theme.coolColor,
+                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
+                )
+                
+                val firstPt = data.firstOrNull()
+                val lastPt = data.lastOrNull()
+                if (firstPt != null && lastPt != null) {
+                    val totalTime = lastPt.epochMillis - firstPt.epochMillis
+                    val divisions = 7
+                    val sdfDay = java.text.SimpleDateFormat("EEE", java.util.Locale.US).apply {
+                        timeZone = java.util.TimeZone.getTimeZone("America/New_York")
+                    }
+                    
+                    for (i in 0..divisions) {
+                        val frac = i.toFloat() / divisions
+                        val targetTime = firstPt.epochMillis + (totalTime * frac).toLong()
+                        val x = leftPad + frac * effW
+                        
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.08f),
+                            start = Offset(x, topPad),
+                            end = Offset(x, topPad + effH),
+                            strokeWidth = 1f
+                        )
+                        
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.15f),
+                            start = Offset(x, topPad + effH),
+                            end = Offset(x, topPad + effH + 4.dp.toPx()),
+                            strokeWidth = 1f
+                        )
+                        
+                        if (i < divisions) {
+                            val labelText = sdfDay.format(java.util.Date(targetTime))
+                            val textLayoutResult = textMeasurer.measure(
+                                text = labelText,
+                                style = TextStyle(
+                                    color = Color.White.copy(alpha = 0.5f),
+                                    fontSize = 8.5.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                            
+                            val nextX = leftPad + ((i + 1).toFloat() / divisions) * effW
+                            val midX = (x + nextX) / 2f
+                            
+                            drawText(
+                                textLayoutResult = textLayoutResult,
+                                topLeft = Offset(
+                                    midX - textLayoutResult.size.width / 2f,
+                                    topPad + effH + 6.dp.toPx()
+                                )
+                            )
+                        }
+                    }
+                }
+                
+                selectedPointIndex?.let { selIdx ->
+                    if (selIdx in data.indices) {
+                        val pt = data[selIdx]
+                        val x = leftPad + (effW / (data.size - 1)) * selIdx
+                        val yProd = topPad + (1f - (pt.productionWatts / maxVal)) * effH
+                        val yUsage = topPad + (1f - (pt.usageWatts / maxVal)) * effH
+                        
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.3f),
+                            start = Offset(x, topPad),
+                            end = Offset(x, topPad + effH),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                        
+                        drawCircle(
+                            color = theme.ecoColor,
+                            radius = 5.dp.toPx(),
+                            center = Offset(x, yProd)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 2.dp.toPx(),
+                            center = Offset(x, yProd)
+                        )
+                        
+                        drawCircle(
+                            color = theme.coolColor,
+                            radius = 5.dp.toPx(),
+                            center = Offset(x, yUsage)
+                        )
+                        drawCircle(
+                            color = Color.White,
+                            radius = 2.dp.toPx(),
+                            center = Offset(x, yUsage)
+                        )
+                    }
+                }
+            }
+        }
+        
         selectedPointIndex?.let { selIdx ->
             if (selIdx in data.indices) {
                 val pt = data[selIdx]

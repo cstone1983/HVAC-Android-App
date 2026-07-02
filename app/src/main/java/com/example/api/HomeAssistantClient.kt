@@ -33,11 +33,34 @@ object HomeAssistantClient {
         }
 
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.HEADERS // Don't overwhelm logs but capture responses
+            level = HttpLoggingInterceptor.Level.BODY // Full payload logging to capture requests & responses
         }
 
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+
+        return Retrofit.Builder()
+            .baseUrl(formattedUrl)
+            .client(okHttpClient)
+            .addConverterFactory(MoshiConverterFactory.create(moshi))
+            .build()
+            .create(HomeAssistantApi::class.java)
+    }
+
+    fun createAuthService(baseUrl: String): HomeAssistantApi {
+        val formattedUrl = formatBaseUrl(baseUrl)
+
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.BODY
+        }
+
+        val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

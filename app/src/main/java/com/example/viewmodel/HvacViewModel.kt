@@ -445,33 +445,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     )
     val poolState: StateFlow<PoolState> = _poolState.asStateFlow()
 
-    private val _poolHistory = MutableStateFlow(
-        run {
-            val list = mutableListOf<PoolHistoryPoint>()
-            val calendar = java.util.Calendar.getInstance()
-            calendar.add(java.util.Calendar.HOUR_OF_DAY, -24)
-            for (i in 0..24) {
-                val hour = (calendar.get(java.util.Calendar.HOUR_OF_DAY) + i) % 24
-                val hourStr = String.format(java.util.Locale.US, "%02d:00", hour)
-                
-                // Diurnal solar wave
-                val angle = (hour - 6) * (2.0 * Math.PI / 24.0)
-                val tempOffset = -Math.cos(angle).toFloat() * 1.5f + (Math.sin(angle * 2).toFloat() * 0.18f)
-                val phOffset = Math.sin(angle).toFloat() * 0.03f
-                val orpOffset = Math.cos(angle).toFloat() * 12.0f
-
-                list.add(
-                    PoolHistoryPoint(
-                        timestamp = hourStr,
-                        temp = 79.0f + tempOffset,
-                        ph = 7.35f + phOffset,
-                        orp = 561.0f + orpOffset
-                    )
-                )
-            }
-            list.toList()
-        }
-    )
+    private val _poolHistory = MutableStateFlow<List<PoolHistoryPoint>>(emptyList())
     val poolHistory: StateFlow<List<PoolHistoryPoint>> = _poolHistory.asStateFlow()
 
     private val _solarLiveState = MutableStateFlow(SolarLiveState())
@@ -480,11 +454,17 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _solar24HourHistory = MutableStateFlow<List<SolarLinePoint>>(emptyList())
     val solar24HourHistory: StateFlow<List<SolarLinePoint>> = _solar24HourHistory.asStateFlow()
 
+    private val _solar6HourHistory = MutableStateFlow<List<SolarLinePoint>>(emptyList())
+    val solar6HourHistory: StateFlow<List<SolarLinePoint>> = _solar6HourHistory.asStateFlow()
+
     private val _solarDailyHistory = MutableStateFlow<List<SolarBarPoint>>(emptyList())
     val solarDailyHistory: StateFlow<List<SolarBarPoint>> = _solarDailyHistory.asStateFlow()
 
     private val _solarWeeklyHistory = MutableStateFlow<List<SolarBarPoint>>(emptyList())
     val solarWeeklyHistory: StateFlow<List<SolarBarPoint>> = _solarWeeklyHistory.asStateFlow()
+
+    private val _solar7DayPowerHistory = MutableStateFlow<List<SolarLinePoint>>(emptyList())
+    val solar7DayPowerHistory: StateFlow<List<SolarLinePoint>> = _solar7DayPowerHistory.asStateFlow()
 
     private val _isSolarFetching = MutableStateFlow(false)
     val isSolarFetching: StateFlow<Boolean> = _isSolarFetching.asStateFlow()
@@ -508,6 +488,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _isDebouncing = MutableStateFlow(false)
     val isDebouncing: StateFlow<Boolean> = _isDebouncing.asStateFlow()
+
+    private val _showModeConfirmDialog = MutableStateFlow(false)
+    val showModeConfirmDialog: StateFlow<Boolean> = _showModeConfirmDialog.asStateFlow()
+
+    private val _pendingHvacMode = MutableStateFlow<String?>(null)
+    val pendingHvacMode: StateFlow<String?> = _pendingHvacMode.asStateFlow()
 
     private fun updateDebounceStatus() {
         _isDebouncing.value = pendingTemperatureJobs.isNotEmpty() || pendingPresetJobs.isNotEmpty()
@@ -561,64 +547,107 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         _layoutVersion.value = getActiveLayoutConfig().version
         val savedUrl = sharedPrefs.getString("ha_url", null)
         val savedToken = sharedPrefs.getString("ha_token", null)
-        val hasSession = sharedPrefs.getBoolean("logged_in", false)
+
+        val buildUrl = try { com.example.BuildConfig.HA_URL } catch (ex: Exception) { "" }
+        val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (ex: Exception) { "" }
+
+        val finalUrl = if (buildUrl.isNotEmpty() && buildUrl != "https://localhost/") {
+            buildUrl
+        } else if (!savedUrl.isNullOrEmpty()) {
+            savedUrl
+        } else {
+            "https://localhost/"
+        }
+
+        val finalToken = if (buildToken.isNotEmpty() && buildToken != "YOUR_HOME_ASSISTANT_TOKEN") {
+            buildToken
+        } else if (!savedToken.isNullOrEmpty()) {
+            savedToken
+        } else {
+            ""
+        }
 
         startUpdateSync()
         startWeatherSync()
 
-        if (hasSession && !savedUrl.isNullOrEmpty() && !savedToken.isNullOrEmpty()) {
-            HomeAssistantClient.initialize(savedUrl, savedToken)
-            _isLoggedIn.value = true
-            startSync()
-        } else {
-            _isLoggedIn.value = false
-        }
+        HomeAssistantClient.initialize(finalUrl, finalToken)
+        _isLoggedIn.value = true
+        startSync()
     }
 
-    fun login(username: String, password: String) {
+    fun login(token: String) {
         viewModelScope.launch {
             _loginErrorMessage.value = null
-            if (username.isBlank() || password.isBlank()) {
-                _loginErrorMessage.value = "Username and password cannot be empty."
+            if (token.isBlank()) {
+                _loginErrorMessage.value = "Long-lived access token cannot be empty."
                 return@launch
             }
             _isLoggingIn.value = true
             try {
-                // Get pre-configured background server address and token
+                // Get pre-configured background server address
                 val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
-                val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" }
 
-                // Fallback option in case they were previously stored in sharedPrefs
+                // Fallback option in case it was previously stored in sharedPrefs
                 val savedUrl = sharedPrefs.getString("ha_url", null)
-                val savedToken = sharedPrefs.getString("ha_token", null)
 
                 val targetUrl = if (!savedUrl.isNullOrEmpty()) savedUrl else buildUrl
-                val targetToken = if (!savedToken.isNullOrEmpty()) savedToken else buildToken
 
-                if (targetUrl.isEmpty() || targetToken.isEmpty()) {
-                    _loginErrorMessage.value = "Configuration error: Missing background Server Address or Token configuration."
+                if (targetUrl.isEmpty()) {
+                    _loginErrorMessage.value = "Configuration error: Missing background Server Address configuration."
                     return@launch
                 }
 
                 // Trim trailing slash and format helper
                 val formattedUrl = HomeAssistantClient.formatBaseUrl(targetUrl)
-                val tempService = HomeAssistantClient.createService(formattedUrl, targetToken)
+
+                // Cleartext Check
+                val isCleartext = formattedUrl.startsWith("http://", ignoreCase = true)
+                if (isCleartext) {
+                    android.util.Log.w(
+                        "HomeAssistantAuth",
+                        "WARNING: Cleartext (HTTP) URL detected: $formattedUrl."
+                    )
+                }
+
+                val cleanToken = token.trim()
+
+                // Verify and initialize the authenticated client using long-lived access token directly
+                val tempService = HomeAssistantClient.createService(formattedUrl, cleanToken)
                 val states = tempService.getStates()
                 if (states.isNotEmpty()) {
                     sharedPrefs.edit()
                         .putString("ha_url", formattedUrl)
-                        .putString("ha_token", targetToken)
-                        .putString("ha_username", username)
+                        .putString("ha_token", cleanToken)
                         .putBoolean("logged_in", true)
                         .apply()
 
-                    HomeAssistantClient.initialize(formattedUrl, targetToken)
+                    HomeAssistantClient.initialize(formattedUrl, cleanToken)
                     _isLoggedIn.value = true
                     _loginErrorMessage.value = null
                     startSync()
                 } else {
-                    _loginErrorMessage.value = "Validation failed: No entities found."
+                    _loginErrorMessage.value = "Validation failed: No entities found or token is invalid."
                 }
+            } catch (e: retrofit2.HttpException) {
+                val statusCode = e.code()
+                val errorBody = try { e.response()?.errorBody()?.string() } catch (ex: Exception) { null }
+                
+                if (statusCode == 500) {
+                    android.util.Log.e("HomeAssistantAuth", "CRITICAL 500 INTERNAL SERVER ERROR - Raw Response Body: $errorBody", e)
+                } else {
+                    android.util.Log.e("HomeAssistantAuth", "HTTP Error $statusCode - Raw Response Body: $errorBody", e)
+                }
+
+                val savedUrl = sharedPrefs.getString("ha_url", null)
+                val targetUrlLocal = if (!savedUrl.isNullOrEmpty()) savedUrl else (try { com.example.BuildConfig.HA_URL } catch (ex: Exception) { "" })
+                val isCleartext = targetUrlLocal.startsWith("http://", ignoreCase = true)
+                val cleartextNotice = if (isCleartext) {
+                    " (Notice: Using cleartext HTTP. Server frequently fails or returns 500 Internal Server Error unless accessed securely via HTTPS.)"
+                } else {
+                    ""
+                }
+
+                _loginErrorMessage.value = "Connection failed (${statusCode}): ${e.message()} - ${errorBody ?: "No details"}$cleartextNotice"
             } catch (e: Exception) {
                 _loginErrorMessage.value = "Connection failed: ${e.localizedMessage ?: "Unknown error"}"
             } finally {
@@ -627,14 +656,55 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun logout() {
-        sharedPrefs.edit()
-            .putBoolean("logged_in", false)
-            .apply()
+    fun clearSessions() {
+        viewModelScope.launch {
+            _isLoggingIn.value = true
+            _loginErrorMessage.value = "Clearing existing sessions..."
+            try {
+                // Get saved token and URL
+                val savedUrl = sharedPrefs.getString("ha_url", null)
+                val savedToken = sharedPrefs.getString("ha_token", null)
+                val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+                val targetUrl = if (!savedUrl.isNullOrEmpty()) savedUrl else buildUrl
 
-        _isLoggedIn.value = false
-        syncJob?.cancel()
-        _uiState.value = HvacUiState.Loading
+                if (!targetUrl.isNullOrEmpty() && !savedToken.isNullOrEmpty()) {
+                    val formattedUrl = HomeAssistantClient.formatBaseUrl(targetUrl)
+                    val authService = HomeAssistantClient.createAuthService(formattedUrl)
+                    android.util.Log.d("HomeAssistantAuth", "Attempting to revoke existing token...")
+                    try {
+                        authService.revokeToken(token = savedToken)
+                        android.util.Log.d("HomeAssistantAuth", "Successfully requested token revocation from server.")
+                    } catch (e: Exception) {
+                        android.util.Log.w("HomeAssistantAuth", "Server token revocation failed or ignored: ${e.localizedMessage}")
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("HomeAssistantAuth", "Clear sessions network request failed: ${e.localizedMessage}")
+            } finally {
+                // Clear local preference state
+                sharedPrefs.edit()
+                    .remove("ha_token")
+                    .remove("ha_username")
+                    .putBoolean("logged_in", false)
+                    .apply()
+
+                // Clear WebView cookies/tokens
+                try {
+                    android.webkit.CookieManager.getInstance().removeAllCookies(null)
+                    android.webkit.CookieManager.getInstance().flush()
+                } catch (e: Exception) {
+                    android.util.Log.w("HomeAssistantAuth", "Cookie cleanup skipped: ${e.localizedMessage}")
+                }
+
+                _isLoggedIn.value = false
+                _loginErrorMessage.value = "Sessions cleared successfully. Ready for a clean login."
+                _isLoggingIn.value = false
+            }
+        }
+    }
+
+    fun logout() {
+        // No-op as we are always logged in using the built-in access token
     }
 
     fun startSync() {
@@ -953,35 +1023,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 _poolState.value = newPool
 
-                // Fetch actual historical data from Home Assistant if logged in, otherwise use simulated incremental updates
+                // Fetch actual historical data from Home Assistant if logged in
                 if (_isLoggedIn.value) {
                     viewModelScope.launch {
                         try {
                             fetchPoolHistoryFromHA()
                         } catch (e: Exception) {
                             android.util.Log.e("HvacViewModel", "Dynamic pool history download failed", e)
-                        }
-                    }
-                } else {
-                    // Append a sample historical point for trend graphs (simulated offline mode)
-                    if (pTemp != null || pPh != null || pOrp != null) {
-                        val currentList = _poolHistory.value.toMutableList()
-                        val formatter = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                        val timeStr = formatter.format(java.util.Date())
-                        
-                        if (currentList.isEmpty() || currentList.last().timestamp != timeStr || currentList.size < 5) {
-                            currentList.add(
-                                PoolHistoryPoint(
-                                    timestamp = timeStr,
-                                    temp = (pTemp ?: currentPool.waterTemperature ?: 79.0).toFloat(),
-                                    ph = (pPh ?: currentPool.ph ?: 7.35).toFloat(),
-                                    orp = (pOrp ?: currentPool.orp ?: 561.0).toFloat()
-                                )
-                            )
-                            if (currentList.size > 24) {
-                                currentList.removeAt(0)
-                            }
-                            _poolHistory.value = currentList
                         }
                     }
                 }
@@ -1030,7 +1078,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 } else {
-                    updateSolarStateSimulated()
+                    _solarLiveState.value = SolarLiveState(isFetched = false, isError = true)
+                    _solar6HourHistory.value = emptyList<SolarLinePoint>()
+                    _solar24HourHistory.value = emptyList<SolarLinePoint>()
+                    _solar7DayPowerHistory.value = emptyList<SolarLinePoint>()
+                    _solarDailyHistory.value = emptyList<SolarBarPoint>()
+                    _solarWeeklyHistory.value = emptyList<SolarBarPoint>()
                 }
             } catch (ex: Exception) {
                 android.util.Log.e("HvacViewModel", "Error parsing solar states", ex)
@@ -1072,7 +1125,58 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         ), "Applying hot water mode: $option")
     }
 
+    fun requestGlobalHvacMode(label: String) {
+        val lastNonOff = lastNonOffHvacMode.lowercase()
+        val targetMode = label.lowercase()
+        
+        val needsConfirmation = if (targetMode == "heat" && lastNonOff == "cool") {
+            true
+        } else if (targetMode == "cool" && lastNonOff == "heat") {
+            true
+        } else {
+            false
+        }
+        
+        if (needsConfirmation) {
+            _pendingHvacMode.value = label
+            _showModeConfirmDialog.value = true
+        } else {
+            selectGlobalHvacMode(label)
+        }
+    }
+
+    fun confirmGlobalHvacModeChange() {
+        val pending = _pendingHvacMode.value
+        if (pending != null) {
+            selectGlobalHvacMode(pending)
+        }
+        _showModeConfirmDialog.value = false
+        _pendingHvacMode.value = null
+    }
+
+    fun cancelGlobalHvacModeChange() {
+        _showModeConfirmDialog.value = false
+        _pendingHvacMode.value = null
+    }
+
     fun selectGlobalHvacMode(option: String) {
+        val hModeLower = option.lowercase()
+        if (hModeLower == "heat" || hModeLower == "cool") {
+            if (lastNonOffHvacMode != hModeLower) {
+                lastNonOffHvacMode = hModeLower
+                sharedPrefs.edit().putString("last_non_off_hvac_mode", hModeLower).apply()
+            }
+        }
+
+        val current = _uiState.value
+        if (current is HvacUiState.Success) {
+            val updatedSettings = current.globalSettings.copy(
+                globalHvacMode = option,
+                lastNonOffHvacMode = lastNonOffHvacMode
+            )
+            _uiState.value = current.copy(globalSettings = updatedSettings)
+        }
+
         callServiceWithOptimisticFeedback("input_select", "select_option", mapOf(
             "entity_id" to "input_select.global_hvac_mode",
             "option" to option
@@ -2208,12 +2312,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 timeZone = java.util.TimeZone.getTimeZone("UTC")
             }
             val startStr = sdf.format(calendar.time)
+            val nowStr = sdf.format(java.util.Date(now))
 
             val entityIds = "sensor.my_pool_water_temperature,sensor.my_pool_ph,sensor.my_pool_orp"
 
             val rawHistory: List<List<com.example.api.EntityState>> = HomeAssistantClient.service.getHistory(
                 timestamp = startStr,
-                filterEntityId = entityIds
+                filterEntityId = entityIds,
+                endTime = nowStr
             )
 
             if (rawHistory.isNotEmpty()) {
@@ -2273,7 +2379,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     if (matchingOrp != null) lastOrp = matchingOrp
 
                     val tMillis = parseTime(timestamp)
-                    val dispFormatter = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault())
+                    val dispFormatter = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.US).apply {
+                        timeZone = java.util.TimeZone.getTimeZone("America/New_York")
+                    }
                     val dispStr = dispFormatter.format(java.util.Date(tMillis))
 
                     mergedPoints.add(
@@ -2349,7 +2457,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val hourMillis = 3600000L
         val list24h = mutableListOf<SolarLinePoint>()
         
-        val cal = java.util.Calendar.getInstance()
+        val estTz = java.util.TimeZone.getTimeZone("America/New_York")
+        val cal = java.util.Calendar.getInstance(estTz)
         val currentHour = cal.get(java.util.Calendar.HOUR_OF_DAY)
         
         val peakProd = if (currentHour in 6..18 && liveProd > 50f) {
@@ -2365,6 +2474,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val intervalMinutes = 10
         val intervalMillis = intervalMinutes * 60 * 1000L
         val totalIntervals = (24 * 60) / intervalMinutes
+
+        val hourLabelFormatter = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).apply {
+            timeZone = estTz
+        }
 
         for (i in (totalIntervals - 1) downTo 0) {
             val tMillis = nowMillis - i * intervalMillis
@@ -2384,7 +2497,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             val noise = ((Math.random() - 0.5) * 150).toFloat()
             val usage = (baseUsage + usageFluctuation + noise).coerceAtLeast(300f)
             
-            val hourLabel = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(tMillis))
+            val hourLabel = hourLabelFormatter.format(java.util.Date(tMillis))
             
             list24h.add(
                 SolarLinePoint(
@@ -2397,14 +2510,92 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
         _solar24HourHistory.value = list24h
         
+        val list6h = mutableListOf<SolarLinePoint>()
+        val intervalMinutes6h = 5
+        val intervalMillis6h = intervalMinutes6h * 60 * 1000L
+        val totalIntervals6h = (6 * 60) / intervalMinutes6h
+
+        for (i in (totalIntervals6h - 1) downTo 0) {
+            val tMillis = nowMillis - i * intervalMillis6h
+            cal.timeInMillis = tMillis
+            val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+            val minute = cal.get(java.util.Calendar.MINUTE)
+
+            val tDecimal = (hour - 6) + (minute / 60f)
+            val prod = if (hour in 6..18) {
+                (peakProd * kotlin.math.sin(Math.PI * tDecimal / 12)).toFloat().coerceAtLeast(0f)
+            } else {
+                0f
+            }
+
+            val tUsageDecimal = hour + (minute / 60f)
+            val usageFluctuation = 400f * kotlin.math.sin(2 * Math.PI * (tUsageDecimal - 8) / 24).toFloat()
+            val noise = ((Math.random() - 0.5) * 150).toFloat()
+            val usage = (baseUsage + usageFluctuation + noise).coerceAtLeast(300f)
+
+            val hourLabel = hourLabelFormatter.format(java.util.Date(tMillis))
+
+            list6h.add(
+                SolarLinePoint(
+                    timestampLabel = hourLabel,
+                    epochMillis = tMillis,
+                    usageWatts = usage,
+                    productionWatts = prod
+                )
+            )
+        }
+        _solar6HourHistory.value = list6h
+        
+        val list7dPower = mutableListOf<SolarLinePoint>()
+        val totalIntervals7d = (7 * 24 * 60) / 60 // 168 intervals
+        val intervalMillis7d = 60 * 60 * 1000L
+        val sdf7dLabel = java.text.SimpleDateFormat("EEE h a", java.util.Locale.US).apply {
+            timeZone = estTz
+        }
+        for (i in (totalIntervals7d - 1) downTo 0) {
+            val tMillis = nowMillis - i * intervalMillis7d
+            cal.timeInMillis = tMillis
+            val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+            val minute = cal.get(java.util.Calendar.MINUTE)
+            val dayOfWeek = cal.get(java.util.Calendar.DAY_OF_WEEK)
+
+            val dailyWeatherFactor = 0.6f + (kotlin.math.sin(dayOfWeek.toDouble()) * 0.35f).toFloat()
+            val dailyUsageFactor = 0.8f + (kotlin.math.cos(dayOfWeek.toDouble() * 1.5) * 0.25f).toFloat()
+
+            val tDecimal = (hour - 6) + (minute / 60f)
+            val prod = if (hour in 6..18) {
+                (peakProd * dailyWeatherFactor * kotlin.math.sin(Math.PI * tDecimal / 12)).toFloat().coerceAtLeast(0f)
+            } else {
+                0f
+            }
+
+            val tUsageDecimal = hour + (minute / 60f)
+            val usageFluctuation = 400f * kotlin.math.sin(2 * Math.PI * (tUsageDecimal - 8) / 24).toFloat()
+            val noise = ((Math.random() - 0.5) * 150).toFloat()
+            val usage = (baseUsage * dailyUsageFactor + usageFluctuation + noise).coerceAtLeast(300f)
+
+            val label = sdf7dLabel.format(java.util.Date(tMillis))
+            list7dPower.add(
+                SolarLinePoint(
+                    timestampLabel = label,
+                    epochMillis = tMillis,
+                    usageWatts = usage,
+                    productionWatts = prod
+                )
+            )
+        }
+        _solar7DayPowerHistory.value = list7dPower
+        
         val list7d = mutableListOf<SolarBarPoint>()
-        val dayFormatter = java.text.SimpleDateFormat("EEE", java.util.Locale.getDefault())
+        val dayFormatter = java.text.SimpleDateFormat("EEE", java.util.Locale.US).apply {
+            timeZone = estTz
+        }
         
         val avgDailyUsageKwh = (baseUsage * 24f) / 1000f
         val avgDailyProdKwh = (peakProd * 7f) / 1000f
 
         for (i in 6 downTo 0) {
-            val tempCal = java.util.Calendar.getInstance().apply {
+            val tempCal = java.util.Calendar.getInstance(estTz).apply {
                 timeInMillis = nowMillis
                 add(java.util.Calendar.DAY_OF_YEAR, -i)
             }
@@ -2417,9 +2608,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         _solarDailyHistory.value = list7d
         
         val list28d = mutableListOf<SolarBarPoint>()
-        val monthDayFormatter = java.text.SimpleDateFormat("MMM d", java.util.Locale.US)
+        val monthDayFormatter = java.text.SimpleDateFormat("MMM d", java.util.Locale.US).apply {
+            timeZone = estTz
+        }
         for (i in 27 downTo 0) {
-            val tempCal = java.util.Calendar.getInstance().apply {
+            val tempCal = java.util.Calendar.getInstance(estTz).apply {
                 timeInMillis = nowMillis
                 add(java.util.Calendar.DAY_OF_YEAR, -i)
             }
@@ -2442,9 +2635,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var lastSolarHistoryFetchTime = 0L
     private var lastStatesMap: Map<String, com.example.api.EntityState> = emptyMap()
 
-    suspend fun fetchSolarHistoryFromHA() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    suspend fun fetchSolarHistoryFromHA(force: Boolean = false) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        if (now - lastSolarHistoryFetchTime < 300000L) { // 5 minutes cooldown to reduce network lag
+        if (!force && now - lastSolarHistoryFetchTime < 300000L) { // 5 minutes cooldown to reduce network lag
             return@withContext
         }
         _isSolarFetching.value = true
@@ -2499,12 +2692,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             // Fetch both in parallel using coroutineScope and async
             kotlinx.coroutines.coroutineScope {
                 val calPower = java.util.Calendar.getInstance()
-                calPower.add(java.util.Calendar.HOUR_OF_DAY, -30)
+                calPower.add(java.util.Calendar.HOUR_OF_DAY, -180) // 7.5 days window for 24h & 7-Day granular charts
                 val startPowerStr = sdf.format(calPower.time)
 
                 val calEnergy = java.util.Calendar.getInstance()
                 calEnergy.add(java.util.Calendar.DAY_OF_YEAR, -30)
                 val startEnergyStr = sdf.format(calEnergy.time)
+
+                val nowStr = sdf.format(java.util.Date(now))
 
                 diag.append("Query Power Start: $startPowerStr\n")
                 diag.append("Query Energy Start: $startEnergyStr\n\n")
@@ -2513,7 +2708,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startPowerStr,
-                            filterEntityId = "sensor.basement_ct_panel_total_active_power"
+                            filterEntityId = "sensor.basement_ct_panel_total_active_power",
+                            endTime = nowStr
                         )
                     } catch (ex: Exception) {
                         android.util.Log.e("HvacViewModel", "Error fetching usage power history", ex)
@@ -2526,7 +2722,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startPowerStr,
-                            filterEntityId = "sensor.imeter_2pn_phase_a_power"
+                            filterEntityId = "sensor.imeter_2pn_phase_a_power",
+                            endTime = nowStr
                         )
                     } catch (ex: Exception) {
                         android.util.Log.e("HvacViewModel", "Error fetching phase a power history", ex)
@@ -2539,7 +2736,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startPowerStr,
-                            filterEntityId = "sensor.imeter_2pn_phase_b_power"
+                            filterEntityId = "sensor.imeter_2pn_phase_b_power",
+                            endTime = nowStr
                         )
                     } catch (ex: Exception) {
                         android.util.Log.e("HvacViewModel", "Error fetching phase b power history", ex)
@@ -2552,7 +2750,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startEnergyStr,
-                            filterEntityId = "sensor.basement_ct_panel_total_forward_active_energy"
+                            filterEntityId = "sensor.basement_ct_panel_total_forward_active_energy",
+                            endTime = nowStr
                         )
                     } catch (ex: Exception) {
                         android.util.Log.e("HvacViewModel", "Error fetching usage energy history", ex)
@@ -2565,7 +2764,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startEnergyStr,
-                            filterEntityId = "sensor.imeter_2pn_total_production"
+                            filterEntityId = "sensor.imeter_2pn_total_production",
+                            endTime = nowStr
                         )
                     } catch (ex: Exception) {
                         android.util.Log.e("HvacViewModel", "Error fetching production energy history", ex)
@@ -2720,7 +2920,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     val aValConverted = aVal * phaseAMultiplier
                     val bValConverted = bVal * phaseBMultiplier
                     val prodWatts = (aValConverted.safeFinite() + bValConverted.safeFinite()).coerceAtLeast(0f)
-                    val label = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(bucketMid))
+                    val label = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).apply {
+                        timeZone = java.util.TimeZone.getTimeZone("America/New_York")
+                    }.format(java.util.Date(bucketMid))
 
                     points24h.add(
                         SolarLinePoint(
@@ -2738,6 +2940,82 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 _solar24HourHistory.value = points24h
+
+                // Process 6-Hour Granular Line Chart Data (72 granular points over 6 hours)
+                val points6h = mutableListOf<SolarLinePoint>()
+                val intervalMinutes6h = 5
+                val intervalMillis6h = intervalMinutes6h * 60 * 1000L
+                val totalIntervals6h = (6 * 60) / intervalMinutes6h // 72 intervals
+                val sdf6hLabel = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).apply {
+                    timeZone = java.util.TimeZone.getTimeZone("America/New_York")
+                }
+
+                for (i in (totalIntervals6h - 1) downTo 0) {
+                    val bucketStart = nowMillis - (i + 1) * intervalMillis6h
+                    val bucketEnd = nowMillis - i * intervalMillis6h
+                    val bucketMid = bucketStart + intervalMillis6h / 2
+
+                    val usageVal = getPowerValueForBucket(parsedUsagePower, bucketStart, bucketEnd, bucketMid)
+                    val aVal = getPowerValueForBucket(parsedPhaseA, bucketStart, bucketEnd, bucketMid)
+                    val bVal = getPowerValueForBucket(parsedPhaseB, bucketStart, bucketEnd, bucketMid)
+
+                    val aValConverted = aVal * phaseAMultiplier
+                    val bValConverted = bVal * phaseBMultiplier
+                    val prodWatts = (aValConverted.safeFinite() + bValConverted.safeFinite()).coerceAtLeast(0f)
+                    val label = sdf6hLabel.format(java.util.Date(bucketMid))
+
+                    points6h.add(
+                        SolarLinePoint(
+                            timestampLabel = label,
+                            epochMillis = bucketMid,
+                            usageWatts = if (usageVal < 0f) 0f else usageVal.safeFinite(),
+                            productionWatts = if (prodWatts < 0f) 0f else prodWatts.safeFinite()
+                        )
+                    )
+                }
+                diag.append("\nGenerated 6h Power History (last 3 points computed):\n")
+                points6h.takeLast(3).forEach {
+                    diag.append("  - ${it.timestampLabel}: usage=${it.usageWatts}W, prod=${it.productionWatts}W\n")
+                }
+                _solar6HourHistory.value = points6h
+
+                // Process 7-Day Granular Line Chart Data (168 hourly points over 7 days)
+                val points7dPower = mutableListOf<SolarLinePoint>()
+                val intervalMinutes7d = 60
+                val intervalMillis7d = intervalMinutes7d * 60 * 1000L
+                val totalIntervals7d = (7 * 24 * 60) / intervalMinutes7d // 168 intervals
+                val sdf7dLabel = java.text.SimpleDateFormat("EEE h a", java.util.Locale.US).apply {
+                    timeZone = java.util.TimeZone.getTimeZone("America/New_York")
+                }
+
+                for (i in (totalIntervals7d - 1) downTo 0) {
+                    val bucketStart = nowMillis - (i + 1) * intervalMillis7d
+                    val bucketEnd = nowMillis - i * intervalMillis7d
+                    val bucketMid = bucketStart + intervalMillis7d / 2
+
+                    val usageVal = getPowerValueForBucket(parsedUsagePower, bucketStart, bucketEnd, bucketMid)
+                    val aVal = getPowerValueForBucket(parsedPhaseA, bucketStart, bucketEnd, bucketMid)
+                    val bVal = getPowerValueForBucket(parsedPhaseB, bucketStart, bucketEnd, bucketMid)
+
+                    val aValConverted = aVal * phaseAMultiplier
+                    val bValConverted = bVal * phaseBMultiplier
+                    val prodWatts = (aValConverted.safeFinite() + bValConverted.safeFinite()).coerceAtLeast(0f)
+                    val label = sdf7dLabel.format(java.util.Date(bucketMid))
+
+                    points7dPower.add(
+                        SolarLinePoint(
+                            timestampLabel = label,
+                            epochMillis = bucketMid,
+                            usageWatts = if (usageVal < 0f) 0f else usageVal.safeFinite(),
+                            productionWatts = if (prodWatts < 0f) 0f else prodWatts.safeFinite()
+                        )
+                    )
+                }
+                diag.append("\nGenerated 7d Power History (last 3 points computed):\n")
+                points7dPower.takeLast(3).forEach {
+                    diag.append("  - ${it.timestampLabel}: usage=${it.usageWatts}W, prod=${it.productionWatts}W\n")
+                }
+                _solar7DayPowerHistory.value = points7dPower
             }
 
             // Process Daily & Weekly Bar Chart Data
@@ -2757,16 +3035,19 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             val avgDailyUsageKwh = (liveUsage * 24f) / 1000f
 
             val dailyPoints = mutableListOf<SolarBarPoint>()
-            val cal = java.util.Calendar.getInstance()
+            val estTz = java.util.TimeZone.getTimeZone("America/New_York")
+            val cal = java.util.Calendar.getInstance(estTz)
             cal.set(java.util.Calendar.HOUR_OF_DAY, 23)
             cal.set(java.util.Calendar.MINUTE, 59)
             cal.set(java.util.Calendar.SECOND, 59)
             cal.set(java.util.Calendar.MILLISECOND, 999)
 
-            val dayFormatter = java.text.SimpleDateFormat("EEE", java.util.Locale.getDefault())
+            val dayFormatter = java.text.SimpleDateFormat("EEE", java.util.Locale.US).apply {
+                timeZone = estTz
+            }
 
             for (i in 6 downTo 0) {
-                val tempCal = java.util.Calendar.getInstance().apply {
+                val tempCal = java.util.Calendar.getInstance(estTz).apply {
                     timeInMillis = cal.timeInMillis
                     add(java.util.Calendar.DAY_OF_YEAR, -i)
                 }
@@ -2809,15 +3090,17 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val weeklyPoints = mutableListOf<SolarBarPoint>()
-            val cal28 = java.util.Calendar.getInstance()
+            val cal28 = java.util.Calendar.getInstance(estTz)
             cal28.set(java.util.Calendar.HOUR_OF_DAY, 23)
             cal28.set(java.util.Calendar.MINUTE, 59)
             cal28.set(java.util.Calendar.SECOND, 59)
             cal28.set(java.util.Calendar.MILLISECOND, 999)
 
-            val monthDayFormatter = java.text.SimpleDateFormat("MMM d", java.util.Locale.US)
+            val monthDayFormatter = java.text.SimpleDateFormat("MMM d", java.util.Locale.US).apply {
+                timeZone = estTz
+            }
             for (i in 27 downTo 0) {
-                val tempCal = java.util.Calendar.getInstance().apply {
+                val tempCal = java.util.Calendar.getInstance(estTz).apply {
                     timeInMillis = cal28.timeInMillis
                     add(java.util.Calendar.DAY_OF_YEAR, -i)
                 }
@@ -2876,9 +3159,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 _solarError.value = "Failed to fetch from Home Assistant: ${ex.localizedMessage ?: "Unknown error"}"
                 // Keep the existing cache in memory to prevent "Data Unavailable" flaking
             } else {
-                val live = _solarLiveState.value
-                simulateSolarHistoryBasedOnLive(live.liveUsageWatts, live.liveProductionWatts)
-                _solarError.value = "History Database Inaccessible. Showing Smart Aligned Patterns."
+                _solar6HourHistory.value = emptyList<SolarLinePoint>()
+                _solar24HourHistory.value = emptyList<SolarLinePoint>()
+                _solar7DayPowerHistory.value = emptyList<SolarLinePoint>()
+                _solarDailyHistory.value = emptyList<SolarBarPoint>()
+                _solarWeeklyHistory.value = emptyList<SolarBarPoint>()
+                _solarError.value = "Home Assistant Connection Offline"
             }
         } finally {
             _solarDiagnosticInfo.value = diag.toString()
