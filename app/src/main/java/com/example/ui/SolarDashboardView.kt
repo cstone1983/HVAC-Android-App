@@ -60,6 +60,51 @@ fun SolarDashboardView(
 
     var activeTrendTab by remember { mutableStateOf(1) } // 0: 6h, 1: 24h, 2: 7d
 
+    val (todayGeneration, todayUsage) = remember(history24h, liveState, dailyHistory) {
+        val estTz = java.util.TimeZone.getTimeZone("America/New_York")
+        val cal = java.util.Calendar.getInstance(estTz)
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        cal.set(java.util.Calendar.MINUTE, 0)
+        cal.set(java.util.Calendar.SECOND, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val midnightMillis = cal.timeInMillis
+
+        val pointsSinceMidnight = history24h.filter { it.epochMillis >= midnightMillis }
+        if (pointsSinceMidnight.isEmpty()) {
+            val todayBarPoint = dailyHistory.lastOrNull()
+            Pair(todayBarPoint?.totalProducedKwh ?: 0f, todayBarPoint?.totalConsumedKwh ?: 0f)
+        } else {
+            val list = pointsSinceMidnight.toMutableList()
+            if (liveState.isFetched) {
+                val nowMs = System.currentTimeMillis()
+                val lastPt = list.lastOrNull()
+                if (lastPt != null && nowMs - lastPt.epochMillis < 300000L) { // 5 mins
+                    list[list.size - 1] = SolarLinePoint(
+                        timestampLabel = lastPt.timestampLabel,
+                        epochMillis = nowMs,
+                        usageWatts = liveState.liveUsageWatts,
+                        productionWatts = liveState.liveProductionWatts
+                    )
+                } else {
+                    val formattedNow = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).apply {
+                        timeZone = estTz
+                    }.format(java.util.Date(nowMs))
+                    list.add(
+                        SolarLinePoint(
+                            timestampLabel = formattedNow,
+                            epochMillis = nowMs,
+                            usageWatts = liveState.liveUsageWatts,
+                            productionWatts = liveState.liveProductionWatts
+                        )
+                    )
+                }
+            }
+            val prodKwh = list.sumOf { it.productionWatts.toDouble() }.toFloat() / 6000f
+            val consKwh = list.sumOf { it.usageWatts.toDouble() }.toFloat() / 6000f
+            Pair(prodKwh, consKwh)
+        }
+    }
+
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = modifier
@@ -340,6 +385,294 @@ fun SolarDashboardView(
                             color = Color.White.copy(alpha = 0.7f),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Today's Generation card
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(10.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(10.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.WbSunny,
+                                contentDescription = null,
+                                tint = theme.ecoColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "TODAY'S GENERATION",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                        Text(
+                            text = String.format(java.util.Locale.US, "%.2f kWh", todayGeneration),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White,
+                            modifier = Modifier.testTag("today_generation_value")
+                        )
+                    }
+
+                    // Today's Usage card
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(10.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(10.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = theme.coolColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "TODAY'S USAGE",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White.copy(alpha = 0.5f),
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                        Text(
+                            text = String.format(java.util.Locale.US, "%.2f kWh", todayUsage),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color.White,
+                            modifier = Modifier.testTag("today_usage_value")
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Diagnostic Generation Entity card
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "DIAG: SOLAR GENERATION (STATE)",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 0.3.sp
+                        )
+                        val genValStr = if (liveState.diagSolarGeneration != null) {
+                            String.format(java.util.Locale.US, "%.2f %s", liveState.diagSolarGeneration, liveState.diagSolarGenerationUnit ?: "kWh")
+                        } else {
+                            "Unavailable"
+                        }
+                        Text(
+                            text = genValStr,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.testTag("diag_solar_generation_value")
+                        )
+                    }
+
+                    // Diagnostic Production Daily Entity card
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "DIAG: SOLAR PRODUCTION DAILY",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 0.3.sp
+                        )
+                        val dailyValStr = if (liveState.diagSolarProductionDaily != null) {
+                            String.format(java.util.Locale.US, "%.2f %s", liveState.diagSolarProductionDaily, liveState.diagSolarProductionDailyUnit ?: "kWh")
+                        } else {
+                            "Unavailable"
+                        }
+                        Text(
+                            text = dailyValStr,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.testTag("diag_solar_production_daily_value")
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Diagnostic Usage Entity card
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "DIAG: CT PANEL USAGE (STATE)",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 0.3.sp
+                        )
+                        val usageValStr = if (liveState.diagPanelUsage != null) {
+                            String.format(java.util.Locale.US, "%.2f %s", liveState.diagPanelUsage, liveState.diagPanelUsageUnit ?: "kWh")
+                        } else {
+                            "Unavailable"
+                        }
+                        Text(
+                            text = usageValStr,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.testTag("diag_panel_usage_value")
+                        )
+                    }
+
+                    // Diagnostic Daily Panel Usage Entity card
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "DIAG: CT PANEL DAILY USAGE",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 0.3.sp
+                        )
+                        val dailyUsageValStr = if (liveState.diagDailyPanelUsage != null) {
+                            String.format(java.util.Locale.US, "%.2f %s", liveState.diagDailyPanelUsage, liveState.diagDailyPanelUsageUnit ?: "kWh")
+                        } else {
+                            "Unavailable"
+                        }
+                        Text(
+                            text = dailyUsageValStr,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.testTag("diag_daily_panel_usage_value")
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Diagnostic Forecast Today Entity card
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "DIAG: FORECAST TODAY",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 0.3.sp
+                        )
+                        val forecastTodayValStr = if (liveState.solcastForecastToday != null) {
+                            String.format(java.util.Locale.US, "%.2f %s", liveState.solcastForecastToday, liveState.solcastForecastTodayUnit ?: "kWh")
+                        } else {
+                            "Unavailable"
+                        }
+                        Text(
+                            text = forecastTodayValStr,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.testTag("diag_solcast_forecast_today_value")
+                        )
+                    }
+
+                    // Diagnostic Forecast Now Entity card
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "DIAG: FORECAST NOW",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 0.3.sp
+                        )
+                        val forecastNowValStr = if (liveState.solcastForecastNow != null) {
+                            String.format(java.util.Locale.US, "%.2f %s", liveState.solcastForecastNow, liveState.solcastForecastNowUnit ?: "kW")
+                        } else {
+                            "Unavailable"
+                        }
+                        Text(
+                            text = forecastNowValStr,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.testTag("diag_solcast_forecast_now_value")
                         )
                     }
                 }
