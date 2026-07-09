@@ -19,7 +19,13 @@ data class SolarLiveState(
     val solcastForecastToday: Float? = null,
     val solcastForecastTodayUnit: String? = null,
     val solcastForecastNow: Float? = null,
-    val solcastForecastNowUnit: String? = null
+    val solcastForecastNowUnit: String? = null,
+    val dailyGridUsage: Float? = null,
+    val dailyGridUsageUnit: String? = null,
+    val dailySolarGeneration: Float? = null,
+    val dailySolarGenerationUnit: String? = null,
+    val cmpBankBalance: Float? = null,
+    val cmpBankBalanceUnit: String? = null
 ) {
     val netPowerWatts: Float get() = liveProductionWatts - liveUsageWatts
     val isExporting: Boolean get() = netPowerWatts >= 0f

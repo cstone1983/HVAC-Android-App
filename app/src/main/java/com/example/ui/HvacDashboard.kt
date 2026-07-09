@@ -887,7 +887,8 @@ fun DynamicTabContent(
     tab: TabConfig,
     state: HvacUiState.Success,
     viewModel: HvacViewModel,
-    listState: LazyListState
+    listState: LazyListState,
+    lastInteractionTime: Long = 0L
 ) {
     val context = LocalContext.current
     val theme = LocalHvacTheme.current
@@ -895,6 +896,15 @@ fun DynamicTabContent(
     var activeZoneDetail by remember { mutableStateOf<ClimateZone?>(null) }
     var activeLightPopupId by remember { mutableStateOf<String?>(null) }
     var activeSwitchPopupId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(lastInteractionTime) {
+        if (lastInteractionTime > 0) {
+            kotlinx.coroutines.delay(30000L)
+            activeZoneDetail = null
+            activeLightPopupId = null
+            activeSwitchPopupId = null
+        }
+    }
     
     // Popup lookup & display
     val currentLightPopupState = activeLightPopupId?.let { id -> state.lights.find { it.entityId == id } }
@@ -1701,7 +1711,8 @@ fun HvacDashboardContent(
                                     tab = currentTab,
                                     state = state,
                                     viewModel = viewModel,
-                                    listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)]
+                                    listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)],
+                                    lastInteractionTime = lastInteractionTime
                                 )
                             }
                         }
@@ -1881,7 +1892,8 @@ fun HvacDashboardContent(
                         tab = currentTab,
                         state = state,
                         viewModel = viewModel,
-                        listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)]
+                        listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)],
+                        lastInteractionTime = lastInteractionTime
                     )
                 }
             }

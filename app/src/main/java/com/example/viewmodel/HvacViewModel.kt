@@ -1049,6 +1049,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     val diagDailyUsageState = statesMap["sensor.basement_ct_panel_daily_panel_usage"]
                     val forecastTodayState = statesMap["sensor.solcast_solar_enhanced_forecast_today"]
                     val forecastNowState = statesMap["sensor.solcast_solar_enhanced_forecast_now"]
+                    val gridUsageL1State = statesMap["sensor.daily_grid_usage_l1"]
+                    val gridUsageL2State = statesMap["sensor.daily_grid_usage_l2"]
+                    val solarGenL1State = statesMap["sensor.daily_solar_generation_l1"]
+                    val solarGenL2State = statesMap["sensor.daily_solar_generation_l2"]
+                    val cmpBankBalanceState = statesMap["sensor.cmp_bank_balance"]
 
                     val liveUsage = usageState?.state?.cleanFloatOrNull() ?: 0f
                     val aVal = phaseA?.state?.cleanFloatOrNull() ?: 0f
@@ -1059,6 +1064,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     val diagDailyUsageVal = diagDailyUsageState?.state?.cleanFloatOrNull()
                     val forecastTodayVal = forecastTodayState?.state?.cleanFloatOrNull()
                     val forecastNowVal = forecastNowState?.state?.cleanFloatOrNull()
+                    val gridUsageL1Val = gridUsageL1State?.state?.cleanFloatOrNull() ?: 0f
+                    val gridUsageL2Val = gridUsageL2State?.state?.cleanFloatOrNull() ?: 0f
+                    val solarGenL1Val = solarGenL1State?.state?.cleanFloatOrNull() ?: 0f
+                    val solarGenL2Val = solarGenL2State?.state?.cleanFloatOrNull() ?: 0f
+                    val cmpBankBalanceVal = cmpBankBalanceState?.state?.cleanFloatOrNull()
+
+                    val dailyGridUsageVal = if (gridUsageL1State != null || gridUsageL2State != null) gridUsageL1Val + gridUsageL2Val else null
+                    val dailySolarGenVal = if (solarGenL1State != null || solarGenL2State != null) solarGenL1Val + solarGenL2Val else null
 
                     val diagGenUnit = diagGenState?.attributes?.get("unit_of_measurement")?.toString() ?: "kWh"
                     val diagDailyUnit = diagDailyState?.attributes?.get("unit_of_measurement")?.toString() ?: "kWh"
@@ -1066,6 +1079,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     val diagDailyUsageUnit = diagDailyUsageState?.attributes?.get("unit_of_measurement")?.toString() ?: "kWh"
                     val forecastTodayUnit = forecastTodayState?.attributes?.get("unit_of_measurement")?.toString() ?: "kWh"
                     val forecastNowUnit = forecastNowState?.attributes?.get("unit_of_measurement")?.toString() ?: "kW"
+                    val dailyGridUsageUnit = gridUsageL1State?.attributes?.get("unit_of_measurement")?.toString() ?: "kWh"
+                    val dailySolarGenerationUnit = solarGenL1State?.attributes?.get("unit_of_measurement")?.toString() ?: "kWh"
+                    val cmpBankBalanceUnit = cmpBankBalanceState?.attributes?.get("unit_of_measurement")?.toString() ?: "kWh"
 
                     // Dynamic multiplier based on units or values
                     val phaseAUnit = phaseA?.attributes?.get("unit_of_measurement")?.toString()?.lowercase() ?: ""
@@ -1079,7 +1095,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         timeZone = java.util.TimeZone.getTimeZone("UTC")
                     }.format(java.util.Date())
 
-                    _solarLiveState.value = SolarLiveState(
+                     _solarLiveState.value = SolarLiveState(
                         liveUsageWatts = liveUsage,
                         liveProductionWatts = liveProd,
                         isFetched = true,
@@ -1098,7 +1114,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         solcastForecastToday = forecastTodayVal,
                         solcastForecastTodayUnit = forecastTodayUnit,
                         solcastForecastNow = forecastNowVal,
-                        solcastForecastNowUnit = forecastNowUnit
+                        solcastForecastNowUnit = forecastNowUnit,
+                        dailyGridUsage = dailyGridUsageVal,
+                        dailyGridUsageUnit = dailyGridUsageUnit,
+                        dailySolarGeneration = dailySolarGenVal,
+                        dailySolarGenerationUnit = dailySolarGenerationUnit,
+                        cmpBankBalance = cmpBankBalanceVal,
+                        cmpBankBalanceUnit = cmpBankBalanceUnit
                     )
 
                     viewModelScope.launch {
@@ -2487,7 +2509,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             solcastForecastToday = 14.50f,
             solcastForecastTodayUnit = "kWh",
             solcastForecastNow = ((currentProd / 1000f) * 1.1f).coerceAtLeast(0f),
-            solcastForecastNowUnit = "kW"
+            solcastForecastNowUnit = "kW",
+            dailyGridUsage = 14.32f,
+            dailyGridUsageUnit = "kWh",
+            dailySolarGeneration = 19.84f,
+            dailySolarGenerationUnit = "kWh",
+            cmpBankBalance = 152.4f,
+            cmpBankBalanceUnit = "kWh"
         )
         
         if (_solar24HourHistory.value.isEmpty()) {
