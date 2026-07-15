@@ -41,7 +41,16 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         @Volatile
         private var instance: HvacViewModel? = null
 
-        fun getInstance(): HvacViewModel? = instance
+        fun getInstance(application: Application? = null): HvacViewModel? {
+            if (instance == null && application != null) {
+                synchronized(this) {
+                    if (instance == null) {
+                        instance = HvacViewModel(application)
+                    }
+                }
+            }
+            return instance
+        }
     }
 
     init {

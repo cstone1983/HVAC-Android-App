@@ -487,36 +487,6 @@ fun SolarDashboardView(
                         .padding(top = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Grid Usage Card
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
-                            .padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "GRID USAGE",
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.4f),
-                            letterSpacing = 0.3.sp
-                        )
-                        val gridUsageValStr = if (liveState.dailyGridUsage != null) {
-                            String.format(java.util.Locale.US, "%.2f %s", liveState.dailyGridUsage, liveState.dailyGridUsageUnit ?: "kWh")
-                        } else {
-                            "Unavailable"
-                        }
-                        Text(
-                            text = gridUsageValStr,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.85f),
-                            modifier = Modifier.testTag("daily_grid_usage_value")
-                        )
-                    }
-
                     // Solar Generation Card
                     Column(
                         modifier = Modifier
@@ -544,6 +514,36 @@ fun SolarDashboardView(
                             fontWeight = FontWeight.Bold,
                             color = Color.White.copy(alpha = 0.85f),
                             modifier = Modifier.testTag("daily_solar_generation_value")
+                        )
+                    }
+
+                    // Grid Usage Card
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "GRID USAGE",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.4f),
+                            letterSpacing = 0.3.sp
+                        )
+                        val gridUsageValStr = if (liveState.dailyGridUsage != null) {
+                            String.format(java.util.Locale.US, "%.2f %s", liveState.dailyGridUsage, liveState.dailyGridUsageUnit ?: "kWh")
+                        } else {
+                            "Unavailable"
+                        }
+                        Text(
+                            text = gridUsageValStr,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.testTag("daily_grid_usage_value")
                         )
                     }
                 }

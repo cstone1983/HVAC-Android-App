@@ -1,5 +1,6 @@
 package com.example.car
 
+import android.app.Application
 import android.content.Intent
 import androidx.car.app.CarAppService
 import androidx.car.app.Session
@@ -7,6 +8,8 @@ import androidx.car.app.Screen
 import androidx.car.app.CarContext
 import androidx.car.app.model.*
 import androidx.car.app.validation.HostValidator
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.example.viewmodel.HvacViewModel
 import com.example.viewmodel.HvacUiState
 import com.example.model.ClimateZone
@@ -28,8 +31,44 @@ class HvacCarSession : Session() {
 }
 
 class HvacCarScreen(carContext: CarContext) : Screen(carContext) {
+    init {
+        val viewModel = HvacViewModel.getInstance(carContext.applicationContext as Application)
+        if (viewModel != null) {
+            lifecycleScope.launch {
+                viewModel.uiState.collect {
+                    invalidate()
+                }
+            }
+            lifecycleScope.launch {
+                viewModel.autoLayoutStyle.collect {
+                    invalidate()
+                }
+            }
+            lifecycleScope.launch {
+                viewModel.autoPrimaryZone.collect {
+                    invalidate()
+                }
+            }
+            lifecycleScope.launch {
+                viewModel.autoShowFanAction.collect {
+                    invalidate()
+                }
+            }
+            lifecycleScope.launch {
+                viewModel.autoShowPowerAction.collect {
+                    invalidate()
+                }
+            }
+            lifecycleScope.launch {
+                viewModel.autoTempStep.collect {
+                    invalidate()
+                }
+            }
+        }
+    }
+
     override fun onGetTemplate(): Template {
-        val viewModel = HvacViewModel.getInstance()
+        val viewModel = HvacViewModel.getInstance(carContext.applicationContext as Application)
         if (viewModel == null) {
             return MessageTemplate.Builder("Please open the HVAC Controller app on your phone to establish the connection.")
                 .setTitle("HVAC Connection Required")
