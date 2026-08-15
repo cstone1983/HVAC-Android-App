@@ -42,6 +42,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.window.Dialog
@@ -2062,10 +2065,10 @@ fun GlobalSettingsQuickControl(
     val valueFontSize = if (isTablet) 10.sp else 13.sp
 
     // Hot Water control sizes
-    val waterBtnPadding = if (isTablet) 5.dp else 8.dp
-    val waterIconSize = if (isTablet) 15.dp else 20.dp
-    val waterSpacerHeight = if (isTablet) 4.dp else 6.dp
-    val waterLabelFontSize = if (isTablet) 8.sp else 10.sp
+    val waterBtnPadding = if (isTablet) PaddingValues(horizontal = 2.dp, vertical = 4.dp) else PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+    val waterIconSize = if (isTablet) 14.dp else 18.dp
+    val waterSpacerHeight = if (isTablet) 3.dp else 4.dp
+    val waterLabelFontSize = if (isTablet) 7.sp else 8.5.sp
 
     Card(
         modifier = modifier
@@ -2204,10 +2207,10 @@ fun GlobalSettingsQuickControl(
             HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
             Spacer(modifier = Modifier.height(rowSpacerHeight))
 
-            // Third row: HOT WATER CONTROL
+            // Third row: HOT WATER CONTROL & TANK STORAGE
             Column {
                 Text(
-                    "HOT WATER MODE",
+                    "HOT WATER MODE & TANK",
                     fontSize = titleFontSize,
                     fontWeight = FontWeight.Black,
                     color = Color.White.copy(alpha = 0.5f),
@@ -2216,7 +2219,7 @@ fun GlobalSettingsQuickControl(
                 Spacer(modifier = Modifier.height(waterSpacerHeight))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 6.dp else 8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 6.dp else 6.dp)
                 ) {
                     listOf(
                         WaterHeaterItem("eco", "ECO", Icons.Default.WaterDrop, Color(0xFF10B981)),
@@ -2243,7 +2246,9 @@ fun GlobalSettingsQuickControl(
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Column(
-                                modifier = Modifier.padding(waterBtnPadding),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(waterBtnPadding),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Icon(
@@ -2258,9 +2263,80 @@ fun GlobalSettingsQuickControl(
                                     fontSize = waterLabelFontSize,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
-                                    textAlign = TextAlign.Center
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
+                        }
+                    }
+
+                    // 4th item: Available Hot Water Tank Fullness Box
+                    val fullness = state.globalSettings.waterHeaterFullness
+                    val fullnessPct = fullness?.coerceIn(0.0, 100.0)
+                    val fullnessFormatted = if (fullness != null) "${fullnessPct?.toInt()}%" else "--%"
+                    val fillFraction = ((fullnessPct ?: 0.0) / 100.0).toFloat()
+                    val tankColor = Color(0xFF0EA5E9)
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.03f))
+                            .border(
+                                1.dp,
+                                if (fullness != null) tankColor.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.05f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .drawWithContent {
+                                if (fillFraction > 0.01f) {
+                                    val fillHeight = size.height * fillFraction
+                                    val topY = size.height - fillHeight
+                                    drawRect(
+                                        brush = Brush.verticalGradient(
+                                            colors = listOf(
+                                                tankColor.copy(alpha = 0.28f),
+                                                tankColor.copy(alpha = 0.50f)
+                                            ),
+                                            startY = topY,
+                                            endY = size.height
+                                        ),
+                                        topLeft = Offset(0f, topY),
+                                        size = Size(size.width, fillHeight)
+                                    )
+                                    drawLine(
+                                        color = tankColor.copy(alpha = 0.9f),
+                                        start = Offset(0f, topY),
+                                        end = Offset(size.width, topY),
+                                        strokeWidth = 1.5.dp.toPx()
+                                    )
+                                }
+                                drawContent()
+                            }
+                            .padding(waterBtnPadding)
+                            .testTag("water_heater_tank_fullness_box"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Waves,
+                                contentDescription = "Available hot water fullness: $fullnessFormatted",
+                                tint = if (fullness != null) tankColor else Color.White.copy(alpha = 0.5f),
+                                modifier = Modifier.size(waterIconSize)
+                            )
+                            Spacer(modifier = Modifier.height(waterSpacerHeight))
+                            Text(
+                                text = fullnessFormatted,
+                                fontSize = waterLabelFontSize,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (fullness != null) Color.White else Color.White.copy(alpha = 0.5f),
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }

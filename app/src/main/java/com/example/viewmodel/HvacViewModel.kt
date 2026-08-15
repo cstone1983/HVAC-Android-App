@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.api.HomeAssistantClient
+import com.example.api.HomeAssistantWebSocketManager
+import com.example.api.HaConnectionState
 import com.example.api.GithubClient
 import com.example.model.*
 import kotlinx.coroutines.Job
@@ -58,6 +60,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val sharedPrefs = application.getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
+
+    val wsManager: HomeAssistantWebSocketManager = HomeAssistantWebSocketManager.getInstance(application)
+    val wsConnectionState: StateFlow<HaConnectionState> = wsManager.connectionState
+    val wsStates: StateFlow<Map<String, com.example.api.EntityState>> = wsManager.states
 
     private val moshiLocal = com.squareup.moshi.Moshi.Builder()
         .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
@@ -298,28 +304,37 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         if (_isLoggedIn.value) {
             viewModelScope.launch {
                 try {
-                    try {
-                        HomeAssistantClient.service.callService(
-                            "input_number",
-                            "set_value",
-                            mapOf("entity_id" to entityId, "value" to value)
-                        )
-                    } catch (e: Exception) {
-                        // Failover target retry
-                        val token = sharedPrefs.getString("ha_token", "") ?: ""
-                        val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
-                        if (token.isNotEmpty() && alternateUrl.isNotEmpty()) {
-                            HomeAssistantClient.initialize(alternateUrl, token)
-                            try {
-                                HomeAssistantClient.service.callService(
-                                    "input_number",
-                                    "set_value",
-                                    mapOf("entity_id" to entityId, "value" to value)
-                                )
-                                _usingBackupUrl.value = !_usingBackupUrl.value
-                            } catch (e2: Exception) {
-                                val originalUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
-                                HomeAssistantClient.initialize(originalUrl, token)
+                    val wsOk = wsManager.callService(
+                        domain = "input_number",
+                        service = "set_value",
+                        serviceData = mapOf("value" to value),
+                        target = mapOf("entity_id" to entityId)
+                    )
+                    if (!wsOk) {
+                        try {
+                            HomeAssistantClient.service.callService(
+                                "input_number",
+                                "set_value",
+                                mapOf("entity_id" to entityId, "value" to value)
+                            )
+                        } catch (e: Exception) {
+                            // Failover target retry
+                            val token = sharedPrefs.getString("ha_token", "") ?: ""
+                            val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                            if (token.isNotEmpty() && alternateUrl.isNotEmpty()) {
+                                HomeAssistantClient.initialize(alternateUrl, token)
+                                try {
+                                    HomeAssistantClient.service.callService(
+                                        "input_number",
+                                        "set_value",
+                                        mapOf("entity_id" to entityId, "value" to value)
+                                    )
+                                    _usingBackupUrl.value = !_usingBackupUrl.value
+                                    wsManager.connect(alternateUrl, token)
+                                } catch (e2: Exception) {
+                                    val originalUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                                    HomeAssistantClient.initialize(originalUrl, token)
+                                }
                             }
                         }
                     }
@@ -348,6 +363,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             val token = sharedPrefs.getString("ha_token", "") ?: ""
             if (token.isNotEmpty()) {
                 HomeAssistantClient.initialize(formattedUrl, token)
+                wsManager.connect(formattedUrl, token)
                 startSync()
             }
         }
@@ -361,6 +377,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val token = sharedPrefs.getString("ha_token", "") ?: ""
         if (token.isNotEmpty() && _isLoggedIn.value && !_usingBackupUrl.value) {
             HomeAssistantClient.initialize(formattedUrl, token)
+            wsManager.connect(formattedUrl, token)
             startSync()
         }
     }
@@ -374,6 +391,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val token = sharedPrefs.getString("ha_token", "") ?: ""
         if (token.isNotEmpty() && _isLoggedIn.value) {
             HomeAssistantClient.initialize(formattedUrl, token)
+            wsManager.connect(formattedUrl, token)
             startSync()
         }
     }
@@ -581,6 +599,39 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
         HomeAssistantClient.initialize(finalUrl, finalToken)
         _isLoggedIn.value = true
+
+        viewModelScope.launch {
+            wsManager.states.collect { statesMap ->
+                if (statesMap.isNotEmpty()) {
+                    processStatesMap(statesMap)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            wsManager.connectionState.collect { connState ->
+                when (connState) {
+                    is HaConnectionState.Connected -> {
+                        _isOffline.value = false
+                        consecutiveFailureCount = 0
+                    }
+                    is HaConnectionState.Disconnected -> {
+                        if (_uiState.value is HvacUiState.Success) {
+                            _isOffline.value = true
+                        }
+                    }
+                    is HaConnectionState.Error -> {
+                        if (_uiState.value is HvacUiState.Success) {
+                            _isOffline.value = true
+                        } else {
+                            _uiState.value = HvacUiState.Error("WebSocket Connection Error: ${connState.message}")
+                        }
+                    }
+                    else -> {}
+                }
+            }
+        }
+
         startSync()
     }
 
@@ -717,11 +768,22 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startSync() {
+        val targetUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+        val token = sharedPrefs.getString("ha_token", "") ?: (try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" })
+        if (token.isNotEmpty() && targetUrl.isNotEmpty() && targetUrl != "https://localhost/") {
+            HomeAssistantClient.initialize(targetUrl, token)
+            wsManager.connect(targetUrl, token)
+        }
+
         syncJob?.cancel()
         syncJob = viewModelScope.launch {
+            // Initial fetch to populate state while WebSocket handshake completes
+            fetchStates()
             while (true) {
-                fetchStates()
-                delay(15000) // Poll every 15 seconds
+                delay(60000) // Fallback check every 60 seconds
+                if (!wsManager.connectionState.value.isConnected) {
+                    fetchStates()
+                }
             }
         }
     }
@@ -758,6 +820,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         try {
                             responseList = HomeAssistantClient.service.getStates()
                             _usingBackupUrl.value = !_usingBackupUrl.value
+                            wsManager.connect(alternateUrl, token)
                             lastException = null
                             break
                         } catch (e: Exception) {
@@ -788,9 +851,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Layout and software updates are handled dynamically by the persistent startUpdateSync() background task.
+        val statesMap = responseList.associateBy { it.entity_id }
+        processStatesMap(statesMap)
+    }
 
+    fun processStatesMap(statesMap: Map<String, com.example.api.EntityState>) {
         try {
-            val statesMap = responseList.associateBy { it.entity_id }
             lastStatesMap = statesMap
 
             // Sync Pool telemetry Threshold input_numbers from Home Assistant if available
@@ -844,9 +910,18 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // 1. Global settings parsing
+            val activeConfig = getActiveLayoutConfig()
             val houseSchedule = statesMap["input_select.house_schedule_state"]?.state ?: "Day"
-            val waterHeaterMode = statesMap["input_select.water_heater_mode"]?.state ?: "eco"
+            val waterHeaterEntity = activeConfig.waterHeaterEntityId ?: "input_select.water_heater_mode"
+            val waterHeaterMode = statesMap[waterHeaterEntity]?.state ?: "eco"
             val globalHvacMode = statesMap["input_select.global_hvac_mode"]?.state ?: "heat"
+
+            val waterHeaterFullnessEntity = activeConfig.waterHeaterFullnessEntityId ?: "sensor.heat_pump_water_heater_available_hot_water"
+            val waterHeaterNode = statesMap[waterHeaterFullnessEntity]
+            val waterHeaterFullness = waterHeaterNode?.state?.replace("%", "")?.trim()?.toDoubleOrNull()
+                ?: waterHeaterNode?.getDoubleAttribute("available_hot_water")
+                ?: waterHeaterNode?.getDoubleAttribute("hot_water")
+                ?: waterHeaterNode?.getDoubleAttribute("percentage")
 
             val hModeLower = globalHvacMode.lowercase()
             if (hModeLower == "heat" || hModeLower == "cool") {
@@ -860,11 +935,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 houseSchedule = houseSchedule,
                 waterHeaterMode = waterHeaterMode,
                 globalHvacMode = globalHvacMode,
-                lastNonOffHvacMode = lastNonOffHvacMode
+                lastNonOffHvacMode = lastNonOffHvacMode,
+                waterHeaterFullness = waterHeaterFullness
             )
 
             // 2. Room sensors mapping parsed from active configuration dynamically
-            val activeConfig = getActiveLayoutConfig()
 
             val parsedSensors = activeConfig.roomSensors.map { sensor ->
                 val stateNode = statesMap[sensor.stateId]
@@ -1181,8 +1256,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectWaterHeaterMode(option: String) {
+        val entityId = getActiveLayoutConfig().waterHeaterEntityId ?: "input_select.water_heater_mode"
         callServiceWithOptimisticFeedback("input_select", "select_option", mapOf(
-            "entity_id" to "input_select.water_heater_mode",
+            "entity_id" to entityId,
             "option" to option
         ), "Applying hot water mode: $option")
     }
@@ -1454,36 +1530,61 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 var success = false
+
+                // 1. Try real-time WebSocket service call first
                 try {
-                    val response = HomeAssistantClient.service.callService(domain, service, payload)
-                    if (response.isSuccessful) {
-                        success = true
-                    }
+                    val targetMap = if (payload.containsKey("entity_id")) {
+                        mapOf("entity_id" to payload["entity_id"])
+                    } else null
+
+                    val serviceDataMap = payload.filterKeys { it != "entity_id" }
+
+                    success = wsManager.callService(
+                        domain = domain,
+                        service = service,
+                        serviceData = if (serviceDataMap.isNotEmpty()) serviceDataMap else payload,
+                        target = targetMap
+                    )
                 } catch (e: Exception) {
-                    // Try to failover to primary or backup depending on which is currently configured and inactive
-                    val token = sharedPrefs.getString("ha_token", "") ?: ""
-                    val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
-                    if (token.isNotEmpty() && alternateUrl.isNotEmpty() && alternateUrl != "https://localhost/") {
-                        HomeAssistantClient.initialize(alternateUrl, token)
-                        try {
-                            val response = HomeAssistantClient.service.callService(domain, service, payload)
-                            if (response.isSuccessful) {
-                                success = true
-                                _usingBackupUrl.value = !_usingBackupUrl.value
-                            }
-                        } catch (e2: Exception) {
-                            // Restore original Client if alternate failed
-                            val originalUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
-                            HomeAssistantClient.initialize(originalUrl, token)
-                            throw e2
+                    android.util.Log.w("HvacViewModel", "WebSocket service call failed, attempting REST fallback: ${e.message}")
+                }
+
+                // 2. Fallback to REST HTTP client if WebSocket call was not acknowledged
+                if (!success) {
+                    try {
+                        val response = HomeAssistantClient.service.callService(domain, service, payload)
+                        if (response.isSuccessful) {
+                            success = true
                         }
-                    } else {
-                        throw e
+                    } catch (e: Exception) {
+                        // Try to failover to primary or backup depending on which is currently configured and inactive
+                        val token = sharedPrefs.getString("ha_token", "") ?: ""
+                        val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                        if (token.isNotEmpty() && alternateUrl.isNotEmpty() && alternateUrl != "https://localhost/") {
+                            HomeAssistantClient.initialize(alternateUrl, token)
+                            try {
+                                val response = HomeAssistantClient.service.callService(domain, service, payload)
+                                if (response.isSuccessful) {
+                                    success = true
+                                    _usingBackupUrl.value = !_usingBackupUrl.value
+                                    wsManager.connect(alternateUrl, token)
+                                }
+                            } catch (e2: Exception) {
+                                // Restore original Client if alternate failed
+                                val originalUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                                HomeAssistantClient.initialize(originalUrl, token)
+                                throw e2
+                            }
+                        } else {
+                            throw e
+                        }
                     }
                 }
 
                 if (success) {
-                    fetchStates() // immediately sync to get final states
+                    if (!wsManager.connectionState.value.isConnected) {
+                        fetchStates() // fallback sync if WS is not live
+                    }
                 } else {
                     _actionFeedback.value = "Failed to apply state (API returned error)"
                 }

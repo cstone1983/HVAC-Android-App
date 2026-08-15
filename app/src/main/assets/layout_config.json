@@ -9,6 +9,8 @@
     "minCoolingTemp": 64.0,
     "maxHeatingTemp": 80.0
   },
+  "waterHeaterEntityId": "input_select.water_heater_mode",
+  "waterHeaterFullnessEntityId": "sensor.heat_pump_water_heater_available_hot_water",
   "theme": {
     "accentColorHex": "#10B981",
     "coolColorHex": "#6366F1",

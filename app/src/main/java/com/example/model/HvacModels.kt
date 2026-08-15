@@ -74,6 +74,8 @@ data class HvacLayoutConfig(
     val appSubtitle: String? = "HVAC SYSTEM CONTROLLER",
     val theme: HvacThemeConfig? = HvacThemeConfig(),
     val limits: SystemLimitsConfig? = SystemLimitsConfig(),
+    val waterHeaterEntityId: String? = "input_select.water_heater_mode",
+    val waterHeaterFullnessEntityId: String? = "sensor.heat_pump_water_heater_available_hot_water",
     val dynamicSections: List<DynamicSectionConfig>? = emptyList(),
     val showWeatherCard: Boolean? = true,
     val weatherLatitude: Double? = 37.7749,
@@ -179,7 +181,8 @@ data class GlobalSettings(
     val houseSchedule: String = "Day", // Day, Night, Away
     val waterHeaterMode: String = "eco", // eco, heat_pump, high_demand
     val globalHvacMode: String = "heat", // heat, cool, off
-    val lastNonOffHvacMode: String = "heat"
+    val lastNonOffHvacMode: String = "heat",
+    val waterHeaterFullness: Double? = null // e.g. 0.0 - 100.0 (sensor.heat_pump_water_heater_available_hot_water)
 )
 
 data class LightControl(
