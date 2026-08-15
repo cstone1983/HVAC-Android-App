@@ -10,7 +10,9 @@ data class HvacThemeConfig(
     val bgStartColorHex: String? = "#0F172A",
     val bgEndColorHex: String? = "#1E293B",
     val glowColorHex: String? = "#2196F3",
-    val glowAlpha: Float? = 0.12f
+    val glowAlpha: Float? = 0.12f,
+    val chartShadingAlpha: Float? = 0.05f,
+    val showChartShading: Boolean? = true
 )
 
 @JsonClass(generateAdapter = true)
@@ -55,6 +57,12 @@ data class DynamicSectionConfig(
 )
 
 @JsonClass(generateAdapter = true)
+data class SystemLimitsConfig(
+    val minCoolingTemp: Double? = 64.0,
+    val maxHeatingTemp: Double? = 80.0
+)
+
+@JsonClass(generateAdapter = true)
 data class HvacLayoutConfig(
     val version: String,
     val roomSensors: List<RoomSensorConfig>,
@@ -65,6 +73,7 @@ data class HvacLayoutConfig(
     val appTitle: String? = "Home Control",
     val appSubtitle: String? = "HVAC SYSTEM CONTROLLER",
     val theme: HvacThemeConfig? = HvacThemeConfig(),
+    val limits: SystemLimitsConfig? = SystemLimitsConfig(),
     val dynamicSections: List<DynamicSectionConfig>? = emptyList(),
     val showWeatherCard: Boolean? = true,
     val weatherLatitude: Double? = 37.7749,

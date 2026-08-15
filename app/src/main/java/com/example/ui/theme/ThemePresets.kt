@@ -31,7 +31,9 @@ data class HvacThemeColors(
     val glowColor: Color,
     val glowAlpha: Float,
     val cardCornerStyle: String = "rounded", // "sharp", "rounded", "ultra_rounded"
-    val cardOpacity: Float = 0.03f
+    val cardOpacity: Float = 0.03f,
+    val chartShadingAlpha: Float = 0.05f,
+    val showChartShading: Boolean = true
 )
 
 val LocalHvacTheme = staticCompositionLocalOf {

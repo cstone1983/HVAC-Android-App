@@ -967,7 +967,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     vaneMode = tilt?.state ?: "Auto",
                     fanMode = fan?.state ?: "Auto",
                     vaneOptions = if (!vOpts.isNullOrEmpty()) vOpts else listOf("Auto", "Swing", "1", "2", "3", "4", "5"),
-                    fanOptions = if (!fOpts.isNullOrEmpty()) fOpts else listOf("Auto", "Quiet", "Low", "High")
+                    fanOptions = if (!fOpts.isNullOrEmpty()) fOpts.filter { !it.equals("Medium-High", ignoreCase = true) && !it.equals("Medium High", ignoreCase = true) } else listOf("Auto", "Quiet", "Low", "High")
                 )
             }
 
@@ -1269,12 +1269,31 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun setTargetTemperature(climateEntityId: String, temperature: Double, name: String) {
         // 1. Optimistic state update in memory so the dial / UI updates immediately without lag
         val current = _uiState.value
+        var finalTemperature = temperature
+
         if (current is HvacUiState.Success) {
-            val updatedZones = current.zones.map { zone ->
-                if (zone.climateEntityId == climateEntityId) {
-                    zone.copy(targetTemp = temperature)
+            val zone = current.zones.find { it.climateEntityId == climateEntityId }
+            val mode = zone?.currentHvacMode ?: current.globalSettings.globalHvacMode
+            
+            // Apply dynamic limits based on mode and configuration (OTA updatable)
+            val limits = _layoutConfig.value?.limits
+            if (mode.lowercase() == "cool") {
+                val minCool = limits?.minCoolingTemp ?: 64.0
+                if (finalTemperature < minCool) {
+                    finalTemperature = minCool
+                }
+            } else if (mode.lowercase() == "heat") {
+                val maxHeat = limits?.maxHeatingTemp ?: 80.0
+                if (finalTemperature > maxHeat) {
+                    finalTemperature = maxHeat
+                }
+            }
+
+            val updatedZones = current.zones.map { z ->
+                if (z.climateEntityId == climateEntityId) {
+                    z.copy(targetTemp = finalTemperature)
                 } else {
-                    zone
+                    z
                 }
             }
             _uiState.value = current.copy(zones = updatedZones)
@@ -1286,10 +1305,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             _isDebouncing.value = true
             delay(2000L)
             try {
-                val currentFeedback = "$name setpoint updated to ${temperature.toInt()}°F"
+                val currentFeedback = "$name setpoint updated to ${finalTemperature.toInt()}°F"
                 callServiceWithOptimisticFeedback("climate", "set_temperature", mapOf(
                     "entity_id" to climateEntityId,
-                    "temperature" to temperature
+                    "temperature" to finalTemperature
                 ), currentFeedback)
             } finally {
                 pendingTemperatureJobs.remove(climateEntityId)
@@ -1303,15 +1322,34 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun setPresetTemperature(numberEntityId: String, value: Double, name: String) {
         // 1. Optimistic state update in memory so the dial / UI updates immediately without lag
         val current = _uiState.value
+        var finalValue = value
+        
         if (current is HvacUiState.Success) {
+            val limits = _layoutConfig.value?.limits
+            var isCoolPreset = false
+            var isHeatPreset = false
+            
+            current.zones.forEach { z ->
+                if (z.presetsCool.day == numberEntityId || z.presetsCool.night == numberEntityId || z.presetsCool.away == numberEntityId) isCoolPreset = true
+                if (z.presetsHeat.day == numberEntityId || z.presetsHeat.night == numberEntityId || z.presetsHeat.away == numberEntityId) isHeatPreset = true
+            }
+            
+            if (isCoolPreset) {
+                val minCool = limits?.minCoolingTemp ?: 64.0
+                if (finalValue < minCool) finalValue = minCool
+            } else if (isHeatPreset) {
+                val maxHeat = limits?.maxHeatingTemp ?: 80.0
+                if (finalValue > maxHeat) finalValue = maxHeat
+            }
+
             val updatedZones = current.zones.map { zone ->
                 when {
-                    zone.presetsHeat.day == numberEntityId -> zone.copy(presetsHeat = zone.presetsHeat.copy(dayValue = value))
-                    zone.presetsHeat.night == numberEntityId -> zone.copy(presetsHeat = zone.presetsHeat.copy(nightValue = value))
-                    zone.presetsHeat.away == numberEntityId -> zone.copy(presetsHeat = zone.presetsHeat.copy(awayValue = value))
-                    zone.presetsCool.day == numberEntityId -> zone.copy(presetsCool = zone.presetsCool.copy(dayValue = value))
-                    zone.presetsCool.night == numberEntityId -> zone.copy(presetsCool = zone.presetsCool.copy(nightValue = value))
-                    zone.presetsCool.away == numberEntityId -> zone.copy(presetsCool = zone.presetsCool.copy(awayValue = value))
+                    zone.presetsHeat.day == numberEntityId -> zone.copy(presetsHeat = zone.presetsHeat.copy(dayValue = finalValue))
+                    zone.presetsHeat.night == numberEntityId -> zone.copy(presetsHeat = zone.presetsHeat.copy(nightValue = finalValue))
+                    zone.presetsHeat.away == numberEntityId -> zone.copy(presetsHeat = zone.presetsHeat.copy(awayValue = finalValue))
+                    zone.presetsCool.day == numberEntityId -> zone.copy(presetsCool = zone.presetsCool.copy(dayValue = finalValue))
+                    zone.presetsCool.night == numberEntityId -> zone.copy(presetsCool = zone.presetsCool.copy(nightValue = finalValue))
+                    zone.presetsCool.away == numberEntityId -> zone.copy(presetsCool = zone.presetsCool.copy(awayValue = finalValue))
                     else -> zone
                 }
             }
@@ -1324,10 +1362,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             _isDebouncing.value = true
             delay(2000L)
             try {
-                val currentFeedback = "Adjusting preset $name to ${value.toInt()}°F"
+                val currentFeedback = "Adjusting preset $name to ${finalValue.toInt()}°F"
                 callServiceWithOptimisticFeedback("input_number", "set_value", mapOf(
                     "entity_id" to numberEntityId,
-                    "value" to value
+                    "value" to finalValue
                 ), currentFeedback)
             } finally {
                 pendingPresetJobs.remove(numberEntityId)

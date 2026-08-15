@@ -123,6 +123,8 @@ fun PoolDashboardView(
     val theme = LocalHvacTheme.current
     val poolState by viewModel.poolState.collectAsStateWithLifecycle()
     val poolHistory by viewModel.poolHistory.collectAsStateWithLifecycle()
+    val hvacUiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
 
     val poolTempMin by viewModel.poolTempMin.collectAsStateWithLifecycle()
     val poolTempMax by viewModel.poolTempMax.collectAsStateWithLifecycle()
@@ -429,6 +431,21 @@ fun PoolDashboardView(
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White.copy(alpha = 0.35f)
+                    )
+
+                    val poolPumpConfig = layoutConfig.switches.find {
+                        it.name.contains("pool pump", ignoreCase = true) || it.entityId.contains("pool_pump", ignoreCase = true)
+                    }
+                    val poolPumpEntityId = poolPumpConfig?.entityId ?: "switch.pool_pump"
+
+                    val isPumpOn = (hvacUiState as? com.example.viewmodel.HvacUiState.Success)?.switches
+                        ?.find { it.entityId == poolPumpEntityId }?.isOn ?: false
+
+                    Text(
+                        text = if (isPumpOn) "PUMP ON" else "PUMP OFF",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isPumpOn) Color(0xFF22C55E) else Color(0xFFEF4444)
                     )
 
                     // Wave visualization

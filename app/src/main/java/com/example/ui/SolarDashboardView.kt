@@ -1025,6 +1025,24 @@ fun LineChart6h(data: List<SolarLinePoint>, theme: HvacThemeColors) {
             
             val effW = width - leftPad - rightPad
             val effH = height - topPad - bottomPad
+
+            // 1. Vertical background shading for credits (export) vs import
+            if (theme.showChartShading && data.size > 1) {
+                for (idx in 0 until data.size - 1) {
+                    val pt1 = data[idx]
+                    val xStart = leftPad + (effW / (data.size - 1)) * idx
+                    val xEnd = leftPad + (effW / (data.size - 1)) * (idx + 1)
+                    
+                    val isGenerating = pt1.productionWatts >= pt1.usageWatts
+                    val shadeColor = if (isGenerating) theme.ecoColor.copy(alpha = theme.chartShadingAlpha) else theme.boostColor.copy(alpha = theme.chartShadingAlpha)
+                    
+                    drawRect(
+                        color = shadeColor,
+                        topLeft = Offset(xStart, topPad),
+                        size = Size(xEnd - xStart, effH)
+                    )
+                }
+            }
     
             val maxVal = data.maxOfOrNull { maxOf(it.usageWatts, it.productionWatts) }?.coerceAtLeast(100f) ?: 1000f
     
@@ -1306,6 +1324,24 @@ fun LineChart24h(data: List<SolarLinePoint>, theme: HvacThemeColors) {
             val effW = width - leftPad - rightPad
             val effH = height - topPad - bottomPad
     
+            // 1. Vertical background shading for credits (export) vs import
+            if (theme.showChartShading && data.size > 1) {
+                for (idx in 0 until data.size - 1) {
+                    val pt1 = data[idx]
+                    val xStart = leftPad + (effW / (data.size - 1)) * idx
+                    val xEnd = leftPad + (effW / (data.size - 1)) * (idx + 1)
+                    
+                    val isGenerating = pt1.productionWatts >= pt1.usageWatts
+                    val shadeColor = if (isGenerating) theme.ecoColor.copy(alpha = theme.chartShadingAlpha) else theme.boostColor.copy(alpha = theme.chartShadingAlpha)
+                    
+                    drawRect(
+                        color = shadeColor,
+                        topLeft = Offset(xStart, topPad),
+                        size = Size(xEnd - xStart, effH)
+                    )
+                }
+            }
+
             // Scaling values safely
             val maxVal = data.maxOfOrNull { maxOf(it.usageWatts, it.productionWatts) }?.coerceAtLeast(100f) ?: 1000f
     
@@ -1595,6 +1631,24 @@ fun LineChart7d(data: List<SolarLinePoint>, theme: HvacThemeColors) {
             
             val effW = width - leftPad - rightPad
             val effH = height - topPad - bottomPad
+
+            // 1. Vertical background shading for credits (export) vs import
+            if (theme.showChartShading && data.size > 1) {
+                for (idx in 0 until data.size - 1) {
+                    val pt1 = data[idx]
+                    val xStart = leftPad + (effW / (data.size - 1)) * idx
+                    val xEnd = leftPad + (effW / (data.size - 1)) * (idx + 1)
+                    
+                    val isGenerating = pt1.productionWatts >= pt1.usageWatts
+                    val shadeColor = if (isGenerating) theme.ecoColor.copy(alpha = theme.chartShadingAlpha) else theme.boostColor.copy(alpha = theme.chartShadingAlpha)
+                    
+                    drawRect(
+                        color = shadeColor,
+                        topLeft = Offset(xStart, topPad),
+                        size = Size(xEnd - xStart, effH)
+                    )
+                }
+            }
     
             val maxVal = data.maxOfOrNull { maxOf(it.usageWatts, it.productionWatts) }?.coerceAtLeast(100f) ?: 1000f
     
@@ -1881,6 +1935,24 @@ fun HistoricalLineChart(data: List<SolarBarPoint>, isMonth: Boolean, theme: Hvac
             
             val effW = width - leftPad - rightPad
             val effH = height - topPad - bottomPad
+
+            // 1. Vertical background shading for credits (export) vs import
+            if (theme.showChartShading && data.size > 1) {
+                for (idx in 0 until data.size - 1) {
+                    val pt1 = data[idx]
+                    val xStart = leftPad + (effW / (data.size - 1)) * idx
+                    val xEnd = leftPad + (effW / (data.size - 1)) * (idx + 1)
+                    
+                    val isGenerating = pt1.totalProducedKwh >= pt1.totalConsumedKwh
+                    val shadeColor = if (isGenerating) theme.ecoColor.copy(alpha = theme.chartShadingAlpha) else theme.boostColor.copy(alpha = theme.chartShadingAlpha)
+                    
+                    drawRect(
+                        color = shadeColor,
+                        topLeft = Offset(xStart, topPad),
+                        size = Size(xEnd - xStart, effH)
+                    )
+                }
+            }
     
             val maxVal = data.maxOfOrNull { maxOf(it.totalConsumedKwh, it.totalProducedKwh) }?.coerceAtLeast(1f) ?: 10f
     

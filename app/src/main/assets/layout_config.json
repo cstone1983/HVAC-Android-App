@@ -5,6 +5,10 @@
   "showWeatherCard": true,
   "weatherLatitude": 37.7749,
   "weatherLongitude": -122.4194,
+  "limits": {
+    "minCoolingTemp": 64.0,
+    "maxHeatingTemp": 80.0
+  },
   "theme": {
     "accentColorHex": "#10B981",
     "coolColorHex": "#6366F1",
@@ -12,7 +16,9 @@
     "bgStartColorHex": "#0A0D14",
     "bgEndColorHex": "#121824",
     "glowColorHex": "#10B981",
-    "glowAlpha": 0.15
+    "glowAlpha": 0.15,
+    "chartShadingAlpha": 0.05,
+    "showChartShading": true
   },
   "tabs": [
     {

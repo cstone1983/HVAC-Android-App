@@ -324,7 +324,9 @@ fun HvacDashboard(
         glowColor = glowColor,
         glowAlpha = glowColorFactor,
         cardCornerStyle = cardCornerStyle,
-        cardOpacity = cardOpacity
+        cardOpacity = cardOpacity,
+        chartShadingAlpha = themeConfig.chartShadingAlpha ?: 0.05f,
+        showChartShading = themeConfig.showChartShading ?: true
     )
 
     CompositionLocalProvider(LocalHvacTheme provides hvacThemeColors) {
