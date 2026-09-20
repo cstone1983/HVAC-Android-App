@@ -310,6 +310,13 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
                 }
             }
 
+            // A powered-down head ignores set_hvac_mode, so power it up first and give it a
+            // moment, the same order n8n's sequencer uses.
+            if (live == "off" && nextMode != "off") {
+                callService(domain = "climate", service = "turn_on", entityId = climateEntityId)
+                kotlinx.coroutines.delay(1200)
+            }
+
             val success = callService(
                 domain = "climate",
                 service = "set_hvac_mode",

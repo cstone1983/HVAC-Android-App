@@ -1,4 +1,4 @@
-package com.example.viewmodel
+﻿package com.example.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
@@ -1439,7 +1439,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             _isDebouncing.value = true
             delay(2000L)
             try {
-                val currentFeedback = "$name setpoint updated to ${finalTemperature.toInt()}°F"
+                val currentFeedback = "$name setpoint updated to ${finalTemperature.toInt()}Â°F"
                 callServiceWithOptimisticFeedback("climate", "set_temperature", mapOf(
                     "entity_id" to climateEntityId,
                     "temperature" to finalTemperature
@@ -1496,7 +1496,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             _isDebouncing.value = true
             delay(2000L)
             try {
-                val currentFeedback = "Adjusting preset $name to ${finalValue.toInt()}°F"
+                val currentFeedback = "Adjusting preset $name to ${finalValue.toInt()}Â°F"
                 callServiceWithOptimisticFeedback("input_number", "set_value", mapOf(
                     "entity_id" to numberEntityId,
                     "value" to finalValue
@@ -1589,8 +1589,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     if (index == 0) {
                         // The whole window is one unbroken state, so the change that produced
                         // it happened before the window opened. Someone who visits every few
-                        // weeks looks exactly like this, and quoting the window start — or
-                        // worse, last_changed — would invent a duration that never happened.
+                        // weeks looks exactly like this, and quoting the window start â€” or
+                        // worse, last_changed â€” would invent a duration that never happened.
                         result[entityId] = PresenceSince(millis = null, olderThanWindow = true)
                     } else {
                         val stamp = series[index].last_changed ?: series[index].last_updated
@@ -1638,7 +1638,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * Whether the requested mode can be served alongside whatever else is already running.
      *
      * A multi-split provides one thermal family at a time, so a head asking for cool while
-     * another is heating cannot be satisfied — the outdoor unit simply will not do both.
+     * another is heating cannot be satisfied â€” the outdoor unit simply will not do both.
      * Authority runs global mode, then Main Level (it is the open living/dining space and
      * leads the house), then whichever zone started first.
      *
@@ -1654,7 +1654,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val globalFamily = com.example.model.hvacFamilyOf(globalMode)
 
         // The house mode outranks everything. When it disagrees, it is the blocker. When it
-        // agrees, this request is the corrective one — a single zone sitting in the other family
+        // agrees, this request is the corrective one â€” a single zone sitting in the other family
         // is the thing that needs fixing, so it must not be allowed to veto the fix.
         if (globalFamily != com.example.model.HvacFamily.NEUTRAL) {
             if (globalFamily == requested) return null
@@ -1737,7 +1737,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Sends a Telegram message through the n8n HVAC Notify webhook. Home Assistant has no
-     * telegram_bot integration here — the bot credential lives in n8n — so alerts leave via
+     * telegram_bot integration here â€” the bot credential lives in n8n â€” so alerts leave via
      * rest_command.n8n_hvac_notify rather than a notify.* service.
      */
     fun sendHvacNotification(title: String, message: String) {
@@ -1759,10 +1759,36 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun setZoneHvacMode(climateEntityId: String, mode: String, name: String) {
         val target = mode.lowercase()
-        callServiceWithOptimisticFeedback("climate", "set_hvac_mode", mapOf(
-            "entity_id" to climateEntityId,
-            "hvac_mode" to target
-        ), "$name mode: ${target.uppercase()}")
+        _actionFeedback.value = "$name mode: ${target.uppercase()}"
+        viewModelScope.launch {
+            try {
+                val current = _entityStates.value[climateEntityId]?.state?.lowercase()
+
+                // These heads will not take a mode while they are powered down. The call is
+                // accepted and the head stays off, so tapping Heat on a sleeping zone did
+                // nothing until you pressed power yourself. n8n's sequencer has always sent
+                // turn_on first for this reason; the panel now does the same.
+                if (target != "off" && (current == null || current == "off")) {
+                    performServiceCall("climate", "turn_on", mapOf("entity_id" to climateEntityId))
+                    // The head needs a moment to come up before it will accept the mode.
+                    // n8n uses a 2s gap between these two; 1.2s is enough over the local
+                    // WebSocket and keeps the button feeling responsive.
+                    kotlinx.coroutines.delay(1200)
+                }
+
+                val ok = performServiceCall(
+                    "climate", "set_hvac_mode",
+                    mapOf("entity_id" to climateEntityId, "hvac_mode" to target)
+                )
+                if (ok) {
+                    if (!wsManager.connectionState.value.isConnected) fetchStates()
+                } else {
+                    _actionFeedback.value = "Failed to set $name to ${target.uppercase()}"
+                }
+            } catch (e: Exception) {
+                _actionFeedback.value = "Failed to sync action: ${e.localizedMessage}"
+            }
+        }
     }
 
     fun toggleLight(entityId: String, currentOn: Boolean, name: String) {
@@ -1824,10 +1850,36 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         _actionFeedback.value = feedbackMessage
         viewModelScope.launch {
             try {
-                var success = false
+                val success = performServiceCall(domain, service, payload)
+                if (success) {
+                    if (!wsManager.connectionState.value.isConnected) {
+                        fetchStates() // fallback sync if WS is not live
+                    }
+                } else {
+                    _actionFeedback.value = "Failed to apply state (API returned error)"
+                }
+            } catch (e: Exception) {
+                _actionFeedback.value = "Failed to sync action: ${e.localizedMessage}"
+            }
+        }
+    }
 
-                // 1. Try real-time WebSocket service call first
-                try {
+    /**
+     * One service call: WebSocket first, REST second, with host failover. Returns whether it
+     * landed.
+     *
+     * Suspending, so a caller that needs two calls to arrive in order can await each one. The
+     * Airstage heads need exactly that â€” see [setZoneHvacMode].
+     */
+    private suspend fun performServiceCall(
+        domain: String,
+        service: String,
+        payload: Map<String, Any>
+    ): Boolean {
+        var success = false
+
+        // 1. Try real-time WebSocket service call first
+        try {
                     val targetMap = if (payload.containsKey("entity_id")) {
                         mapOf("entity_id" to payload["entity_id"])
                     } else null
@@ -1876,17 +1928,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                if (success) {
-                    if (!wsManager.connectionState.value.isConnected) {
-                        fetchStates() // fallback sync if WS is not live
-                    }
-                } else {
-                    _actionFeedback.value = "Failed to apply state (API returned error)"
-                }
-            } catch (e: Exception) {
-                _actionFeedback.value = "Failed to sync action: ${e.localizedMessage}"
-            }
-        }
+        return success
     }
 
     /**
@@ -2012,7 +2054,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
                     _updateState.value = UpdateState.UpdateAvailable(
                         version = sha.take(7),
-                        releaseNotes = "${isNewSyncMsg}Commit details:\n• SHA: $sha\n• Message: $commitMsg\n• Author: $authorName\n• Date: $commitDate\n\nClick 'DOWNLOAD & INSTALL UPDATE' to pull all design and layout changes dynamically OTA.",
+                        releaseNotes = "${isNewSyncMsg}Commit details:\nâ€¢ SHA: $sha\nâ€¢ Message: $commitMsg\nâ€¢ Author: $authorName\nâ€¢ Date: $commitDate\n\nClick 'DOWNLOAD & INSTALL UPDATE' to pull all design and layout changes dynamically OTA.",
                         downloadUrl = pendingAssetUrl,
                         size = pendingAssetSize
                     )
@@ -2050,7 +2092,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
         _updateState.value = UpdateState.UpdateAvailable(
             version = pendingVersion,
-            releaseNotes = "AUTHENTIC DESIGN DECK SYSTEM UPDATE SIMULATION:\n\n• High-performance Home Assistant sensors config map\n• Radiant accent canvas thermal distribution palette\n• Instantly applied dynamically without APK reinstall prompts\n\nClick 'DOWNLOAD & INSTALL UPDATE' below to trigger the dynamic installation simulation.",
+            releaseNotes = "AUTHENTIC DESIGN DECK SYSTEM UPDATE SIMULATION:\n\nâ€¢ High-performance Home Assistant sensors config map\nâ€¢ Radiant accent canvas thermal distribution palette\nâ€¢ Instantly applied dynamically without APK reinstall prompts\n\nClick 'DOWNLOAD & INSTALL UPDATE' below to trigger the dynamic installation simulation.",
             downloadUrl = pendingAssetUrl,
             size = pendingAssetSize
         )
@@ -2084,7 +2126,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
                     // Layout only. This used to also write software_commit_sha and
                     // installed_version_override, which decorated the displayed app version with
-                    // the layout's commit — so pulling a config made the panel claim it was
+                    // the layout's commit â€” so pulling a config made the panel claim it was
                     // running a build it had never installed. The APK version comes from
                     // BuildConfig and nothing else may move it.
                     sharedPrefs.edit()
@@ -2114,7 +2156,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * Downloads a release APK to the cache and stages it for install.
      *
      * Progress is the real byte count. There is no way to install an APK without the system
-     * installer UI, so the panel cannot apply a build silently — it downloads, then hands the
+     * installer UI, so the panel cannot apply a build silently â€” it downloads, then hands the
      * file to Android.
      */
     fun downloadApkAndStage(context: Context, downloadUrl: String, version: String) {
@@ -2180,7 +2222,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * Hands a staged APK to the system package installer.
      *
      * This used to play a scripted progress animation, write a version number to preferences and
-     * report success without installing anything — so the panel reported a build it was not
+     * report success without installing anything â€” so the panel reported a build it was not
      * running. There is no silent-install path for a non-system app, so the OS dialog is the
      * install; the panel's job ends at handing over a verified file.
      */
@@ -2597,7 +2639,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
         _updateState.value = UpdateState.UpdateAvailable(
             version = pendingVersion,
-            releaseNotes = "SIMULATED INTERACTIVE BUILD DETECTOR SUCCESS\n\nCommit Details:\n• SHA: $mockSha\n• Branch: ${_githubBranch.value}\n\n• Triggered instantly via test harness! Click 'DOWNLOAD & INSTALL UPDATE' to execute full pipeline flow simulation.",
+            releaseNotes = "SIMULATED INTERACTIVE BUILD DETECTOR SUCCESS\n\nCommit Details:\nâ€¢ SHA: $mockSha\nâ€¢ Branch: ${_githubBranch.value}\n\nâ€¢ Triggered instantly via test harness! Click 'DOWNLOAD & INSTALL UPDATE' to execute full pipeline flow simulation.",
             downloadUrl = pendingAssetUrl,
             size = pendingAssetSize
         )
