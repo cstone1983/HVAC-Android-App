@@ -90,10 +90,10 @@ class ZonesListScreen(
                 .addText(secondaryText)
                 .setOnClickListener {
                     // Tap to cycle zone HVAC mode: HEAT -> COOL -> OFF -> HEAT
-                    repository.toggleZoneHvacMode(zone.climateEntityId, zone.hvacMode) { newMode ->
+                    repository.toggleZoneHvacMode(zone.climateEntityId, zone.hvacMode) { result ->
                         CarToast.makeText(
                             carContext,
-                            "${zone.name}: ${newMode.uppercase(Locale.US)}",
+                            "${zone.name}: ${result.message}",
                             CarToast.LENGTH_SHORT
                         ).show()
                         invalidate()

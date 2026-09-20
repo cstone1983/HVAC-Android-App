@@ -2914,7 +2914,9 @@ fun ZoneDetailPopup(
             zoneName = zone.name,
             onDismiss = { pendingModeConflict = null },
             onOverride = {
-                viewModel.applyHouseModeOverride(conflict.requestedMode, zone.name, conflict.blockingMode)
+                viewModel.applyHouseModeOverride(
+                    conflict.requestedMode, zone.name, conflict.blockingMode, zone.climateEntityId
+                )
                 pendingModeConflict = null
                 onDismiss()
             },

@@ -357,6 +357,43 @@ fun hvacFamilyOf(mode: String?): HvacFamily = when (mode?.lowercase()) {
 }
 
 /**
+ * Which outdoor unit each zone's head(s) hang off.
+ *
+ * There are two condensers, and they are independent: heat on one while the other cools is
+ * physically fine. Only heads sharing a condenser can conflict. Main Level is the exception —
+ * it is one open space served by two heads, the living room on unit 1 and the dining room on
+ * unit 2 — so it touches both and can conflict with anything.
+ */
+val zoneOutdoorUnits: Map<String, Set<Int>> = mapOf(
+    "main_level" to setOf(1, 2),
+    "bedroom_1" to setOf(1),
+    "bedroom_2" to setOf(1),
+    "basement" to setOf(1),
+    "anthony" to setOf(2),
+    "autumn" to setOf(2)
+)
+
+/**
+ * Unknown zone keys share a unit with everything, so a config addition fails safe (warns)
+ * rather than silently permitting a combination the equipment cannot serve.
+ */
+fun outdoorUnitsFor(zoneKey: String): Set<Int> = zoneOutdoorUnits[zoneKey] ?: setOf(1, 2)
+
+/** The same split, keyed by head, for callers that only hold a climate entity id. */
+val headOutdoorUnit: Map<String, Int> = mapOf(
+    "climate.hp_living_room" to 1,
+    "climate.hp_bedroom" to 1,
+    "climate.hp_bedroom_2" to 1,
+    "climate.hp_basement" to 1,
+    "climate.hp_dining_room" to 2,
+    "climate.hp_anthony" to 2,
+    "climate.hp_autumn" to 2
+)
+
+fun sharesOutdoorUnit(zoneKeyA: String, zoneKeyB: String): Boolean =
+    outdoorUnitsFor(zoneKeyA).any { it in outdoorUnitsFor(zoneKeyB) }
+
+/**
  * Why a requested mode cannot be applied, and what it would take to apply it anyway.
  */
 data class ModeConflict(

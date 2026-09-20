@@ -89,7 +89,8 @@ class HomeScreen(
             .addText("Tap to cycle schedule (Day / Night / Away)")
             .setOnClickListener {
                 repository.cycleHouseScheduleState { nextState ->
-                    CarToast.makeText(carContext, "Schedule set to $nextState", CarToast.LENGTH_SHORT).show()
+                    val msg = nextState?.let { "Schedule set to $it" } ?: "Could not change schedule"
+                    CarToast.makeText(carContext, msg, CarToast.LENGTH_SHORT).show()
                     invalidate()
                 }
             }

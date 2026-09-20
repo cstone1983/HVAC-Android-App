@@ -202,24 +202,32 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
     /**
      * Cycle House Schedule State: Day -> Night -> Away -> Day
      */
-    fun cycleHouseScheduleState(onComplete: ((String) -> Unit)? = null) {
+    /**
+     * The helper's options are capitalised — Day, Night, Away — and `input_select.select_option`
+     * matches them exactly, so a lowercase option is rejected outright. The result is reported
+     * rather than assumed: this call used to invoke the callback unconditionally, which told the
+     * driver the schedule had changed every time it had not.
+     *
+     * A null in the callback means the write failed.
+     */
+    fun cycleHouseScheduleState(onComplete: ((String?) -> Unit)? = null) {
         scope.launch {
             val currentStates = states.value
             val currentState = currentStates["input_select.house_schedule_state"]?.state?.lowercase(Locale.US) ?: "day"
             val nextState = when (currentState) {
-                "day" -> "night"
-                "night" -> "away"
-                "away" -> "day"
-                else -> "day"
+                "day" -> "Night"
+                "night" -> "Away"
+                "away" -> "Day"
+                else -> "Day"
             }
 
-            callService(
+            val success = callService(
                 domain = "input_select",
                 service = "select_option",
                 entityId = "input_select.house_schedule_state",
                 serviceData = mapOf("option" to nextState)
             )
-            onComplete?.invoke(nextState)
+            onComplete?.invoke(if (success) nextState else null)
         }
     }
 
@@ -247,25 +255,71 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
         }
     }
 
+    /** What a car-surface mode tap actually did, so the driver is told the truth. */
+    data class ZoneModeResult(val applied: Boolean, val message: String)
+
     /**
-     * Toggle individual zone HVAC mode
+     * Cycle one zone's mode from the car: HEAT -> COOL -> OFF -> HEAT.
+     *
+     * Two guards the touch panel has and this surface did not:
+     *
+     * The mode is re-read live rather than taken from the caller. The car screens render from
+     * the WebSocket map, which is empty whenever the app is on REST fallback, and an absent
+     * entity was being rendered as "OFF" — so one tap on a disconnected car screen sent HEAT to
+     * a head regardless of what it was really doing.
+     *
+     * A head is refused if another head on the SAME outdoor unit is already running the other
+     * thermal family, which is the check `detectModeConflict` performs on the panel. There is no
+     * override path here: a driver should not be arbitrating house-wide HVAC conflicts.
      */
-    fun toggleZoneHvacMode(climateEntityId: String, currentMode: String, onComplete: ((String) -> Unit)? = null) {
+    fun toggleZoneHvacMode(
+        climateEntityId: String,
+        @Suppress("UNUSED_PARAMETER") currentMode: String,
+        onComplete: ((ZoneModeResult) -> Unit)? = null
+    ) {
         scope.launch {
-            val nextMode = when (currentMode.lowercase(Locale.US)) {
+            val live = states.value[climateEntityId]?.state?.lowercase(Locale.US)
+            if (live == null || live == "unavailable" || live == "unknown") {
+                onComplete?.invoke(ZoneModeResult(false, "No live reading — not changed"))
+                return@launch
+            }
+
+            val nextMode = when (live) {
                 "heat" -> "cool"
-                "cool" -> "off"
+                "cool", "dry" -> "off"
                 "off" -> "heat"
                 else -> "heat"
             }
 
-            callService(
+            val requested = com.example.model.hvacFamilyOf(nextMode)
+            if (requested != com.example.model.HvacFamily.NEUTRAL) {
+                val unit = com.example.model.headOutdoorUnit[climateEntityId]
+                val blocker = com.example.model.headOutdoorUnit.entries.firstOrNull { (head, u) ->
+                    head != climateEntityId && u == unit &&
+                        com.example.model.hvacFamilyOf(states.value[head]?.state).let {
+                            it != com.example.model.HvacFamily.NEUTRAL && it != requested
+                        }
+                }?.key
+                if (blocker != null) {
+                    val blockerName = states.value[blocker]?.getStringAttribute("friendly_name") ?: blocker
+                    val blockerMode = states.value[blocker]?.state?.uppercase(Locale.US) ?: "?"
+                    onComplete?.invoke(
+                        ZoneModeResult(false, "Blocked: $blockerName is $blockerMode on the same unit")
+                    )
+                    return@launch
+                }
+            }
+
+            val success = callService(
                 domain = "climate",
                 service = "set_hvac_mode",
                 entityId = climateEntityId,
                 serviceData = mapOf("hvac_mode" to nextMode)
             )
-            onComplete?.invoke(nextMode)
+            onComplete?.invoke(
+                if (success) ZoneModeResult(true, nextMode.uppercase(Locale.US))
+                else ZoneModeResult(false, "Change failed")
+            )
         }
     }
 
@@ -379,14 +433,17 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
             ?: s["weather.home"]?.getDoubleAttribute("temperature")
             ?: s["weather.forecast_home"]?.getDoubleAttribute("temperature")
 
-        // Compute average indoor temp from zones or fallback sensor
+        // Average across all seven heads. This list previously named climate.hp_bedroom_1 and
+        // climate.hp_master_bedroom, neither of which exists, and left out Anthony and Autumn —
+        // so the car averaged four real rooms, two phantoms and two omissions.
         val indoorTemps = listOfNotNull(
             s["sensor.living_room_temperature"]?.state?.toDoubleOrNull()
                 ?: s["climate.hp_living_room"]?.getDoubleAttribute("current_temperature"),
             s["climate.hp_dining_room"]?.getDoubleAttribute("current_temperature"),
-            s["climate.hp_bedroom_1"]?.getDoubleAttribute("current_temperature"),
+            s["climate.hp_anthony"]?.getDoubleAttribute("current_temperature"),
+            s["climate.hp_autumn"]?.getDoubleAttribute("current_temperature"),
+            s["climate.hp_bedroom"]?.getDoubleAttribute("current_temperature"),
             s["climate.hp_bedroom_2"]?.getDoubleAttribute("current_temperature"),
-            s["climate.hp_master_bedroom"]?.getDoubleAttribute("current_temperature"),
             s["climate.hp_basement"]?.getDoubleAttribute("current_temperature")
         )
 

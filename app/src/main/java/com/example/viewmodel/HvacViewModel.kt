@@ -1650,26 +1650,45 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val requested = com.example.model.hvacFamilyOf(requestedMode)
         if (requested == com.example.model.HvacFamily.NEUTRAL) return null
 
-        val runningOthers = state.zones.filter {
-            it.key != targetZoneKey &&
-                com.example.model.hvacFamilyOf(it.currentHvacMode) != com.example.model.HvacFamily.NEUTRAL
-        }
-        val affected = (runningOthers.map { it.name } +
-            state.zones.filter { it.key == targetZoneKey }.map { it.name }).distinct()
-
         val globalMode = state.globalSettings.globalHvacMode
         val globalFamily = com.example.model.hvacFamilyOf(globalMode)
-        if (globalFamily != com.example.model.HvacFamily.NEUTRAL && globalFamily != requested) {
-            return com.example.model.ModeConflict(requestedMode, "The house mode", globalMode, affected)
+
+        // The house mode outranks everything. When it disagrees, it is the blocker. When it
+        // agrees, this request is the corrective one — a single zone sitting in the other family
+        // is the thing that needs fixing, so it must not be allowed to veto the fix.
+        if (globalFamily != com.example.model.HvacFamily.NEUTRAL) {
+            if (globalFamily == requested) return null
+            val wouldSwitch = state.zones.filter {
+                com.example.model.hvacFamilyOf(it.currentHvacMode).let { f ->
+                    f != com.example.model.HvacFamily.NEUTRAL && f != requested
+                }
+            }.map { it.name }
+            val target = state.zones.firstOrNull { it.key == targetZoneKey }?.name
+            return com.example.model.ModeConflict(
+                requestedMode, "The house mode", globalMode,
+                (wouldSwitch + listOfNotNull(target)).distinct()
+            )
         }
 
-        val blocker = runningOthers.firstOrNull {
-            it.key == "main_level" && com.example.model.hvacFamilyOf(it.currentHvacMode) != requested
-        } ?: runningOthers.firstOrNull {
-            com.example.model.hvacFamilyOf(it.currentHvacMode) != requested
-        } ?: return null
+        // House mode off means scheduling is paused and manual per-zone control is allowed.
+        // Only a head on the same outdoor unit can actually block this one.
+        val clashing = state.zones.filter {
+            it.key != targetZoneKey &&
+                com.example.model.hvacFamilyOf(it.currentHvacMode).let { f ->
+                    f != com.example.model.HvacFamily.NEUTRAL && f != requested
+                } &&
+                com.example.model.sharesOutdoorUnit(it.key, targetZoneKey)
+        }
 
-        return com.example.model.ModeConflict(requestedMode, blocker.name, blocker.currentHvacMode, affected)
+        val blocker = clashing.firstOrNull { it.key == "main_level" }
+            ?: clashing.firstOrNull()
+            ?: return null
+
+        val target = state.zones.firstOrNull { it.key == targetZoneKey }?.name
+        return com.example.model.ModeConflict(
+            requestedMode, blocker.name, blocker.currentHvacMode,
+            (clashing.map { it.name } + listOfNotNull(target)).distinct()
+        )
     }
 
     /**
@@ -1680,17 +1699,39 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * performs the change through its lock and throttle. Writing six heads straight from the
      * app would bypass that gate and hammer the Airstage cloud API.
      */
-    fun applyHouseModeOverride(requestedMode: String, fromZoneName: String, previousMode: String) {
-        callServiceWithOptimisticFeedback(
-            "input_select", "select_option", mapOf(
-                "entity_id" to "input_select.global_hvac_mode",
-                "option" to requestedMode.lowercase()
-            ), "House switched to ${requestedMode.uppercase()}"
-        )
+    fun applyHouseModeOverride(
+        requestedMode: String,
+        fromZoneName: String,
+        previousMode: String,
+        zoneClimateEntityId: String? = null
+    ) {
+        val target = requestedMode.lowercase()
+        val state = _uiState.value as? HvacUiState.Success
+        val currentGlobal = state?.globalSettings?.globalHvacMode?.lowercase()
+        val wasPaused = currentGlobal == "off"
+
+        // Selecting the option already in force produces no state change, so the sequencer would
+        // never run and the request would be lost. Only write when it actually differs.
+        if (currentGlobal != target) {
+            callServiceWithOptimisticFeedback(
+                "input_select", "select_option", mapOf(
+                    "entity_id" to "input_select.global_hvac_mode",
+                    "option" to target
+                ), "House switched to ${target.uppercase()}"
+            )
+        }
+
+        // The user asked for this zone. The house mode alone does not deliver it: the sequencer
+        // follows zones that are already running, so a zone that is off would stay off.
+        zoneClimateEntityId?.let { setZoneHvacMode(it, target, fromZoneName) }
+
+        val pausedNote = if (wasPaused) {
+            " Scheduling had been paused (house mode off) and is now active again."
+        } else ""
         sendHvacNotification(
             "HVAC overridden from the panel",
-            "The whole house was switched to ${requestedMode.uppercase()} from the $fromZoneName controls, " +
-                "overriding ${previousMode.uppercase()}. Every running zone will follow."
+            "The whole house was switched to ${target.uppercase()} from the $fromZoneName controls, " +
+                "overriding ${previousMode.uppercase()}. Every running zone will follow.$pausedNote"
         )
     }
 
