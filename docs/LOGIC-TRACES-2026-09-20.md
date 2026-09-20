@@ -184,13 +184,50 @@ the editing tools, or .NET with an explicit encoding.
 
 ---
 
+## Trace 9 — How a setpoint actually reaches a head
+
+An earlier draft of this document claimed the zone card had a temperature dial writing the head
+directly, sitting alongside presets that wrote helpers, and called that a contradiction. **That
+was wrong.** There is no dial. Corrected here because the wrong version was committed.
+
+`setTargetTemperature` has exactly one call site, inside the preset stepper:
+
+```kotlin
+viewModel.setPresetTemperature(entityId, newVal, ...)      // the schedule helper
+if (isActive) {
+    viewModel.setTargetTemperature(zone.climateEntityId, ...)   // apply-now shortcut
+}
+```
+
+So adjusting a preset writes the `input_number`, and *if that preset is the slot currently in
+force*, the value is also pushed straight at the head so the room responds without waiting for
+the forwarder, the run mutex and Apply's confirm window. One control, with a shortcut.
+
+Traced for convergence:
+
+| Path | Lands on |
+|---|---|
+| `input_number.main_level_day_temp` = 71 | forwarder `setpoint` trigger, 3s dwell, to the sequencer |
+| direct `set_temperature` 71 on the living room head | forwarder `main_head_temp` trigger, 2s dwell, mirrors dining |
+
+Both arrive at 71, so the two writers agree and the shortcut is safe.
+
+One cosmetic edge: the app clamps a cool preset at 64.0 while n8n floors it at 64.5. Set a cool
+preset to 64 and the helper keeps 64 while the head ends at 64.5. The watchdog compares the head
+against the floored value, so it does not flag drift; the card just reads one notch below the
+head.
+
+**This also settles whether the app should write a setpoint after powering a zone on.** It should,
+and it is consistent rather than novel: the preset path already writes the head directly for the
+same reason. For the five heads outside the forwarder's mode triggers there is no other writer
+that would hear about the zone coming on at all.
+
+---
+
 ## Still open, needing a decision rather than a fix
 
-- **The dial and the presets do opposite things on one card.** The temperature dial writes the
-  head directly, which always trips the watchdog into manual mode for that zone. The preset
-  controls write the schedule helpers and flow through n8n correctly. Nothing on the card tells
-  you which is which. Whether the dial means "right now" or "from now on" is a design call.
 - **Turning the house off asks for no confirmation**, while switching heat to cool does. The
   guard protects the compressor and leaves the house unprotected in winter.
-- **`requestGlobalHvacMode` limits** come from the zone's own mode in the dial path and the house
-  mode in the preset path. Defensible either way, but the two bases differ.
+- **Temperature limits come from different bases.** The apply-now path clamps against the zone's
+  own mode; the preset path clamps against whether the edited preset is a heat or cool one.
+  Defensible either way, but worth knowing they are not the same test.
