@@ -105,7 +105,7 @@ fun HomeAlertStrip(
     homeStatus: HomeStatusConfig?,
     modifier: Modifier = Modifier
 ) {
-    val states by viewModel.wsStates.collectAsStateWithLifecycle()
+    val states by viewModel.entityStates.collectAsStateWithLifecycle()
     val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
     val feedback by viewModel.actionFeedback.collectAsStateWithLifecycle()
     val isDebouncing by viewModel.isDebouncing.collectAsStateWithLifecycle()
@@ -177,7 +177,7 @@ fun HumidityCard(
     modifier: Modifier = Modifier
 ) {
     if (sensors.isEmpty()) return
-    val states by viewModel.wsStates.collectAsStateWithLifecycle()
+    val states by viewModel.entityStates.collectAsStateWithLifecycle()
     val readings = sensors.map { it to formatRounded(readEntityValue(states, it.entityId, it.attribute)) }
 
     Card(
@@ -243,7 +243,7 @@ fun PresenceCard(
     modifier: Modifier = Modifier
 ) {
     if (presenceEntityIds.isEmpty()) return
-    val states by viewModel.wsStates.collectAsStateWithLifecycle()
+    val states by viewModel.entityStates.collectAsStateWithLifecycle()
     val people = presenceEntityIds.mapNotNull { id ->
         val entity = states[id] ?: return@mapNotNull null
         val name = entity.getStringAttribute("friendly_name")
@@ -475,7 +475,7 @@ fun OutdoorReadingChip(
     modifier: Modifier = Modifier
 ) {
     if (entityId.isNullOrBlank()) return
-    val states by viewModel.wsStates.collectAsStateWithLifecycle()
+    val states by viewModel.entityStates.collectAsStateWithLifecycle()
     val value = formatRounded(readEntityValue(states, entityId))
     val theme = LocalHvacTheme.current
 

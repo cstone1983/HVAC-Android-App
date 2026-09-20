@@ -2209,7 +2209,7 @@ fun GlobalSettingsQuickControl(
                         color = Color.White.copy(alpha = 0.5f),
                         letterSpacing = 1.3.sp
                     )
-                    val wsStatesHw by viewModel.wsStates.collectAsStateWithLifecycle()
+                    val wsStatesHw by viewModel.entityStates.collectAsStateWithLifecycle()
                     val runningId = viewModel.getActiveLayoutConfig().waterHeaterRunningEntityId
                     val isHeatingNow = runningId?.let { wsStatesHw[it]?.state?.equals("on", true) } == true
                     if (isHeatingNow) {
@@ -2571,8 +2571,9 @@ fun ConsolidatedZoneCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (zone.currentHvacMode.lowercase() == "off") "TAP TO ENABLE"
-                    else "SET ${zone.targetTemp?.toInt() ?: "--"}°",
+                    // The target stays useful when the zone is off — it says what the room
+                    // will aim for once it runs. The status text on the right already says OFF.
+                    text = "SET ${zone.targetTemp?.toInt() ?: "--"}°",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
                     color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.5f),

@@ -194,7 +194,7 @@ fun StatsRowCard(card: DynamicCardConfig, theme: HvacThemeColors, viewModel: Hva
     val stats = card.stats ?: emptyList()
     if (stats.isEmpty()) return
 
-    val statesMap by viewModel.wsStates.collectAsStateWithLifecycle()
+    val statesMap by viewModel.entityStates.collectAsStateWithLifecycle()
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         card.title?.let { title ->
@@ -524,7 +524,7 @@ fun LiveChartCard(card: DynamicCardConfig, theme: HvacThemeColors) {
 @Composable
 fun EntityToggleCard(card: DynamicCardConfig, theme: HvacThemeColors, viewModel: HvacViewModel) {
     val entityId = card.entityId ?: return
-    val statesMap by viewModel.wsStates.collectAsStateWithLifecycle()
+    val statesMap by viewModel.entityStates.collectAsStateWithLifecycle()
     val isOn = statesMap[entityId]?.state?.lowercase() == "on"
     val accentColor = getColorByName(card.tintColor, theme)
 

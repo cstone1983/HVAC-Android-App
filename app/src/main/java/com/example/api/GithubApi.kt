@@ -21,7 +21,11 @@ interface GithubApi {
     suspend fun getRecentCommits(@Url url: String): Response<List<com.example.model.GithubCommit>>
 
     @GET
-    suspend fun getLayoutConfig(@Url url: String, @retrofit2.http.Query("t") timestamp: Long): Response<com.example.model.HvacLayoutConfig>
+    // Returns the raw body deliberately. Parsing into HvacLayoutConfig here and re-serializing
+    // before saving silently dropped every key the running build didn't know about, so a panel
+    // that applied a newer config on an older APK stored a stripped copy under the new version
+    // number and looked up to date while missing whole features.
+    suspend fun getLayoutConfig(@Url url: String, @retrofit2.http.Query("t") timestamp: Long): Response<okhttp3.ResponseBody>
 
     @Streaming
     @GET

@@ -65,6 +65,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     val wsConnectionState: StateFlow<HaConnectionState> = wsManager.connectionState
     val wsStates: StateFlow<Map<String, com.example.api.EntityState>> = wsManager.states
 
+    // The authoritative entity map for UI: last processed states from whichever transport
+    // delivered them. Prefer this over wsStates for anything entity-bound.
+    private val _entityStates = MutableStateFlow<Map<String, com.example.api.EntityState>>(emptyMap())
+    val entityStates: StateFlow<Map<String, com.example.api.EntityState>> = _entityStates.asStateFlow()
+
     private val moshiLocal = com.squareup.moshi.Moshi.Builder()
         .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
         .build()
@@ -895,6 +900,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun processStatesMap(statesMap: Map<String, com.example.api.EntityState>) {
         try {
             lastStatesMap = statesMap
+            // Publish whatever we last processed, from the WebSocket *or* the REST poll.
+            // UI that binds arbitrary entities must not read wsManager.states directly: when
+            // the socket is down the app still runs fine on REST polling, but that map stays
+            // empty and every entity-bound widget silently renders "--".
+            _entityStates.value = statesMap
 
             // Sync Pool telemetry Threshold input_numbers from Home Assistant if available
             statesMap["input_number.pool_temp_low_limit"]?.state?.toFloatOrNull()?.let {
@@ -1825,9 +1835,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 // Read from remote GitHub repository bypass CDN cache
                 val response = com.example.api.GithubClient.service.getLayoutConfig(url, System.currentTimeMillis())
                 if (response.isSuccessful && response.body() != null) {
-                    val remoteConfig = ensureSolarAndPoolTabs(response.body()!!)
-                    val remoteJson = layoutConfigAdapter.toJson(remoteConfig)
-                    
+                    // Keep the bytes exactly as GitHub served them. Parse only to validate and
+                    // to drive this session's state; the stored copy stays loss-free so a later
+                    // app upgrade can pick up fields this build does not understand yet.
+                    val remoteJson = response.body()!!.string()
+                    val parsed = layoutConfigAdapter.fromJson(remoteJson)
+                        ?: throw IllegalStateException("Layout config could not be parsed")
+                    val remoteConfig = ensureSolarAndPoolTabs(parsed)
+
                     _updateState.value = UpdateState.Downloading(100, 100, 100)
                     _actionFeedback.value = "New design payload downloaded from GitHub successfully."
                     kotlinx.coroutines.delay(400)
@@ -2116,14 +2131,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         if (b > c) { builtInIsNewer = true; break }
                         else if (c > b) break
                     }
-                    // A config that was pulled from GitHub is an explicit choice, so it wins
-                    // even if the APK happens to bundle a higher version string. Previously a
-                    // bundled "6.0" silently beat every OTA push at "1.1.1" while the update
-                    // screen still reported success, so layout changes never reached the
-                    // panels. The version comparison now only decides between the bundled
-                    // asset and a config that was never OTA-applied.
-                    val wasAppliedOta = !sharedPrefs.getString("layout_commit_sha", null).isNullOrBlank()
-                    if (wasAppliedOta || !builtInIsNewer) config else builtIn
+                    // Highest version wins, and both layout_config.json files are now kept at
+                    // the same version so an OTA push at a higher number always beats the
+                    // bundled asset. This also heals a panel whose stored config was stripped
+                    // by an older build: shipping a higher bundled version replaces it.
+                    if (!builtInIsNewer) config else builtIn
                 } else {
                     builtIn
                 }

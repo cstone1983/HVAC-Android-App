@@ -1,5 +1,5 @@
 {
-  "version": "6.1.0",
+  "version": "6.1.1",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -436,9 +436,8 @@
     "doorAlerts": [
       {
         "name": "Garage South",
-        "stateEntityId": "binary_sensor.konnected_d332ec_wired_sensor",
+        "stateEntityId": "cover.konnected_d332ec_garage_door",
         "openStates": [
-          "on",
           "open",
           "opening"
         ]
