@@ -1014,16 +1014,26 @@ fun DynamicTabContent(
                     // Size the cards to the space that is actually left so every zone fits
                     // without scrolling. The control card's height is known from the same
                     // width breakpoints it uses itself.
+                    //
+                    // These estimates are deliberately a little generous. Measured on the Tab A9
+                    // at 1007x601dp the control card renders ~232dp against the 218dp assumed
+                    // here, and the shortfall all landed on the last row, which was clipped. An
+                    // over-estimate only costs a few dp of slack; an under-estimate hides a zone.
                     val controlWidth = maxContentWidth - 32.dp
                     val controlHeight = when {
-                        controlWidth >= 980.dp -> 120.dp
-                        controlWidth >= 560.dp -> 218.dp
-                        else -> 330.dp
+                        controlWidth >= 980.dp -> 132.dp
+                        controlWidth >= 560.dp -> 232.dp
+                        else -> 344.dp
                     }
                     val zoneRowCount = chunkedZones.size.coerceAtLeast(1)
-                    val verticalGaps = 8.dp * (zoneRowCount + 1)
-                    val zoneCardHeight = ((maxContentHeight - controlHeight - verticalGaps) / zoneRowCount)
-                        .coerceIn(104.dp, 190.dp)
+                    // One gap above each zone row: the first separates it from the control card.
+                    // The old count assumed a trailing gap that the list does not draw, while
+                    // ignoring the bottom content padding that it does.
+                    val rowSpacing = if (isLandscape && tab.id == "zones") 8.dp else 16.dp
+                    val bottomPadding = if (isLandscape && tab.id == "zones") 10.dp else 24.dp
+                    val zoneCardHeight =
+                        ((maxContentHeight - controlHeight - (rowSpacing * zoneRowCount) - bottomPadding) / zoneRowCount)
+                            .coerceIn(92.dp, 190.dp)
                     items(chunkedZones, key = { pair -> pair.joinToString("-") { it.key } }) { pair ->
                         Row(
                             modifier = Modifier
