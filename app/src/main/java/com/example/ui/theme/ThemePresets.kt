@@ -38,6 +38,44 @@ data class HvacThemeColors(
     val showChartShading: Boolean = true
 )
 
+/**
+ * The colour a head's mode is drawn in.
+ *
+ * Anything that is not an active mode — off, unavailable, unknown, a blank state — is the off
+ * colour. Two copies of this map used to fall through to the heat colour and a third to a
+ * hardcoded amber, so an unreachable head rendered as though it were heating.
+ */
+fun HvacThemeColors.colorForMode(mode: String?): Color = when (mode?.lowercase()) {
+    "heat" -> heatColor
+    "cool" -> coolColor
+    "dry" -> dryColor
+    else -> offColor
+}
+
+/**
+ * The wash laid over a zone card to carry its mode, or null to leave the card plain glass.
+ *
+ * Null for off and for anything not reporting, so the card does not imply a mode for a head
+ * nobody can hear from. Fan-only borrows the cool colour: it moves air without heating.
+ */
+fun HvacThemeColors.tintForMode(mode: String?): Color? = when (mode?.lowercase()) {
+    "heat" -> heatColor
+    "cool" -> coolColor
+    "dry" -> dryColor
+    "fan_only" -> coolColor
+    else -> null
+}
+
+/**
+ * The accent the whole dashboard takes from the house mode.
+ *
+ * Distinct from [colorForMode] only in that it is driven by the house helper rather than a head.
+ * Both copies of this compared the raw helper string without lowercasing, which worked purely
+ * because Home Assistant happens to return these lowercase.
+ */
+fun HvacThemeColors.houseAccentColor(globalHvacMode: String?): Color =
+    colorForMode(globalHvacMode)
+
 val LocalHvacTheme = staticCompositionLocalOf {
     HvacThemeColors(
         heatColor = Color(0xFFF59E0B),

@@ -63,7 +63,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     val wsManager: HomeAssistantWebSocketManager = HomeAssistantWebSocketManager.getInstance(application)
     val wsConnectionState: StateFlow<HaConnectionState> = wsManager.connectionState
-    val wsStates: StateFlow<Map<String, com.example.api.EntityState>> = wsManager.states
+    // Deliberately not exposed. Binding UI to the raw socket map leaves it empty whenever the
+    // app is on REST fallback, which renders as "every entity is missing". Use entityStates.
 
     // The authoritative entity map for UI: last processed states from whichever transport
     // delivered them. Prefer this over wsStates for anything entity-bound.
@@ -1895,13 +1896,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         ), "$name Switch toggled")
     }
 
-    fun toggleCover(entityId: String, state: String, name: String) {
-        val service = if (state == "open" || state == "opening") "close_cover" else "open_cover"
-        callServiceWithOptimisticFeedback("cover", service, mapOf(
-            "entity_id" to entityId
-        ), "$name Core trigger activated")
-    }
-
     fun controlCover(entityId: String, state: String, name: String) {
         if (entityId.startsWith("switch.")) {
             callServiceWithOptimisticFeedback("switch", "toggle", mapOf(
@@ -2210,6 +2204,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         .putString("layout_commit_sha", sha)
                         .apply()
 
+                    invalidateLayoutConfigCache()
                     _layoutVersion.value = remoteConfig.version
                     _layoutConfig.value = remoteConfig
 
@@ -2527,7 +2522,32 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun getActiveLayoutConfig(): com.example.model.HvacLayoutConfig {
+    @Volatile
+    private var cachedLayoutConfig: com.example.model.HvacLayoutConfig? = null
+
+    /**
+     * The layout config in force, memoised.
+     *
+     * Resolving it opens and reads a 14 KB asset, parses it, reads SharedPreferences and parses
+     * again. This is called from `processStatesMap` — which runs on the main dispatcher for every
+     * `state_changed` event in the whole Home Assistant instance — and from inside composition.
+     * So it was doing file I/O and two JSON parses on the UI thread, continuously.
+     *
+     * The result only changes when an OTA writes the stored config or the panel resets it, and
+     * both of those call [invalidateLayoutConfigCache].
+     */
+    fun getActiveLayoutConfig(): com.example.model.HvacLayoutConfig =
+        cachedLayoutConfig ?: synchronized(layoutConfigLock) {
+            cachedLayoutConfig ?: resolveActiveLayoutConfig().also { cachedLayoutConfig = it }
+        }
+
+    private val layoutConfigLock = Any()
+
+    private fun invalidateLayoutConfigCache() {
+        synchronized(layoutConfigLock) { cachedLayoutConfig = null }
+    }
+
+    private fun resolveActiveLayoutConfig(): com.example.model.HvacLayoutConfig {
         val builtIn = getBuiltInDefaultLayoutConfig()
         val savedJson = sharedPrefs.getString("layout_config_json", null)
         val finalConfig = if (!savedJson.isNullOrBlank()) {
@@ -2558,6 +2578,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             builtIn
         }
+        // Applied once, here. getBuiltInDefaultLayoutConfig already applies it to what it
+        // returns, so the built-in path used to run it twice.
         return ensureSolarAndPoolTabs(finalConfig)
     }
 
@@ -2681,6 +2703,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             .remove("layout_commit_sha")
             .putString("layout_version", defaultVersion)
             .apply()
+        invalidateLayoutConfigCache()
         _layoutVersion.value = defaultVersion
         _layoutConfig.value = getBuiltInDefaultLayoutConfig()
         _actionFeedback.value = "Layout restored to factory default configuration (v$defaultVersion)"
@@ -3127,59 +3150,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateSolarStateSimulated() {
-        val cal = java.util.Calendar.getInstance()
-        val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
-        val minute = cal.get(java.util.Calendar.MINUTE)
-        
-        val peakProd = 4500f
-        val currentProd = if (hour in 6..18) {
-            val t = (hour - 6) + (minute / 60f)
-            (peakProd * kotlin.math.sin(Math.PI * t / 12)).toFloat().coerceAtLeast(0f)
-        } else {
-            0f
-        }
-        
-        val baseUsage = 1800f
-        val usageFluctuation = 600f * kotlin.math.sin(2 * Math.PI * (hour - 8) / 24).toFloat()
-        val noise = ((Math.random() - 0.5) * 200).toFloat()
-        val currentUsage = (baseUsage + usageFluctuation + noise).coerceAtLeast(300f)
-        val simUpdated = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
-            timeZone = java.util.TimeZone.getTimeZone("UTC")
-        }.format(java.util.Date())
-        
-        _solarLiveState.value = SolarLiveState(
-            liveUsageWatts = currentUsage,
-            liveProductionWatts = currentProd,
-            isFetched = true,
-            isError = false,
-            lastUpdated = simUpdated,
-            productionLastUpdated = simUpdated,
-            usageLastUpdated = simUpdated,
-            diagSolarGeneration = 124.52f,
-            diagSolarProductionDaily = 12.84f,
-            diagSolarGenerationUnit = "kWh",
-            diagSolarProductionDailyUnit = "kWh",
-            diagPanelUsage = 45.67f,
-            diagDailyPanelUsage = 18.23f,
-            diagPanelUsageUnit = "kWh",
-            diagDailyPanelUsageUnit = "kWh",
-            solcastForecastToday = 14.50f,
-            solcastForecastTodayUnit = "kWh",
-            solcastForecastNow = ((currentProd / 1000f) * 1.1f).coerceAtLeast(0f),
-            solcastForecastNowUnit = "kW",
-            dailyGridUsage = 14.32f,
-            dailyGridUsageUnit = "kWh",
-            dailySolarGeneration = 19.84f,
-            dailySolarGenerationUnit = "kWh",
-            cmpBankBalance = 152.4f,
-            cmpBankBalanceUnit = "kWh"
-        )
-        
-        if (_solar24HourHistory.value.isEmpty()) {
-            simulateSolarHistory()
-        }
-    }
 
     fun simulateSolarHistoryBasedOnLive(liveUsage: Float, liveProd: Float) {
         val nowMillis = System.currentTimeMillis()

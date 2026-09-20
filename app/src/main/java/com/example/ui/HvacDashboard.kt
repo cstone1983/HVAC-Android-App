@@ -1521,12 +1521,7 @@ fun HvacDashboardContent(
                     ) {
                         activeTabs.forEachIndexed { index, tabConfig ->
                             val isSelected = selectedTab == index
-                            val activeColor = when (state.globalSettings.globalHvacMode) {
-                                "cool" -> theme.coolColor
-                                "dry" -> theme.dryColor
-                                "off" -> theme.offColor
-                                else -> theme.heatColor
-                            }
+                            val activeColor = theme.houseAccentColor(state.globalSettings.globalHvacMode)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1936,12 +1931,7 @@ fun HvacDashboardContent(
             ) {
                 activeTabs.forEachIndexed { index, tabConfig ->
                     val isSelected = selectedTab == index
-                    val activeColor = when (state.globalSettings.globalHvacMode) {
-                        "cool" -> theme.coolColor
-                        "dry" -> theme.dryColor
-                        "off" -> theme.offColor
-                        else -> theme.heatColor
-                    }
+                    val activeColor = theme.houseAccentColor(state.globalSettings.globalHvacMode)
                     Column(
                         modifier = Modifier
                             .weight(1f)
@@ -2470,22 +2460,8 @@ fun ConsolidatedZoneCard(
         else -> (cardHeight.value * 0.245f).coerceIn(24f, 40f).sp
     }
     val theme = LocalHvacTheme.current
-    val activeColor = when (zone.currentHvacMode.lowercase()) {
-        "heat" -> theme.heatColor
-        "cool" -> theme.coolColor
-        "dry" -> theme.dryColor
-        // Anything else is off, unavailable or unknown. This used to fall through to the heat
-        // colour, so an unreachable head displayed in heating orange.
-        else -> theme.offColor
-    }
-    // Null when the zone is off or unavailable, which leaves the card its plain glass look.
-    val modeTint = when (zone.currentHvacMode.lowercase()) {
-        "heat" -> theme.heatColor
-        "cool" -> theme.coolColor
-        "dry" -> theme.dryColor
-        "fan_only" -> theme.coolColor
-        else -> null
-    }
+    val activeColor = theme.colorForMode(zone.currentHvacMode)
+    val modeTint = theme.tintForMode(zone.currentHvacMode)
 
     // Advanced Compose Animations: Thermal Aura Gradient and Pulsing Vector Indicators
     val infiniteTransition = rememberInfiniteTransition(label = "zone_aura")
@@ -2924,14 +2900,7 @@ fun ZoneDetailPopup(
             onInteraction = onInteraction
         )
     }
-    val activeColor = when (zone.currentHvacMode.lowercase()) {
-        "heat" -> theme.heatColor
-        "cool" -> theme.coolColor
-        "dry" -> theme.dryColor
-        // Off, unavailable or unknown. Previously a hardcoded amber, so an unreachable head
-        // rendered as though it were heating.
-        else -> theme.offColor
-    }
+    val activeColor = theme.colorForMode(zone.currentHvacMode)
 
     val actionFeedback by viewModel.actionFeedback.collectAsStateWithLifecycle()
     var bannerMessage by remember { mutableStateOf<String?>(null) }

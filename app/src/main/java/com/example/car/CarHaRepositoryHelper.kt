@@ -41,7 +41,17 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
     private val prefs: SharedPreferences = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     private val wsManager = HomeAssistantWebSocketManager.getInstance(appContext)
 
-    val states: StateFlow<Map<String, EntityState>> = wsManager.states
+    /**
+     * Entity states for the car screens.
+     *
+     * Prefers the ViewModel's processed map, which is fed by whichever transport delivered the
+     * states. Binding straight to `wsManager.states` leaves this empty whenever the app is on
+     * REST fallback, and an empty map renders every zone as OFF — a fabricated reading the car
+     * would then let you act on. Falls back to the socket only when no ViewModel exists yet,
+     * which is the case if Android Auto starts before the phone UI has ever run.
+     */
+    val states: StateFlow<Map<String, EntityState>> =
+        com.example.viewmodel.HvacViewModel.getInstance()?.entityStates ?: wsManager.states
     val connectionState: StateFlow<HaConnectionState> = wsManager.connectionState
 
     init {
@@ -326,21 +336,6 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
             onComplete?.invoke(
                 if (success) ZoneModeResult(true, nextMode.uppercase(Locale.US))
                 else ZoneModeResult(false, "Change failed")
-            )
-        }
-    }
-
-    /**
-     * Adjust zone target temperature by delta
-     */
-    fun adjustZoneTargetTemp(climateEntityId: String, currentTarget: Double, delta: Double) {
-        scope.launch {
-            val newTarget = Math.round((currentTarget + delta) * 2.0) / 2.0
-            callService(
-                domain = "climate",
-                service = "set_temperature",
-                entityId = climateEntityId,
-                serviceData = mapOf("temperature" to newTarget)
             )
         }
     }

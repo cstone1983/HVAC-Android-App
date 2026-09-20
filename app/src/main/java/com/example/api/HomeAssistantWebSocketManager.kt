@@ -582,22 +582,28 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         val deferred = CompletableDeferred<JSONObject>()
         pendingRequests[id] = deferred
 
-        return if (sendJson(request)) {
-            val response = withTimeoutOrNull(10_000L) { deferred.await() }
-            if (response != null) {
-                val success = response.optBoolean("success", false)
-                if (!success) {
-                    val err = response.optJSONObject("error")
-                    Log.e(TAG, "call_service $domain.$service returned error: ${err?.optString("message")}")
-                }
-                success
-            } else {
-                Log.w(TAG, "call_service $domain.$service timed out after 10s.")
-                false
+        // Every exit from here has to drop the pending entry. The timeout and send-failure
+        // branches used to return without removing it, so each one stranded a CompletableDeferred
+        // in a map nothing ever sweeps. On a wall panel that runs for months behind flaky wifi,
+        // that grows without bound. The other request paths already remove on failure.
+        return try {
+            if (!sendJson(request)) {
+                Log.e(TAG, "Failed sending call_service $domain.$service: WebSocket inactive.")
+                return false
             }
-        } else {
-            Log.e(TAG, "Failed sending call_service $domain.$service: WebSocket inactive.")
-            false
+            val response = withTimeoutOrNull(10_000L) { deferred.await() }
+            if (response == null) {
+                Log.w(TAG, "call_service $domain.$service timed out after 10s.")
+                return false
+            }
+            val success = response.optBoolean("success", false)
+            if (!success) {
+                val err = response.optJSONObject("error")
+                Log.e(TAG, "call_service $domain.$service returned error: ${err?.optString("message")}")
+            }
+            success
+        } finally {
+            pendingRequests.remove(id)
         }
     }
 
