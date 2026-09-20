@@ -2080,37 +2080,23 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     _actionFeedback.value = "New design payload downloaded from GitHub successfully."
                     kotlinx.coroutines.delay(400)
 
-                    // Satisfying, high-fidelity installation metrics loop matching hardware panels
-                    val steps = listOf(
-                        "Initializing secure OTA pipeline wrapper..." to 10,
-                        "Verifying download integrity checksum..." to 25,
-                        "Evaluating layout schema compatibility structure..." to 40,
-                        "Parsing dynamic tab components, icons & controls..." to 60,
-                        "Hot-reloading style scheme, colors & canvas metrics..." to 80,
-                        "Instantly mounting layout configuration into state..." to 95,
-                        "Finalizing live over-the-air dispatch installation..." to 99
-                    )
+                    _updateState.value = UpdateState.Installing(60, "Applying layout configuration")
 
-                    for ((action, progress) in steps) {
-                        _updateState.value = UpdateState.Installing(progress, action)
-                        kotlinx.coroutines.delay(350)
-                    }
-
-                    // Save configuration and SHA to preferences
+                    // Layout only. This used to also write software_commit_sha and
+                    // installed_version_override, which decorated the displayed app version with
+                    // the layout's commit — so pulling a config made the panel claim it was
+                    // running a build it had never installed. The APK version comes from
+                    // BuildConfig and nothing else may move it.
                     sharedPrefs.edit()
                         .putString("layout_config_json", remoteJson)
                         .putString("layout_version", remoteConfig.version)
                         .putString("layout_commit_sha", sha)
-                        .putString("software_commit_sha", sha)
-                        .putString("installed_version_override", remoteConfig.version)
                         .apply()
 
                     _layoutVersion.value = remoteConfig.version
                     _layoutConfig.value = remoteConfig
 
-                    _activeVersion.value = "v" + com.example.BuildConfig.VERSION_NAME + "-${sha.take(7)}"
-                    
-                    _updateState.value = UpdateState.UpToDate(sha.take(7), url, 1024L)
+                    _updateState.value = UpdateState.UpToDate(sha.take(7), url, remoteJson.length.toLong())
                     _actionFeedback.value = "System layout updated dynamically to v${remoteConfig.version} (${sha.take(7)})!"
                     android.widget.Toast.makeText(context, "System Update Applied OTA: ${remoteConfig.version} (${sha.take(7)})", android.widget.Toast.LENGTH_LONG).show()
                     
@@ -2124,43 +2110,119 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Downloads a release APK to the cache and stages it for install.
+     *
+     * Progress is the real byte count. There is no way to install an APK without the system
+     * installer UI, so the panel cannot apply a build silently — it downloads, then hands the
+     * file to Android.
+     */
+    fun downloadApkAndStage(context: Context, downloadUrl: String, version: String) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                _updateState.value = UpdateState.Downloading(0, 0L, 0L)
+
+                val response = com.example.api.GithubClient.service.downloadFile(downloadUrl)
+                val body = response.body()
+                if (!response.isSuccessful || body == null) {
+                    _updateState.value = UpdateState.Error("Download failed: HTTP ${response.code()}")
+                    return@launch
+                }
+
+                val total = body.contentLength()
+                val dir = java.io.File(context.cacheDir, "updates").apply { mkdirs() }
+                // One staged file, replaced every time, so a half-finished download from an
+                // earlier attempt can never be handed to the installer.
+                val out = java.io.File(dir, "app-update.apk")
+                if (out.exists()) out.delete()
+
+                var readTotal = 0L
+                body.byteStream().use { input ->
+                    java.io.FileOutputStream(out).use { fos ->
+                        val buf = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n == -1) break
+                            fos.write(buf, 0, n)
+                            readTotal += n
+                            val pct = if (total > 0) ((readTotal * 100) / total).toInt() else 0
+                            _updateState.value = UpdateState.Downloading(pct, total, readTotal)
+                        }
+                        fos.flush()
+                    }
+                }
+
+                if (out.length() == 0L) {
+                    out.delete()
+                    _updateState.value = UpdateState.Error("The downloaded update was empty.")
+                    return@launch
+                }
+                if (total > 0 && out.length() != total) {
+                    out.delete()
+                    _updateState.value = UpdateState.Error(
+                        "Update download was incomplete (${out.length()} of $total bytes). Try again."
+                    )
+                    return@launch
+                }
+
+                if (pendingSoftwareCommit.isNotEmpty()) {
+                    sharedPrefs.edit().putString("software_commit_sha", pendingSoftwareCommit).apply()
+                }
+                _updateState.value = UpdateState.Success(out.absolutePath)
+                _actionFeedback.value = "Update $version downloaded. Tap Install to apply it."
+            } catch (e: Exception) {
+                _updateState.value = UpdateState.Error("Download error: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    /**
+     * Hands a staged APK to the system package installer.
+     *
+     * This used to play a scripted progress animation, write a version number to preferences and
+     * report success without installing anything — so the panel reported a build it was not
+     * running. There is no silent-install path for a non-system app, so the OS dialog is the
+     * install; the panel's job ends at handing over a verified file.
+     */
     fun installApk(context: Context, apkPath: String) {
-        // Since we are applying all changes via OTA updates to avoid intrusive OS install dialogs,
-        // we always run the dynamic in-app OTA installation progress loop for a seamless update.
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Main) {
             try {
-                val steps = listOf(
-                    "Initializing secure OTA pipeline wrapper..." to 10,
-                    "Verifying Home Control update partition signature..." to 25,
-                    "Evaluating layout schema compatibility structure..." to 40,
-                    "Stopping active Home Assistant sensor integrations..." to 55,
-                    "Writing code & firmware resource patches to filesystem..." to 75,
-                    "Regenerating local database layout indexes..." to 90,
-                    "Finalizing live over-the-air dispatch installation..." to 99
+                val file = java.io.File(apkPath)
+                if (!file.exists() || file.length() == 0L) {
+                    _updateState.value = UpdateState.Error("Update file is missing. Download it again.")
+                    return@launch
+                }
+
+                // Android 8+ gates sideloading behind a per-app permission the user grants in
+                // Settings. Without this check startActivity silently does nothing.
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
+                    !context.packageManager.canRequestPackageInstalls()
+                ) {
+                    _actionFeedback.value = "Allow this app to install updates, then tap Install again."
+                    context.startActivity(
+                        android.content.Intent(
+                            android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            android.net.Uri.parse("package:${context.packageName}")
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                    // Keep the staged file so Install works on the next tap.
+                    _updateState.value = UpdateState.Success(apkPath)
+                    return@launch
+                }
+
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    context, "${context.packageName}.fileprovider", file
                 )
-                
-                for ((action, progress) in steps) {
-                    _updateState.value = UpdateState.Installing(progress, action)
-                    kotlinx.coroutines.delay(600)
-                }
-                
-                val targetVersion = if (pendingVersion.isNotBlank()) pendingVersion else "v2.1.5"
-                
-                sharedPrefs.edit()
-                    .putString("installed_version_override", targetVersion)
-                    .apply()
-                if (pendingSoftwareCommit.isNotEmpty()) {
-                    sharedPrefs.edit()
-                        .putString("software_commit_sha", pendingSoftwareCommit)
-                        .apply()
-                }
-                _activeVersion.value = targetVersion
-                
-                _updateState.value = UpdateState.UpToDate(targetVersion, null, null)
-                _actionFeedback.value = "OTA Software update applied successfully!"
-                android.widget.Toast.makeText(context, "System Update Applied: $targetVersion", android.widget.Toast.LENGTH_LONG).show()
+                context.startActivity(
+                    android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/vnd.android.package-archive")
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                )
+                _actionFeedback.value = "Android is installing the update."
             } catch (e: Exception) {
-                _updateState.value = UpdateState.Error("Installation error during OTA update: ${e.localizedMessage}")
+                _updateState.value = UpdateState.Error("Could not start the installer: ${e.localizedMessage}")
             }
         }
     }

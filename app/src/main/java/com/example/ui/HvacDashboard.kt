@@ -3758,11 +3758,9 @@ fun UpdatesTab(
         viewModel.checkForUpdates(activeVersion)
     }
 
-    LaunchedEffect(updateState) {
-        if (updateState is UpdateState.Success) {
-            viewModel.installApk(context, (updateState as UpdateState.Success).apkPath)
-        }
-    }
+    // No auto-install. A staged APK now opens the real system installer, so firing it from a
+    // side effect would throw an OS dialog at whoever happens to be standing at the panel. The
+    // Success card has an explicit Install button.
 
     Column(
         modifier = Modifier
@@ -4141,10 +4139,17 @@ fun UpdatesTab(
                                 }
                             }
 
+                            // A release asset is an APK and installs through the OS. Anything else
+                            // is the layout config, which really does apply in place. The button
+                            // used to say "apply system update" and pull the layout either way.
+                            val isApk = state.downloadUrl.endsWith(".apk", ignoreCase = true)
                             Button(
                                 onClick = {
-                                    viewModel.downloadUpdateAndInstall(context, state.downloadUrl)
-                                    android.widget.Toast.makeText(context, "Pulling dynamic configurations...", android.widget.Toast.LENGTH_SHORT).show()
+                                    if (isApk) {
+                                        viewModel.downloadApkAndStage(context, state.downloadUrl, state.version)
+                                    } else {
+                                        viewModel.downloadUpdateAndInstall(context, state.downloadUrl)
+                                    }
                                 },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = theme.ecoColor,
@@ -4155,7 +4160,12 @@ fun UpdatesTab(
                             ) {
                                 Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Black)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("DOWNLOAD & APPLY SYSTEM UPDATE", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Black)
+                                Text(
+                                    if (isApk) "DOWNLOAD ${state.version}" else "APPLY LAYOUT UPDATE",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.Black
+                                )
                             }
                         }
                     }
