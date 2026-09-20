@@ -6040,6 +6040,9 @@ fun HvacSettingsDialog(
                     var repoText by remember(currentRepo) { mutableStateOf(currentRepo) }
                     var branchText by remember(currentBranch) { mutableStateOf(currentBranch) }
                     var tokenText by remember(currentToken) { mutableStateOf(currentToken) }
+                    // This panel hangs on a wall that kids and guests walk past. The HA token
+                    // field is masked; this one was rendering a live PAT in plain text.
+                    var githubTokenVisible by remember { mutableStateOf(false) }
                     val context = LocalContext.current
 
                     OutlinedTextField(
@@ -6097,11 +6100,23 @@ fun HvacSettingsDialog(
                             unfocusedIndicatorColor = Color.White.copy(alpha = 0.15f)
                         ),
                         singleLine = true,
+                        visualTransformation = if (githubTokenVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("github_token_input"),
                         leadingIcon = {
                             Icon(Icons.Default.VpnKey, contentDescription = null, tint = Color(0xFF2196F3).copy(alpha = 0.8f))
+                        },
+                        trailingIcon = {
+                            val image = if (githubTokenVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                            IconButton(onClick = { githubTokenVisible = !githubTokenVisible }) {
+                                Icon(
+                                    imageVector = image,
+                                    contentDescription = if (githubTokenVisible) "Hide token" else "Show token",
+                                    tint = Color.White.copy(alpha = 0.5f)
+                                )
+                            }
                         },
                         supportingText = {
                             Text(

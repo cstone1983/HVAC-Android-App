@@ -1,19 +1,21 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Backup and device-transfer rules for API 31+.
+
+   This file used to be the unmodified Android Studio template, with every rule commented out,
+   so Android's default "back up everything" applied. hvac_settings holds the Home Assistant
+   long-lived token and the GitHub PAT, which means both were going to cloud backup.
+
+   Cloud backup: credentials excluded. They leave the device only if someone chooses to
+   re-enter them.
+   Device transfer: also excluded. A direct phone-to-phone transfer is a smaller exposure than
+   cloud storage, but these tokens are cheap to re-enter and grant full control of the house.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <exclude domain="sharedpref" path="hvac_settings.xml"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="sharedpref" path="hvac_settings.xml"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

@@ -1,13 +1,16 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Cloud backup rules (API 30 and below; API 31+ uses data_extraction_rules.xml).
+
+   This file used to be the unmodified Android Studio template, where every rule sat inside an
+   XML comment. With no include or exclude in force, Android's default is to back up everything -
+   so hvac_settings, which holds the Home Assistant long-lived token and the GitHub PAT, was
+   being uploaded to the account's Drive backup and restored onto any device signed into that
+   Google account.
+
+   Credentials are device-scoped here and cheap to re-enter, so they are excluded outright
+   rather than backed up and restored.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <exclude domain="sharedpref" path="hvac_settings.xml"/>
 </full-backup-content>
