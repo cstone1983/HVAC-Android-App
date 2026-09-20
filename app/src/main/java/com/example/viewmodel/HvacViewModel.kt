@@ -1635,6 +1635,84 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Whether the requested mode can be served alongside whatever else is already running.
+     *
+     * A multi-split provides one thermal family at a time, so a head asking for cool while
+     * another is heating cannot be satisfied — the outdoor unit simply will not do both.
+     * Authority runs global mode, then Main Level (it is the open living/dining space and
+     * leads the house), then whichever zone started first.
+     *
+     * Returns null when the request is fine. This is a courtesy check for immediate feedback:
+     * the n8n watchdog is the actual enforcement and will still correct anything that slips by.
+     */
+    fun detectModeConflict(targetZoneKey: String, requestedMode: String): com.example.model.ModeConflict? {
+        val state = _uiState.value as? HvacUiState.Success ?: return null
+        val requested = com.example.model.hvacFamilyOf(requestedMode)
+        if (requested == com.example.model.HvacFamily.NEUTRAL) return null
+
+        val runningOthers = state.zones.filter {
+            it.key != targetZoneKey &&
+                com.example.model.hvacFamilyOf(it.currentHvacMode) != com.example.model.HvacFamily.NEUTRAL
+        }
+        val affected = (runningOthers.map { it.name } +
+            state.zones.filter { it.key == targetZoneKey }.map { it.name }).distinct()
+
+        val globalMode = state.globalSettings.globalHvacMode
+        val globalFamily = com.example.model.hvacFamilyOf(globalMode)
+        if (globalFamily != com.example.model.HvacFamily.NEUTRAL && globalFamily != requested) {
+            return com.example.model.ModeConflict(requestedMode, "The house mode", globalMode, affected)
+        }
+
+        val blocker = runningOthers.firstOrNull {
+            it.key == "main_level" && com.example.model.hvacFamilyOf(it.currentHvacMode) != requested
+        } ?: runningOthers.firstOrNull {
+            com.example.model.hvacFamilyOf(it.currentHvacMode) != requested
+        } ?: return null
+
+        return com.example.model.ModeConflict(requestedMode, blocker.name, blocker.currentHvacMode, affected)
+    }
+
+    /**
+     * The deliberate override offered by the conflict dialog: switch the whole house rather
+     * than this one zone.
+     *
+     * This sets the global mode helper instead of writing each head, so the n8n sequencer
+     * performs the change through its lock and throttle. Writing six heads straight from the
+     * app would bypass that gate and hammer the Airstage cloud API.
+     */
+    fun applyHouseModeOverride(requestedMode: String, fromZoneName: String, previousMode: String) {
+        callServiceWithOptimisticFeedback(
+            "input_select", "select_option", mapOf(
+                "entity_id" to "input_select.global_hvac_mode",
+                "option" to requestedMode.lowercase()
+            ), "House switched to ${requestedMode.uppercase()}"
+        )
+        sendHvacNotification(
+            "HVAC overridden from the panel",
+            "The whole house was switched to ${requestedMode.uppercase()} from the $fromZoneName controls, " +
+                "overriding ${previousMode.uppercase()}. Every running zone will follow."
+        )
+    }
+
+    /**
+     * Sends a Telegram message through the n8n HVAC Notify webhook. Home Assistant has no
+     * telegram_bot integration here — the bot credential lives in n8n — so alerts leave via
+     * rest_command.n8n_hvac_notify rather than a notify.* service.
+     */
+    fun sendHvacNotification(title: String, message: String) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                HomeAssistantClient.service.callService(
+                    "rest_command", "n8n_hvac_notify",
+                    mapOf("title" to title, "message" to message)
+                )
+            } catch (e: Exception) {
+                android.util.Log.w("HvacViewModel", "HVAC notification failed: ${e.message}")
+            }
+        }
+    }
+
+    /**
      * Sets one zone's mode directly. Calling this on a zone that is currently off also powers
      * it on, which is what tapping Heat on a sleeping zone should do.
      */

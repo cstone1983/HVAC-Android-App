@@ -344,6 +344,30 @@ data class ClimateZone(
         }
 }
 
+/**
+ * The thermal families a head can be in. A multi-split serves one family at a time, and dry is
+ * refrigeration on these heads, so heat + dry is a genuine conflict rather than a cosmetic one.
+ */
+enum class HvacFamily { HEAT, COOL, NEUTRAL }
+
+fun hvacFamilyOf(mode: String?): HvacFamily = when (mode?.lowercase()) {
+    "heat" -> HvacFamily.HEAT
+    "cool", "dry" -> HvacFamily.COOL
+    else -> HvacFamily.NEUTRAL
+}
+
+/**
+ * Why a requested mode cannot be applied, and what it would take to apply it anyway.
+ */
+data class ModeConflict(
+    val requestedMode: String,
+    /** The zone (or "House mode") already committed to the other family. */
+    val blockedBy: String,
+    val blockingMode: String,
+    /** Every running zone that an override would switch, blocker included. */
+    val affectedZones: List<String>
+)
+
 data class GlobalSettings(
     val houseSchedule: String = "Day", // Day, Night, Away
     val waterHeaterMode: String = "eco", // eco, heat_pump, high_demand

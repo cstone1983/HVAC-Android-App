@@ -596,6 +596,120 @@ private fun PresenceRow(person: PersonPresence, historyWindowDays: Int = 30) {
     }
 }
 
+/**
+ * Shown when a requested zone mode cannot be served alongside what is already running.
+ *
+ * It refuses by default and names the blocker, because the common case is a mis-tap rather
+ * than a considered decision. The override is offered as a second, explicit button: it switches
+ * the whole house, and sends a Telegram message so a bulk change is never silent.
+ */
+@Composable
+fun ModeConflictDialog(
+    conflict: com.example.model.ModeConflict,
+    zoneName: String,
+    onDismiss: () -> Unit,
+    onOverride: () -> Unit,
+    onInteraction: () -> Unit = {}
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp)
+                .dialogInteractionReporter(onInteraction)
+                .testTag("mode_conflict_dialog"),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+            border = BorderStroke(1.dp, AlertRed.copy(alpha = 0.45f)),
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Icon(
+                        Icons.Default.Info,
+                        contentDescription = null,
+                        tint = AlertRed,
+                        modifier = Modifier.size(21.dp)
+                    )
+                    Text(
+                        text = "CAN'T SET ${zoneName.uppercase()} TO ${conflict.requestedMode.uppercase()}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.2.sp,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "${conflict.blockedBy} is running ${conflict.blockingMode.uppercase()}. " +
+                        "The system serves one mode at a time, so these can't run together.",
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    color = Color.White.copy(alpha = 0.75f)
+                )
+
+                if (conflict.affectedZones.size > 1) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "SWITCHING EVERYTHING WOULD CHANGE: ${conflict.affectedZones.joinToString(", ")}",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.8.sp,
+                        lineHeight = 13.sp,
+                        color = Color.White.copy(alpha = 0.45f)
+                    )
+                }
+
+                Spacer(Modifier.height(18.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp)
+                            .clip(RoundedCornerShape(11.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .clickable(onClick = onDismiss)
+                            .testTag("mode_conflict_cancel"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "CANCEL",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 1.sp,
+                            color = Color.White.copy(alpha = 0.8f)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1.5f)
+                            .heightIn(min = 48.dp)
+                            .clip(RoundedCornerShape(11.dp))
+                            .background(AlertRed.copy(alpha = 0.22f))
+                            .border(BorderStroke(1.dp, AlertRed.copy(alpha = 0.6f)), RoundedCornerShape(11.dp))
+                            .clickable(onClick = onOverride)
+                            .testTag("mode_conflict_override"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "SWITCH EVERYTHING TO ${conflict.requestedMode.uppercase()}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.8.sp,
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** One-tap scripts that already exist in Home Assistant (goodnight, all-off, and so on). */
 @Composable
 fun QuickActionsCard(

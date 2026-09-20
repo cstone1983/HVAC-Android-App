@@ -2907,6 +2907,20 @@ fun ZoneDetailPopup(
     onInteraction: () -> Unit = {}
 ) {
     val theme = LocalHvacTheme.current
+    var pendingModeConflict by remember { mutableStateOf<com.example.model.ModeConflict?>(null) }
+    pendingModeConflict?.let { conflict ->
+        ModeConflictDialog(
+            conflict = conflict,
+            zoneName = zone.name,
+            onDismiss = { pendingModeConflict = null },
+            onOverride = {
+                viewModel.applyHouseModeOverride(conflict.requestedMode, zone.name, conflict.blockingMode)
+                pendingModeConflict = null
+                onDismiss()
+            },
+            onInteraction = onInteraction
+        )
+    }
     val activeColor = when (zone.currentHvacMode.lowercase()) {
         "heat" -> theme.heatColor
         "cool" -> theme.coolColor
@@ -3217,7 +3231,17 @@ fun ZoneDetailPopup(
                             isSelected = zone.currentHvacMode.lowercase() == mode,
                             contentDescription = "Set ${zone.name} to $mode",
                             testTagId = "zone_mode_btn_${zone.key}_$mode",
-                            onClick = { viewModel.setZoneHvacMode(zone.climateEntityId, mode, zone.name) }
+                            onClick = {
+                                // Check before sending: a refusal after the fact is far worse
+                                // feedback than not sending at all. The n8n watchdog remains
+                                // the real enforcement if anything gets past this.
+                                val conflict = viewModel.detectModeConflict(zone.key, mode)
+                                if (conflict != null) {
+                                    pendingModeConflict = conflict
+                                } else {
+                                    viewModel.setZoneHvacMode(zone.climateEntityId, mode, zone.name)
+                                }
+                            }
                         )
                     }
                 }
