@@ -272,32 +272,36 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         sharedPrefs.edit().putFloat("pool_temp_min", min).putFloat("pool_temp_max", max).apply()
         _poolTempMin.value = min
         _poolTempMax.value = max
-        syncThresholdToHa("input_number.pool_temp_low_limit", min.toDouble())
-        syncThresholdToHa("input_number.pool_temp_high_limit", max.toDouble())
+        val poolCfg = getActiveLayoutConfig().poolSensors ?: PoolSensorConfig()
+        syncThresholdToHa(poolCfg.tempLowLimitEntityId ?: "input_number.pool_temp_low_limit", min.toDouble())
+        syncThresholdToHa(poolCfg.tempHighLimitEntityId ?: "input_number.pool_temp_high_limit", max.toDouble())
     }
 
     fun setPoolPhRange(min: Float, max: Float) {
         sharedPrefs.edit().putFloat("pool_ph_min", min).putFloat("pool_ph_max", max).apply()
         _poolPhMin.value = min
         _poolPhMax.value = max
-        syncThresholdToHa("input_number.pool_ph_low_limit", min.toDouble())
-        syncThresholdToHa("input_number.pool_ph_high_limit", max.toDouble())
+        val poolCfg = getActiveLayoutConfig().poolSensors ?: PoolSensorConfig()
+        syncThresholdToHa(poolCfg.phLowLimitEntityId ?: "input_number.pool_ph_low_limit", min.toDouble())
+        syncThresholdToHa(poolCfg.phHighLimitEntityId ?: "input_number.pool_ph_high_limit", max.toDouble())
     }
 
     fun setPoolOrpRange(min: Float, max: Float) {
         sharedPrefs.edit().putFloat("pool_orp_min", min).putFloat("pool_orp_max", max).apply()
         _poolOrpMin.value = min
         _poolOrpMax.value = max
-        syncThresholdToHa("input_number.pool_orp_low_limit", min.toDouble())
-        syncThresholdToHa("input_number.pool_orp_high_limit", max.toDouble())
+        val poolCfg = getActiveLayoutConfig().poolSensors ?: PoolSensorConfig()
+        syncThresholdToHa(poolCfg.orpLowLimitEntityId ?: "input_number.pool_orp_low_limit", min.toDouble())
+        syncThresholdToHa(poolCfg.orpHighLimitEntityId ?: "input_number.pool_orp_high_limit", max.toDouble())
     }
 
     fun setPoolBatteryRange(min: Float, max: Float) {
         sharedPrefs.edit().putFloat("pool_battery_min", min).putFloat("pool_battery_max", max).apply()
         _poolBatteryMin.value = min
         _poolBatteryMax.value = max
-        syncThresholdToHa("input_number.pool_battery_low_limit", min.toDouble())
-        syncThresholdToHa("input_number.pool_battery_high_limit", max.toDouble())
+        val poolCfg = getActiveLayoutConfig().poolSensors ?: PoolSensorConfig()
+        syncThresholdToHa(poolCfg.batteryLowLimitEntityId ?: "input_number.pool_battery_low_limit", min.toDouble())
+        syncThresholdToHa(poolCfg.batteryHighLimitEntityId ?: "input_number.pool_battery_high_limit", max.toDouble())
     }
 
     private fun syncThresholdToHa(entityId: String, value: Double) {
@@ -348,7 +352,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _haUrl = MutableStateFlow(sharedPrefs.getString("ha_url", null) ?: (try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }))
     val haUrl: StateFlow<String> = _haUrl.asStateFlow()
 
-    private val _backupHaUrl = MutableStateFlow(sharedPrefs.getString("backup_ha_url", "http://10.10.1.116:8123/") ?: "http://10.10.1.116:8123/")
+    private val _backupHaUrl = MutableStateFlow(
+        sharedPrefs.getString("backup_ha_url", null) 
+            ?: (try { com.example.BuildConfig.HA_BACKUP_URL } catch (e: Exception) { "http://10.10.1.116:8123/" })
+    )
     val backupHaUrl: StateFlow<String> = _backupHaUrl.asStateFlow()
 
     private val _usingBackupUrl = MutableStateFlow(false)
@@ -535,6 +542,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var consecutiveFailureCount = 0
     private var lastLayoutCheckTime = 0L
     private var updateSyncJob: Job? = null
+    private var offlineDebounceJob: Job? = null
+    private val offlineDebounceMs = 5000L
 
     fun startUpdateSync() {
         updateSyncJob?.cancel()
@@ -612,22 +621,47 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             wsManager.connectionState.collect { connState ->
                 when (connState) {
                     is HaConnectionState.Connected -> {
+                        offlineDebounceJob?.cancel()
+                        offlineDebounceJob = null
                         _isOffline.value = false
                         consecutiveFailureCount = 0
                     }
                     is HaConnectionState.Disconnected -> {
-                        if (_uiState.value is HvacUiState.Success) {
-                            _isOffline.value = true
+                        if (_uiState.value is HvacUiState.Success && offlineDebounceJob == null) {
+                            offlineDebounceJob = viewModelScope.launch {
+                                delay(offlineDebounceMs)
+                                _isOffline.value = true
+                            }
                         }
                     }
                     is HaConnectionState.Error -> {
                         if (_uiState.value is HvacUiState.Success) {
-                            _isOffline.value = true
+                            if (offlineDebounceJob == null) {
+                                offlineDebounceJob = viewModelScope.launch {
+                                    delay(offlineDebounceMs)
+                                    _isOffline.value = true
+                                }
+                            }
                         } else {
                             _uiState.value = HvacUiState.Error("WebSocket Connection Error: ${connState.message}")
                         }
                     }
                     else -> {}
+                }
+            }
+        }
+
+        // Keep the "which host are we on" flag in sync when the WebSocket layer
+        // fails over on its own, independent of the REST-level failover paths below.
+        viewModelScope.launch {
+            wsManager.usingBackupUrl.collect { usingBackup ->
+                if (_usingBackupUrl.value != usingBackup) {
+                    _usingBackupUrl.value = usingBackup
+                    val token = sharedPrefs.getString("ha_token", "") ?: ""
+                    val targetUrl = if (usingBackup) _backupHaUrl.value else _haUrl.value
+                    if (token.isNotEmpty() && targetUrl.isNotEmpty()) {
+                        HomeAssistantClient.initialize(targetUrl, token)
+                    }
                 }
             }
         }
@@ -772,7 +806,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val token = sharedPrefs.getString("ha_token", "") ?: (try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" })
         if (token.isNotEmpty() && targetUrl.isNotEmpty() && targetUrl != "https://localhost/") {
             HomeAssistantClient.initialize(targetUrl, token)
-            wsManager.connect(targetUrl, token)
+            wsManager.connectWithFailover(_haUrl.value, _backupHaUrl.value, token, preferBackup = _usingBackupUrl.value)
         }
 
         syncJob?.cancel()
@@ -780,7 +814,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             // Initial fetch to populate state while WebSocket handshake completes
             fetchStates()
             while (true) {
-                delay(60000) // Fallback check every 60 seconds
+                // The WebSocket pushes every change while healthy. When it isn't, fall back to polling
+                // and poll fast, so the dashboard never sits on stale data for a full minute.
+                val connected = wsManager.connectionState.value.isConnected
+                delay(if (connected) 30_000L else 8_000L)
                 if (!wsManager.connectionState.value.isConnected) {
                     fetchStates()
                 }
@@ -1079,17 +1116,18 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
             // 7. Parse Pool telemetry configurations and update Pool state
             try {
-                val pTemp = statesMap["sensor.my_pool_water_temperature"]?.state?.toDoubleOrNull()
-                val pPh = statesMap["sensor.my_pool_ph"]?.state?.toDoubleOrNull()
-                val pOrp = statesMap["sensor.my_pool_orp"]?.state?.toDoubleOrNull()
-                val pBatt = statesMap["sensor.my_pool_battery"]?.state?.toDoubleOrNull()
-                val pSynced = statesMap["sensor.my_pool_last_synced"]?.state
-                val pUpdated = statesMap["sensor.my_pool_last_updated"]?.state
-                val pMSerial = statesMap["sensor.my_pool_monitor_serial"]?.state
-                val pSSerial = statesMap["sensor.my_pool_sensor_serial"]?.state
-                val pWifi = statesMap["sensor.my_pool_wifi_signal"]?.state?.toIntOrNull()
-                val pStatus = statesMap["sensor.my_pool_water_status"]?.state
-                val pPending = statesMap["sensor.my_pool_actions_pending"]?.state?.toIntOrNull()
+                val poolCfg = activeConfig.poolSensors ?: PoolSensorConfig()
+                val pTemp = statesMap[poolCfg.waterTemperatureEntityId ?: "sensor.my_pool_water_temperature"]?.state?.toDoubleOrNull()
+                val pPh = statesMap[poolCfg.phEntityId ?: "sensor.my_pool_ph"]?.state?.toDoubleOrNull()
+                val pOrp = statesMap[poolCfg.orpEntityId ?: "sensor.my_pool_orp"]?.state?.toDoubleOrNull()
+                val pBatt = statesMap[poolCfg.batteryEntityId ?: "sensor.my_pool_battery"]?.state?.toDoubleOrNull()
+                val pSynced = statesMap[poolCfg.lastSyncedEntityId ?: "sensor.my_pool_last_synced"]?.state
+                val pUpdated = statesMap[poolCfg.lastUpdatedEntityId ?: "sensor.my_pool_last_updated"]?.state
+                val pMSerial = statesMap[poolCfg.monitorSerialEntityId ?: "sensor.my_pool_monitor_serial"]?.state
+                val pSSerial = statesMap[poolCfg.sensorSerialEntityId ?: "sensor.my_pool_sensor_serial"]?.state
+                val pWifi = statesMap[poolCfg.wifiSignalEntityId ?: "sensor.my_pool_wifi_signal"]?.state?.toIntOrNull()
+                val pStatus = statesMap[poolCfg.waterStatusEntityId ?: "sensor.my_pool_water_status"]?.state
+                val pPending = statesMap[poolCfg.actionsPendingEntityId ?: "sensor.my_pool_actions_pending"]?.state?.toIntOrNull()
 
                 val currentPool = _poolState.value
                 val newPool = PoolState(
@@ -1124,20 +1162,21 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             // Solar live parsing and history fetching
             try {
                 if (_isLoggedIn.value) {
-                    val usageState = statesMap["sensor.basement_ct_panel_total_active_power"]
-                    val phaseA = statesMap["sensor.imeter_2pn_phase_a_power"]
-                    val phaseB = statesMap["sensor.imeter_2pn_phase_b_power"]
-                    val diagGenState = statesMap["sensor.exterior_imeter_2pn_solar_generation"]
-                    val diagDailyState = statesMap["sensor.exterior_imeter_2pn_solar_production_daily"]
-                    val diagUsageState = statesMap["sensor.basement_ct_panel_panel_usage"]
-                    val diagDailyUsageState = statesMap["sensor.basement_ct_panel_daily_panel_usage"]
-                    val forecastTodayState = statesMap["sensor.solcast_solar_enhanced_forecast_today"]
-                    val forecastNowState = statesMap["sensor.solcast_solar_enhanced_forecast_now"]
-                    val gridUsageL1State = statesMap["sensor.daily_grid_usage_l1"]
-                    val gridUsageL2State = statesMap["sensor.daily_grid_usage_l2"]
-                    val solarGenL1State = statesMap["sensor.daily_solar_generation_l1"]
-                    val solarGenL2State = statesMap["sensor.daily_solar_generation_l2"]
-                    val cmpBankBalanceState = statesMap["sensor.cmp_bank_balance"]
+                    val solarCfg = activeConfig.solarSensors ?: SolarSensorConfig()
+                    val usageState = statesMap[solarCfg.usagePowerEntityId ?: "sensor.basement_ct_panel_total_active_power"]
+                    val phaseA = statesMap[solarCfg.phaseAPowerEntityId ?: "sensor.imeter_2pn_phase_a_power"]
+                    val phaseB = statesMap[solarCfg.phaseBPowerEntityId ?: "sensor.imeter_2pn_phase_b_power"]
+                    val diagGenState = statesMap[solarCfg.diagSolarGenerationEntityId ?: "sensor.exterior_imeter_2pn_solar_generation"]
+                    val diagDailyState = statesMap[solarCfg.diagSolarProductionDailyEntityId ?: "sensor.exterior_imeter_2pn_solar_production_daily"]
+                    val diagUsageState = statesMap[solarCfg.diagPanelUsageEntityId ?: "sensor.basement_ct_panel_panel_usage"]
+                    val diagDailyUsageState = statesMap[solarCfg.diagDailyPanelUsageEntityId ?: "sensor.basement_ct_panel_daily_panel_usage"]
+                    val forecastTodayState = statesMap[solarCfg.solcastForecastTodayEntityId ?: "sensor.solcast_solar_enhanced_forecast_today"]
+                    val forecastNowState = statesMap[solarCfg.solcastForecastNowEntityId ?: "sensor.solcast_solar_enhanced_forecast_now"]
+                    val gridUsageL1State = statesMap[solarCfg.gridUsageL1EntityId ?: "sensor.daily_grid_usage_l1"]
+                    val gridUsageL2State = statesMap[solarCfg.gridUsageL2EntityId ?: "sensor.daily_grid_usage_l2"]
+                    val solarGenL1State = statesMap[solarCfg.solarGenL1EntityId ?: "sensor.daily_solar_generation_l1"]
+                    val solarGenL2State = statesMap[solarCfg.solarGenL2EntityId ?: "sensor.daily_solar_generation_l2"]
+                    val cmpBankBalanceState = statesMap[solarCfg.cmpBankBalanceEntityId ?: "sensor.cmp_bank_balance"]
 
                     val liveUsage = usageState?.state?.cleanFloatOrNull() ?: 0f
                     val aVal = phaseA?.state?.cleanFloatOrNull() ?: 0f
@@ -1226,7 +1265,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 android.util.Log.e("HvacViewModel", "Error parsing solar states", ex)
             }
 
-            _uiState.value = HvacUiState.Success(
+            val newState = HvacUiState.Success(
                 globalSettings = globalSettings,
                 roomSensors = parsedSensors,
                 zones = parsedZones,
@@ -1235,6 +1274,15 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 covers = parsedCovers,
                 lastUpdated = System.currentTimeMillis()
             )
+            // This runs on every state change of every entity in HA (1000+ of them, mostly sensors the
+            // dashboard doesn't show). Only publish when something on screen actually changed, so the
+            // whole dashboard isn't recomposed for unrelated sensor chatter.
+            val previous = _uiState.value
+            val unchanged = previous is HvacUiState.Success &&
+                previous.copy(lastUpdated = 0L) == newState.copy(lastUpdated = 0L)
+            if (!unchanged) {
+                _uiState.value = newState
+            }
             _isOffline.value = false
             consecutiveFailureCount = 0
         } catch (e: Exception) {
@@ -1266,15 +1314,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun requestGlobalHvacMode(label: String) {
         val lastNonOff = lastNonOffHvacMode.lowercase()
         val targetMode = label.lowercase()
-        
-        val needsConfirmation = if (targetMode == "heat" && lastNonOff == "cool") {
-            true
-        } else if (targetMode == "cool" && lastNonOff == "heat") {
-            true
-        } else {
-            false
-        }
-        
+
+        // Heat runs the opposite refrigerant cycle direction from Cool/Dry, so switching across
+        // that boundary abruptly can stress the compressor and warrants confirmation. Cool and Dry
+        // share a cycle direction, so switching directly between them does not need confirming.
+        val coolCycleModes = setOf("cool", "dry")
+        val needsConfirmation = (targetMode == "heat" && lastNonOff in coolCycleModes) ||
+            (targetMode in coolCycleModes && lastNonOff == "heat")
+
         if (needsConfirmation) {
             _pendingHvacMode.value = label
             _showModeConfirmDialog.value = true
@@ -1299,7 +1346,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectGlobalHvacMode(option: String) {
         val hModeLower = option.lowercase()
-        if (hModeLower == "heat" || hModeLower == "cool") {
+        if (hModeLower == "heat" || hModeLower == "cool" || hModeLower == "dry") {
             if (lastNonOffHvacMode != hModeLower) {
                 lastNonOffHvacMode = hModeLower
                 sharedPrefs.edit().putString("last_non_off_hvac_mode", hModeLower).apply()
@@ -1460,7 +1507,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 globalHvacMode
             }
-            if (activeGlobalMode.lowercase() == "cool") "cool" else "heat"
+            when (activeGlobalMode.lowercase()) {
+                "cool" -> "cool"
+                "dry" -> "dry"
+                else -> "heat"
+            }
         } else {
             "off"
         }
@@ -1592,6 +1643,26 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 _actionFeedback.value = "Failed to sync action: ${e.localizedMessage}"
             }
         }
+    }
+
+    /**
+     * Generic Home Assistant service-call entry point for OTA-defined dynamicSections cards
+     * (entity_toggle / action_button in layout_config.json). Lets a new toggle or button be
+     * added purely via JSON, without a dedicated Kotlin method for every new control.
+     */
+    fun callDynamicEntityService(
+        domain: String,
+        service: String,
+        entityId: String,
+        serviceData: Map<String, String> = emptyMap(),
+        feedbackMessage: String? = null
+    ) {
+        if (domain.isBlank() || service.isBlank() || entityId.isBlank()) return
+        val payload = mutableMapOf<String, Any>("entity_id" to entityId)
+        serviceData.forEach { (key, value) ->
+            payload[key] = value.toDoubleOrNull() ?: value.toBooleanStrictOrNull() ?: value
+        }
+        callServiceWithOptimisticFeedback(domain, service, payload, feedbackMessage ?: "$entityId: $service")
     }
 
     // ======================== GITHUB UPDATER FUNCTIONALITY ========================
@@ -2505,6 +2576,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         try {
+            val poolCfg = getActiveLayoutConfig().poolSensors ?: PoolSensorConfig()
+            val tempEntityId = poolCfg.waterTemperatureEntityId ?: "sensor.my_pool_water_temperature"
+            val phEntityIdCfg = poolCfg.phEntityId ?: "sensor.my_pool_ph"
+            val orpEntityIdCfg = poolCfg.orpEntityId ?: "sensor.my_pool_orp"
+
             // Query from 30 days ago to have complete detailed charts for Hourly, Daily, and Monthly views
             val calendar = java.util.Calendar.getInstance()
             calendar.add(java.util.Calendar.DAY_OF_YEAR, -30)
@@ -2515,7 +2591,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             val startStr = sdf.format(calendar.time)
             val nowStr = sdf.format(java.util.Date(now))
 
-            val entityIds = "sensor.my_pool_water_temperature,sensor.my_pool_ph,sensor.my_pool_orp"
+            val entityIds = "$tempEntityId,$phEntityIdCfg,$orpEntityIdCfg"
 
             val rawHistory: List<List<com.example.api.EntityState>> = HomeAssistantClient.service.getHistory(
                 timestamp = startStr,
@@ -2531,9 +2607,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 for (enList in rawHistory) {
                     for (stateNode in enList) {
                         when (stateNode.entity_id) {
-                            "sensor.my_pool_water_temperature" -> tempHistory.add(stateNode)
-                            "sensor.my_pool_ph" -> phHistory.add(stateNode)
-                            "sensor.my_pool_orp" -> orpHistory.add(stateNode)
+                            tempEntityId -> tempHistory.add(stateNode)
+                            phEntityIdCfg -> phHistory.add(stateNode)
+                            orpEntityIdCfg -> orpHistory.add(stateNode)
                         }
                     }
                 }
@@ -2866,6 +2942,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         diag.append("Fetch Time: ${java.util.Date(now)}\n")
         diag.append("Logged In: ${_isLoggedIn.value}\n")
         try {
+            val solarCfg = getActiveLayoutConfig().solarSensors ?: SolarSensorConfig()
             val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
                 timeZone = java.util.TimeZone.getTimeZone("UTC")
             }
@@ -2927,7 +3004,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startPowerStr,
-                            filterEntityId = "sensor.basement_ct_panel_total_active_power",
+                            filterEntityId = solarCfg.usagePowerEntityId ?: "sensor.basement_ct_panel_total_active_power",
                             endTime = nowStr
                         )
                     } catch (ex: Exception) {
@@ -2941,7 +3018,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startPowerStr,
-                            filterEntityId = "sensor.imeter_2pn_phase_a_power",
+                            filterEntityId = solarCfg.phaseAPowerEntityId ?: "sensor.imeter_2pn_phase_a_power",
                             endTime = nowStr
                         )
                     } catch (ex: Exception) {
@@ -2955,7 +3032,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startPowerStr,
-                            filterEntityId = "sensor.imeter_2pn_phase_b_power",
+                            filterEntityId = solarCfg.phaseBPowerEntityId ?: "sensor.imeter_2pn_phase_b_power",
                             endTime = nowStr
                         )
                     } catch (ex: Exception) {
@@ -2969,7 +3046,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startEnergyStr,
-                            filterEntityId = "sensor.basement_ct_panel_total_forward_active_energy",
+                            filterEntityId = solarCfg.usageEnergyEntityId ?: "sensor.basement_ct_panel_total_forward_active_energy",
                             endTime = nowStr
                         )
                     } catch (ex: Exception) {
@@ -2983,7 +3060,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startEnergyStr,
-                            filterEntityId = "sensor.imeter_2pn_total_production",
+                            filterEntityId = solarCfg.productionEnergyEntityId ?: "sensor.imeter_2pn_total_production",
                             endTime = nowStr
                         )
                     } catch (ex: Exception) {
@@ -3021,9 +3098,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                usagePower.addAll(rawUsagePower.map { if (it.entity_id.isNullOrBlank()) it.copy(entity_id = "sensor.basement_ct_panel_total_active_power") else it })
-                phaseA.addAll(rawPhaseA.map { if (it.entity_id.isNullOrBlank()) it.copy(entity_id = "sensor.imeter_2pn_phase_a_power") else it })
-                phaseB.addAll(rawPhaseB.map { if (it.entity_id.isNullOrBlank()) it.copy(entity_id = "sensor.imeter_2pn_phase_b_power") else it })
+                usagePower.addAll(rawUsagePower.map { if (it.entity_id.isNullOrBlank()) it.copy(entity_id = solarCfg.usagePowerEntityId ?: "sensor.basement_ct_panel_total_active_power") else it })
+                phaseA.addAll(rawPhaseA.map { if (it.entity_id.isNullOrBlank()) it.copy(entity_id = solarCfg.phaseAPowerEntityId ?: "sensor.imeter_2pn_phase_a_power") else it })
+                phaseB.addAll(rawPhaseB.map { if (it.entity_id.isNullOrBlank()) it.copy(entity_id = solarCfg.phaseBPowerEntityId ?: "sensor.imeter_2pn_phase_b_power") else it })
 
                 powerSuccess = usagePower.isNotEmpty() || phaseA.isNotEmpty() || phaseB.isNotEmpty()
 
@@ -3047,8 +3124,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                usageEnergy.addAll(rawUsageEnergy.map { if (it.entity_id.isNullOrBlank()) it.copy(entity_id = "sensor.basement_ct_panel_total_forward_active_energy") else it })
-                prodEnergy.addAll(rawProdEnergy.map { if (it.entity_id.isNullOrBlank()) it.copy(entity_id = "sensor.imeter_2pn_total_production") else it })
+                usageEnergy.addAll(rawUsageEnergy.map { if (it.entity_id.isNullOrBlank()) it.copy(entity_id = solarCfg.usageEnergyEntityId ?: "sensor.basement_ct_panel_total_forward_active_energy") else it })
+                prodEnergy.addAll(rawProdEnergy.map { if (it.entity_id.isNullOrBlank()) it.copy(entity_id = solarCfg.productionEnergyEntityId ?: "sensor.imeter_2pn_total_production") else it })
 
                 energySuccess = usageEnergy.isNotEmpty() || prodEnergy.isNotEmpty()
             }

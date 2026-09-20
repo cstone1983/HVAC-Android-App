@@ -44,7 +44,9 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      signingConfig = signingConfigs.getByName("debugConfig")
+      // No project-local debug.keystore exists (it's gitignored and was never generated on this
+      // machine). Falling back to AGP's built-in debug signing config, which points at Android
+      // Studio's own auto-managed ~/.android/debug.keystore, per this project's README step 5.
     }
   }
   compileOptions {

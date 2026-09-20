@@ -45,7 +45,7 @@ import kotlin.random.Random
  * - Automated auth handshake (auth_required -> auth -> auth_ok)
  * - Baseline state retrieval (get_states) & incremental event subscription (subscribe_events)
  * - Thread-safe service call dispatching (call_service)
- * - 30-second ping/pong heartbeat with 10-second zombie connection auto-remediation
+ * - 15-second ping/pong heartbeat with 5-second zombie connection auto-remediation
  * - Exponential backoff with random jitter on disconnects
  * - Android ConnectivityManager network transitions (Wi-Fi/Cellular) auto-reconnection
  */
@@ -53,10 +53,12 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
 
     companion object {
         private const val TAG = "HA_WS_Manager"
-        private const val PING_INTERVAL_MS = 30_000L
-        private const val PING_TIMEOUT_MS = 10_000L
+        private const val PING_INTERVAL_MS = 15_000L
+        private const val PING_TIMEOUT_MS = 5_000L
         private const val MIN_BACKOFF_MS = 1_000L
-        private const val MAX_BACKOFF_MS = 30_000L
+        private const val MAX_BACKOFF_MS = 10_000L
+        private const val HOST_FAILOVER_THRESHOLD = 2
+        private const val RECONCILE_INTERVAL_MS = 300_000L
 
         @Volatile
         private var instance: HomeAssistantWebSocketManager? = null
@@ -82,6 +84,7 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS) // Indefinite read for persistent stream
+        .pingInterval(10, TimeUnit.SECONDS) // Transport-level ping: a dead/half-open socket fails within ~10s instead of hanging
         .retryOnConnectionFailure(true)
         .build()
 
@@ -95,11 +98,20 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
     private val _stateUpdates = MutableSharedFlow<EntityState>(extraBufferCapacity = 64)
     val stateUpdates: SharedFlow<EntityState> = _stateUpdates.asSharedFlow()
 
+    private val _usingBackupUrl = MutableStateFlow(false)
+    val usingBackupUrl: StateFlow<Boolean> = _usingBackupUrl.asStateFlow()
+
     // Active session configuration
     @Volatile private var currentRawUrl: String = ""
     @Volatile private var currentToken: String = ""
     @Volatile private var currentWsUrl: String = ""
     @Volatile private var isExplicitlyDisconnected = false
+
+    // Primary/backup host failover (independent of the ViewModel's own REST-level failover)
+    @Volatile private var primaryRawUrl: String = ""
+    @Volatile private var backupRawUrl: String = ""
+    @Volatile private var usingBackup: Boolean = false
+    private var consecutiveHostFailures = 0
 
     // WebSocket instance & tracking
     @Volatile private var activeWebSocket: WebSocket? = null
@@ -109,8 +121,19 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
     // Heartbeat & Reconnect Jobs
     private var heartbeatJob: Job? = null
     private var reconnectJob: Job? = null
+    private var sessionJob: Job? = null
+    private var reconcileJob: Job? = null
     private var currentBackoffMs = MIN_BACKOFF_MS
     private var networkCallbackRegistered = false
+
+    // Bumped every time a socket is created or torn down. Each socket's callbacks capture the value
+    // they were created with and ignore themselves once it is stale, so a dying old socket can never
+    // trigger a reconnect that kills the new, healthy one.
+    private val connectionGeneration = AtomicInteger(0)
+    @Volatile private var lastConnectStartMs = 0L
+
+    // Entities updated by live events since the last state snapshot was requested.
+    private val eventTouchedIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     init {
         registerNetworkCallback()
@@ -166,8 +189,51 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         currentWsUrl = toWebSocketUrl(rawUrl)
         isExplicitlyDisconnected = false
         currentBackoffMs = MIN_BACKOFF_MS
+        reconnectJob?.cancel()
 
         Log.i(TAG, "Connecting to Home Assistant WebSocket: $currentWsUrl")
+        connectInternal()
+    }
+
+    /**
+     * Connect with awareness of a backup URL: if the currently active host fails to
+     * (re)connect [HOST_FAILOVER_THRESHOLD] times in a row, subsequent reconnect attempts
+     * automatically swap to the other host instead of retrying a possibly-dead one forever.
+     * Pass a blank/identical [backupUrl] to behave exactly like [connect].
+     */
+    fun connectWithFailover(primaryUrl: String, backupUrl: String, token: String, preferBackup: Boolean = false) {
+        if (primaryUrl.isBlank() || token.isBlank()) {
+            Log.w(TAG, "Cannot connect: URL or token is blank")
+            return
+        }
+
+        // The service, the ViewModel and the Android Auto helper all ask for a connection at startup;
+        // don't tear down a connection that is already up (or coming up) with identical settings.
+        val effectiveBackup = backupUrl.takeIf { it.isNotBlank() && it != primaryUrl } ?: ""
+        val state = _connectionState.value
+        val alreadyRunning = !isExplicitlyDisconnected && activeWebSocket != null &&
+            primaryRawUrl == primaryUrl && backupRawUrl == effectiveBackup && currentToken == token.trim() &&
+            (state is HaConnectionState.Connected || state is HaConnectionState.Authenticating || state is HaConnectionState.Connecting)
+        if (alreadyRunning) {
+            Log.d(TAG, "Already connected/connecting with identical settings; skipping redundant connect")
+            return
+        }
+
+        primaryRawUrl = primaryUrl
+        backupRawUrl = effectiveBackup
+        consecutiveHostFailures = 0
+        usingBackup = preferBackup && backupRawUrl.isNotEmpty()
+        _usingBackupUrl.value = usingBackup
+
+        val startRawUrl = if (usingBackup) backupRawUrl else primaryRawUrl
+        currentToken = token.trim()
+        currentRawUrl = startRawUrl
+        currentWsUrl = toWebSocketUrl(startRawUrl)
+        isExplicitlyDisconnected = false
+        currentBackoffMs = MIN_BACKOFF_MS
+        reconnectJob?.cancel()
+
+        Log.i(TAG, "Connecting to Home Assistant WebSocket (${if (usingBackup) "backup" else "primary"}): $currentWsUrl")
         connectInternal()
     }
 
@@ -176,9 +242,12 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
      */
     fun disconnect() {
         isExplicitlyDisconnected = true
+        connectionGeneration.incrementAndGet()
         heartbeatJob?.cancel()
+        reconcileJob?.cancel()
+        sessionJob?.cancel()
         reconnectJob?.cancel()
-        
+
         activeWebSocket?.close(1000, "Client initiated clean disconnect")
         activeWebSocket = null
         _connectionState.value = HaConnectionState.Disconnected
@@ -189,8 +258,14 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         if (isExplicitlyDisconnected) return
         if (currentWsUrl.isEmpty() || currentToken.isEmpty()) return
 
+        // Invalidate every callback from any previous socket BEFORE tearing it down.
+        val myGen = connectionGeneration.incrementAndGet()
+        lastConnectStartMs = System.currentTimeMillis()
+
         // Clean any existing connection
         heartbeatJob?.cancel()
+        reconcileJob?.cancel()
+        sessionJob?.cancel()
         activeWebSocket?.cancel()
         activeWebSocket = null
 
@@ -208,11 +283,13 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
 
         activeWebSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (myGen != connectionGeneration.get()) return
                 Log.d(TAG, "WebSocket transport opened. Awaiting auth_required...")
                 _connectionState.value = HaConnectionState.Authenticating
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (myGen != connectionGeneration.get()) return
                 handleIncomingMessage(webSocket, text)
             }
 
@@ -222,6 +299,7 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (myGen != connectionGeneration.get()) return
                 Log.w(TAG, "WebSocket closed (code $code): $reason")
                 if (!isExplicitlyDisconnected) {
                     _connectionState.value = HaConnectionState.Disconnected
@@ -230,6 +308,7 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (myGen != connectionGeneration.get()) return
                 Log.e(TAG, "WebSocket failure: ${t.localizedMessage}", t)
                 if (!isExplicitlyDisconnected) {
                     _connectionState.value = HaConnectionState.Error("Network error: ${t.localizedMessage}")
@@ -265,14 +344,23 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
                     Log.i(TAG, "Authentication SUCCESS! Connected to Home Assistant $haVersion")
                     _connectionState.value = HaConnectionState.Connected(haVersion)
                     currentBackoffMs = MIN_BACKOFF_MS // Reset backoff on success
+                    consecutiveHostFailures = 0 // Current host is healthy again
 
-                    // 1. Fetch initial baseline states
-                    scope.launch {
-                        fetchBaselineStates()
-                        // 2. Subscribe to real-time events
-                        subscribeToStateEvents()
-                        // 3. Start 30s heartbeat
+                    sessionJob?.cancel()
+                    sessionJob = scope.launch {
+                        // Subscribe FIRST so no change can slip between the snapshot and the subscription,
+                        // then load the snapshot and merge it beneath anything already received via events.
+                        // If either step fails the connection is useless (connected but frozen), so reconnect.
+                        if (!subscribeToStateEvents()) {
+                            forceReconnect("subscribe_events failed")
+                            return@launch
+                        }
+                        if (!fetchBaselineStates()) {
+                            forceReconnect("get_states failed")
+                            return@launch
+                        }
                         startHeartbeat()
+                        startReconcileLoop()
                     }
                 }
 
@@ -318,9 +406,11 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
     }
 
     /**
-     * Baseline state initialization (get_states)
+     * Full state snapshot (get_states), merged UNDER anything newer already received via live events,
+     * so the snapshot can never overwrite a fresher value. Also used as a periodic self-healing
+     * reconcile. Returns false if the snapshot could not be loaded.
      */
-    private suspend fun fetchBaselineStates() {
+    private suspend fun fetchBaselineStates(): Boolean {
         val id = messageIdGenerator.getAndIncrement()
         val request = JSONObject().apply {
             put("id", id)
@@ -330,26 +420,51 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         val deferred = CompletableDeferred<JSONObject>()
         pendingRequests[id] = deferred
 
-        if (sendJson(request)) {
-            val response = withTimeoutOrNull(15_000L) { deferred.await() }
-            if (response != null && response.optBoolean("success", false)) {
-                val resultArray = response.optJSONArray("result")
-                if (resultArray != null) {
-                    val statesList = parseEntityStates(resultArray)
-                    val statesMap = statesList.associateBy { it.entity_id }
-                    _states.value = statesMap
-                    Log.i(TAG, "Baseline states loaded: ${statesMap.size} entities")
-                }
-            } else {
-                Log.w(TAG, "Failed to retrieve baseline states or request timed out.")
-            }
+        // Events applied from here on may be newer than the snapshot we are about to receive.
+        eventTouchedIds.clear()
+
+        if (!sendJson(request)) {
+            pendingRequests.remove(id)
+            Log.w(TAG, "Failed to request state snapshot: WebSocket inactive.")
+            return false
         }
+
+        val response = withTimeoutOrNull(20_000L) { deferred.await() }
+        if (response == null || !response.optBoolean("success", false)) {
+            pendingRequests.remove(id)
+            Log.w(TAG, "Failed to retrieve state snapshot or request timed out.")
+            return false
+        }
+
+        val resultArray = response.optJSONArray("result") ?: return false
+        val baseline = parseEntityStates(resultArray).associateBy { it.entity_id }
+        val touched = HashSet(eventTouchedIds)
+
+        _states.update { current ->
+            val merged = HashMap(baseline)
+            for ((entityId, cur) in current) {
+                val base = baseline[entityId]
+                val keepCurrent = if (base == null) {
+                    // Only in our map: keep it if a live event created it after the snapshot was taken,
+                    // otherwise it is a leftover from an older connection and has since been removed.
+                    entityId in touched
+                } else {
+                    // ISO-8601 UTC timestamps compare correctly as strings; ties keep the existing object.
+                    (cur.last_updated ?: "") >= (base.last_updated ?: "")
+                }
+                if (keepCurrent) merged[entityId] = cur
+            }
+            merged
+        }
+        Log.i(TAG, "State snapshot merged: ${baseline.size} entities")
+        return true
     }
 
     /**
-     * Real-time event subscription (subscribe_events -> state_changed)
+     * Real-time event subscription (subscribe_events -> state_changed).
+     * Returns false if Home Assistant did not confirm the subscription.
      */
-    private suspend fun subscribeToStateEvents() {
+    private suspend fun subscribeToStateEvents(): Boolean {
         val id = messageIdGenerator.getAndIncrement()
         val request = JSONObject().apply {
             put("id", id)
@@ -360,14 +475,52 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         val deferred = CompletableDeferred<JSONObject>()
         pendingRequests[id] = deferred
 
-        if (sendJson(request)) {
-            val response = withTimeoutOrNull(10_000L) { deferred.await() }
-            if (response != null && response.optBoolean("success", false)) {
-                Log.i(TAG, "Successfully subscribed to state_changed events.")
-            } else {
-                Log.w(TAG, "Failed to subscribe to state_changed events.")
+        if (!sendJson(request)) {
+            pendingRequests.remove(id)
+            Log.w(TAG, "Failed to send subscribe_events: WebSocket inactive.")
+            return false
+        }
+
+        val response = withTimeoutOrNull(10_000L) { deferred.await() }
+        return if (response != null && response.optBoolean("success", false)) {
+            Log.i(TAG, "Successfully subscribed to state_changed events.")
+            true
+        } else {
+            pendingRequests.remove(id)
+            Log.w(TAG, "Failed to subscribe to state_changed events.")
+            false
+        }
+    }
+
+    /**
+     * Periodically re-syncs the full state (merged, never overwriting newer live data) so that any
+     * event that was somehow missed is healed within minutes instead of staying wrong indefinitely.
+     */
+    private fun startReconcileLoop() {
+        reconcileJob?.cancel()
+        reconcileJob = scope.launch {
+            var failures = 0
+            while (isActive) {
+                delay(RECONCILE_INTERVAL_MS)
+                if (_connectionState.value !is HaConnectionState.Connected) continue
+                if (fetchBaselineStates()) {
+                    failures = 0
+                } else if (++failures >= 2) {
+                    forceReconnect("periodic state reconcile failed twice")
+                    break
+                }
             }
         }
+    }
+
+    /**
+     * Drops the current socket and reconnects through the normal backoff path.
+     */
+    private fun forceReconnect(reason: String) {
+        if (isExplicitlyDisconnected) return
+        Log.w(TAG, "Forcing reconnect: $reason")
+        scheduleReconnect(reason)
+        activeWebSocket?.cancel()
     }
 
     /**
@@ -382,6 +535,7 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
             try {
                 val newState = entityStateAdapter.fromJson(newStateObj.toString())
                 if (newState != null) {
+                    eventTouchedIds.add(entityId)
                     _states.update { currentMap ->
                         val updated = HashMap(currentMap)
                         updated[entityId] = newState
@@ -448,7 +602,7 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
     }
 
     /**
-     * Heartbeat & Zombie Connection Detection (every 30s ping, 10s timeout)
+     * Heartbeat & Zombie Connection Detection (every 15s ping, 5s timeout)
      */
     private fun startHeartbeat() {
         heartbeatJob?.cancel()
@@ -489,8 +643,23 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
      */
     private fun scheduleReconnect(reason: String) {
         if (isExplicitlyDisconnected) return
-        reconnectJob?.cancel()
+        // A reconnect is already pending for this failure (e.g. the socket callback and the heartbeat
+        // both report the same dead connection): don't count it twice or reset its delay.
+        if (reconnectJob?.isActive == true) return
         heartbeatJob?.cancel()
+        reconcileJob?.cancel()
+        sessionJob?.cancel()
+
+        consecutiveHostFailures++
+        if (backupRawUrl.isNotEmpty() && consecutiveHostFailures >= HOST_FAILOVER_THRESHOLD) {
+            usingBackup = !usingBackup
+            val nextRawUrl = if (usingBackup) backupRawUrl else primaryRawUrl
+            currentRawUrl = nextRawUrl
+            currentWsUrl = toWebSocketUrl(nextRawUrl)
+            _usingBackupUrl.value = usingBackup
+            consecutiveHostFailures = 0
+            Log.w(TAG, "Repeated failures on previous host; failing over to ${if (usingBackup) "backup" else "primary"} URL: $currentWsUrl")
+        }
 
         reconnectJob = scope.launch {
             val jitter = Random.nextLong(0, 1000)
@@ -510,8 +679,11 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
      */
     fun triggerImmediateReconnect() {
         if (isExplicitlyDisconnected) return
+        // Network callbacks can fire several times in a burst; don't restart an attempt that just began.
+        if (System.currentTimeMillis() - lastConnectStartMs < 1_500L) return
         Log.i(TAG, "Triggering immediate reconnection...")
         currentBackoffMs = MIN_BACKOFF_MS
+        consecutiveHostFailures = 0
         reconnectJob?.cancel()
         connectInternal()
     }

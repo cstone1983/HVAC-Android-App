@@ -53,12 +53,13 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
      */
     fun initializeConnection() {
         val url = prefs.getString("ha_url", "") ?: ""
+        val backupUrl = prefs.getString("backup_ha_url", "") ?: ""
         val token = prefs.getString("ha_token", "") ?: ""
 
         if (url.isNotBlank() && token.isNotBlank()) {
             Log.d(TAG, "Initializing Car Home Assistant connection to $url")
             HomeAssistantClient.initialize(url, token)
-            wsManager.connect(url, token)
+            wsManager.connectWithFailover(url, backupUrl, token)
         } else {
             Log.w(TAG, "No HA credentials found in SharedPreferences")
         }
@@ -418,107 +419,53 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
         )
     }
 
+    /**
+     * Sources zones from the same OTA-updatable layout_config.json the phone dashboard uses,
+     * instead of a separate hardcoded list, so Android Auto can never drift out of sync with
+     * the real zone/entity mapping after a layout config push.
+     */
     fun getClimateZones(): List<ZoneCarState> {
         val s = states.value
-        val zonesList = mutableListOf<ZoneCarState>()
+        val configZones = com.example.viewmodel.HvacViewModel.getInstance()?.getActiveLayoutConfig()?.zones
 
-        // 1. Living Room
-        val lrClimate = s["climate.hp_living_room"]
-        val lrTemp = s["sensor.living_room_temperature"]?.state?.toDoubleOrNull()
-            ?: lrClimate?.getDoubleAttribute("current_temperature")
-        zonesList.add(
-            ZoneCarState(
-                key = "living_room",
-                name = "Living Room",
-                climateEntityId = "climate.hp_living_room",
-                currentTemp = lrTemp,
-                targetTemp = lrClimate?.getDoubleAttribute("temperature"),
-                hvacMode = lrClimate?.state?.uppercase(Locale.US) ?: "OFF",
-                fanMode = lrClimate?.getStringAttribute("fan_mode") ?: "Auto"
-            )
+        if (!configZones.isNullOrEmpty()) {
+            return configZones.map { zone ->
+                val climate = s[zone.climateEntityId]
+                ZoneCarState(
+                    key = zone.key,
+                    name = zone.name,
+                    climateEntityId = zone.climateEntityId,
+                    currentTemp = climate?.getDoubleAttribute("current_temperature"),
+                    targetTemp = climate?.getDoubleAttribute("temperature"),
+                    hvacMode = climate?.state?.uppercase(Locale.US) ?: "OFF",
+                    fanMode = climate?.getStringAttribute("fan_mode") ?: "Auto"
+                )
+            }
+        }
+
+        // Fallback for the rare case the ViewModel hasn't been constructed yet (e.g. the car
+        // head unit launches this service before the phone app has run this boot cycle).
+        // Matches the app's built-in default layout_config.json zone list.
+        val fallbackZones = listOf(
+            Triple("main_level", "Main Level", "climate.hp_living_room"),
+            Triple("anthony", "Anthony", "climate.hp_anthony"),
+            Triple("autumn", "Autumn", "climate.hp_autumn"),
+            Triple("bedroom_1", "Master 1", "climate.hp_bedroom"),
+            Triple("bedroom_2", "Master 2", "climate.hp_bedroom_2"),
+            Triple("basement", "Basement", "climate.hp_basement")
         )
-
-        // 2. Dining Room
-        val drClimate = s["climate.hp_dining_room"]
-        val drTemp = s["sensor.dining_room_temperature"]?.state?.toDoubleOrNull()
-            ?: drClimate?.getDoubleAttribute("current_temperature")
-        zonesList.add(
+        return fallbackZones.map { (key, name, entityId) ->
+            val climate = s[entityId]
             ZoneCarState(
-                key = "dining_room",
-                name = "Dining Room",
-                climateEntityId = "climate.hp_dining_room",
-                currentTemp = drTemp,
-                targetTemp = drClimate?.getDoubleAttribute("temperature"),
-                hvacMode = drClimate?.state?.uppercase(Locale.US) ?: "OFF",
-                fanMode = drClimate?.getStringAttribute("fan_mode") ?: "Auto"
+                key = key,
+                name = name,
+                climateEntityId = entityId,
+                currentTemp = climate?.getDoubleAttribute("current_temperature"),
+                targetTemp = climate?.getDoubleAttribute("temperature"),
+                hvacMode = climate?.state?.uppercase(Locale.US) ?: "OFF",
+                fanMode = climate?.getStringAttribute("fan_mode") ?: "Auto"
             )
-        )
-
-        // 3. Master Bedroom
-        val mbClimate = s["climate.hp_master_bedroom"]
-        val mbTemp = s["sensor.master_bedroom_temperature"]?.state?.toDoubleOrNull()
-            ?: mbClimate?.getDoubleAttribute("current_temperature")
-        zonesList.add(
-            ZoneCarState(
-                key = "master_bedroom",
-                name = "Master Bedroom",
-                climateEntityId = "climate.hp_master_bedroom",
-                currentTemp = mbTemp,
-                targetTemp = mbClimate?.getDoubleAttribute("temperature"),
-                hvacMode = mbClimate?.state?.uppercase(Locale.US) ?: "OFF",
-                fanMode = mbClimate?.getStringAttribute("fan_mode") ?: "Auto"
-            )
-        )
-
-        // 4. Bedroom 1 (Upstairs / Gym)
-        val b1Climate = s["climate.hp_bedroom_1"]
-        val b1Temp = s["sensor.bedroom_1_temperature"]?.state?.toDoubleOrNull()
-            ?: b1Climate?.getDoubleAttribute("current_temperature")
-        zonesList.add(
-            ZoneCarState(
-                key = "bedroom_1",
-                name = "Bedroom 1 (Upstairs)",
-                climateEntityId = "climate.hp_bedroom_1",
-                currentTemp = b1Temp,
-                targetTemp = b1Climate?.getDoubleAttribute("temperature"),
-                hvacMode = b1Climate?.state?.uppercase(Locale.US) ?: "OFF",
-                fanMode = b1Climate?.getStringAttribute("fan_mode") ?: "Auto"
-            )
-        )
-
-        // 5. Bedroom 2 (Kids Room)
-        val b2Climate = s["climate.hp_bedroom_2"]
-        val b2Temp = s["sensor.bedroom_2_temperature"]?.state?.toDoubleOrNull()
-            ?: b2Climate?.getDoubleAttribute("current_temperature")
-        zonesList.add(
-            ZoneCarState(
-                key = "bedroom_2",
-                name = "Bedroom 2 (Kids)",
-                climateEntityId = "climate.hp_bedroom_2",
-                currentTemp = b2Temp,
-                targetTemp = b2Climate?.getDoubleAttribute("temperature"),
-                hvacMode = b2Climate?.state?.uppercase(Locale.US) ?: "OFF",
-                fanMode = b2Climate?.getStringAttribute("fan_mode") ?: "Auto"
-            )
-        )
-
-        // 6. Basement
-        val bsClimate = s["climate.hp_basement"]
-        val bsTemp = s["sensor.basement_temperature"]?.state?.toDoubleOrNull()
-            ?: bsClimate?.getDoubleAttribute("current_temperature")
-        zonesList.add(
-            ZoneCarState(
-                key = "basement",
-                name = "Basement",
-                climateEntityId = "climate.hp_basement",
-                currentTemp = bsTemp,
-                targetTemp = bsClimate?.getDoubleAttribute("temperature"),
-                hvacMode = bsClimate?.state?.uppercase(Locale.US) ?: "OFF",
-                fanMode = bsClimate?.getStringAttribute("fan_mode") ?: "Auto"
-            )
-        )
-
-        return zonesList
+        }
     }
 }
 

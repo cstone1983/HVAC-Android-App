@@ -858,7 +858,11 @@ fun HvacDashboard(
                                                     viewModel.confirmGlobalHvacModeChange()
                                                 },
                                                 colors = ButtonDefaults.buttonColors(
-                                                    containerColor = if (pendingHvacMode!!.lowercase() == "cool") Color(0xFF2196F3) else Color(0xFFF59E0B)
+                                                    containerColor = when (pendingHvacMode!!.lowercase()) {
+                                                        "cool" -> Color(0xFF2196F3)
+                                                        "dry" -> Color(0xFF8B5CF6)
+                                                        else -> Color(0xFFF59E0B)
+                                                    }
                                                 ),
                                                 modifier = Modifier
                                                     .weight(1f)
@@ -1342,7 +1346,7 @@ fun DynamicTabContent(
                         if (dynamicSection != null) {
                             item {
                                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                    DynamicSectionRenderer(sectionConfig = dynamicSection, theme = theme)
+                                    DynamicSectionRenderer(sectionConfig = dynamicSection, theme = theme, viewModel = viewModel)
                                 }
                             }
                         }
@@ -1494,6 +1498,7 @@ fun HvacDashboardContent(
                             val isSelected = selectedTab == index
                             val activeColor = when (state.globalSettings.globalHvacMode) {
                                 "cool" -> Color(0xFF2196F3)
+                                "dry" -> Color(0xFF8B5CF6)
                                 "off" -> Color(0xFF64748B)
                                 else -> Color(0xFFF59E0B)
                             }
@@ -1829,6 +1834,7 @@ fun HvacDashboardContent(
                     val isSelected = selectedTab == index
                     val activeColor = when (state.globalSettings.globalHvacMode) {
                         "cool" -> Color(0xFF2196F3)
+                        "dry" -> Color(0xFF8B5CF6)
                         "off" -> Color(0xFF64748B)
                         else -> Color(0xFFF59E0B)
                     }
@@ -2164,18 +2170,20 @@ fun GlobalSettingsQuickControl(
                         color = when (state.globalSettings.globalHvacMode.lowercase()) {
                             "heat" -> Color(0xFFF59E0B)
                             "cool" -> Color(0xFF2196F3)
+                            "dry" -> Color(0xFF8B5CF6)
                             else -> Color(0xFF64748B) // off
                         }
                     )
                 }
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 6.dp else 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 5.dp else 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     listOf(
                         Triple("heat", Icons.Default.Whatshot, Color(0xFFF59E0B)),
                         Triple("cool", Icons.Default.AcUnit, Color(0xFF2196F3)),
+                        Triple("dry", Icons.Default.Air, Color(0xFF8B5CF6)),
                         Triple("off", Icons.Default.PowerSettingsNew, Color(0xFFEF4444))
                     ).forEach { (label, icon, color) ->
                         val isSelected = state.globalSettings.globalHvacMode.lowercase() == label.lowercase()
@@ -2432,6 +2440,7 @@ fun ConsolidatedZoneCard(
     val activeColor = when (zone.currentHvacMode.lowercase()) {
         "heat" -> theme.heatColor
         "cool" -> theme.coolColor
+        "dry" -> Color(0xFF8B5CF6)
         "off" -> theme.offColor
         else -> theme.heatColor
     }
@@ -2467,8 +2476,12 @@ fun ConsolidatedZoneCard(
         ),
         label = "icon_pulse"
     )
+    // Lambda form reads the animated value in the layer phase, so the pulse doesn't recompose the card every frame.
     val runningModifier = if (activeHvacIsRunning) {
-        Modifier.graphicsLayer(scaleX = iconPulse, scaleY = iconPulse)
+        Modifier.graphicsLayer {
+            scaleX = iconPulse
+            scaleY = iconPulse
+        }
     } else {
         Modifier
     }
@@ -2831,6 +2844,7 @@ fun ZoneDetailPopup(
     val activeColor = when (zone.currentHvacMode.lowercase()) {
         "heat" -> Color(0xFFF59E0B)
         "cool" -> Color(0xFF2196F3)
+        "dry" -> Color(0xFF8B5CF6)
         "off" -> Color(0xFF64748B)
         else -> Color(0xFFF59E0B)
     }
@@ -2867,7 +2881,10 @@ fun ZoneDetailPopup(
         label = "icon_pulse"
     )
     val headerIconModifier = if (isRunning) {
-        Modifier.graphicsLayer(scaleX = pulseScale, scaleY = pulseScale)
+        Modifier.graphicsLayer {
+            scaleX = pulseScale
+            scaleY = pulseScale
+        }
     } else {
         Modifier
     }

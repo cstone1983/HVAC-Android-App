@@ -34,19 +34,34 @@ data class DynamicStatConfig(
     val label: String,
     val value: String,
     val icon: String? = null,
-    val tintColor: String? = null
+    val tintColor: String? = null,
+    // If entityId is set, the tile shows the entity's live state (or attribute) instead of the
+    // static `value` above — `value` remains the fallback shown before the first state arrives.
+    val entityId: String? = null,
+    val attribute: String? = null,
+    val unit: String? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class DynamicCardConfig(
-    val type: String, // "placeholder", "stats_row", "chart", "info_list", "status_panel"
+    val type: String, // "placeholder", "stats_row", "chart", "entity_toggle", "action_button", "live_chart"
     val title: String? = null,
     val subtitle: String? = null,
     val icon: String? = null,
     val tintColor: String? = null, // "eco", "cool", "heating", "accent", etc.
     val statusText: String? = null,
     val stats: List<DynamicStatConfig>? = null,
-    val chartData: List<DynamicChartPointConfig>? = null
+    val chartData: List<DynamicChartPointConfig>? = null,
+    // entity_toggle: binds a single switch/light to entityId, calling turn_on/turn_off on the
+    // domain inferred from the entity_id prefix (or `domain` if given).
+    val entityId: String? = null,
+    // action_button: calls `domain`.`service` (with optional serviceData) against `entityId` on tap.
+    val domain: String? = null,
+    val service: String? = null,
+    val serviceData: Map<String, String>? = null,
+    // live_chart: a real history line chart for `entityId` over `historyRange` ("6h", "24h", or "7d").
+    val historyRange: String? = null,
+    val unit: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -63,6 +78,52 @@ data class SystemLimitsConfig(
 )
 
 @JsonClass(generateAdapter = true)
+data class PoolSensorConfig(
+    val waterTemperatureEntityId: String? = "sensor.my_pool_water_temperature",
+    val phEntityId: String? = "sensor.my_pool_ph",
+    val orpEntityId: String? = "sensor.my_pool_orp",
+    val batteryEntityId: String? = "sensor.my_pool_battery",
+    val lastSyncedEntityId: String? = "sensor.my_pool_last_synced",
+    val lastUpdatedEntityId: String? = "sensor.my_pool_last_updated",
+    val monitorSerialEntityId: String? = "sensor.my_pool_monitor_serial",
+    val sensorSerialEntityId: String? = "sensor.my_pool_sensor_serial",
+    val wifiSignalEntityId: String? = "sensor.my_pool_wifi_signal",
+    val waterStatusEntityId: String? = "sensor.my_pool_water_status",
+    val actionsPendingEntityId: String? = "sensor.my_pool_actions_pending",
+    val pumpSwitchEntityId: String? = "switch.pool_pump",
+    val tempLowLimitEntityId: String? = "input_number.pool_temp_low_limit",
+    val tempHighLimitEntityId: String? = "input_number.pool_temp_high_limit",
+    val phLowLimitEntityId: String? = "input_number.pool_ph_low_limit",
+    val phHighLimitEntityId: String? = "input_number.pool_ph_high_limit",
+    val orpLowLimitEntityId: String? = "input_number.pool_orp_low_limit",
+    val orpHighLimitEntityId: String? = "input_number.pool_orp_high_limit",
+    val batteryLowLimitEntityId: String? = "input_number.pool_battery_low_limit",
+    val batteryHighLimitEntityId: String? = "input_number.pool_battery_high_limit"
+)
+
+@JsonClass(generateAdapter = true)
+data class SolarSensorConfig(
+    val usagePowerEntityId: String? = "sensor.basement_ct_panel_total_active_power",
+    val phaseAPowerEntityId: String? = "sensor.imeter_2pn_phase_a_power",
+    val phaseBPowerEntityId: String? = "sensor.imeter_2pn_phase_b_power",
+    val usageEnergyEntityId: String? = "sensor.basement_ct_panel_total_forward_active_energy",
+    val productionEnergyEntityId: String? = "sensor.imeter_2pn_total_production",
+    val diagSolarGenerationEntityId: String? = "sensor.exterior_imeter_2pn_solar_generation",
+    val diagSolarProductionDailyEntityId: String? = "sensor.exterior_imeter_2pn_solar_production_daily",
+    val diagPanelUsageEntityId: String? = "sensor.basement_ct_panel_panel_usage",
+    val diagDailyPanelUsageEntityId: String? = "sensor.basement_ct_panel_daily_panel_usage",
+    val solcastForecastTodayEntityId: String? = "sensor.solcast_solar_enhanced_forecast_today",
+    val solcastForecastNowEntityId: String? = "sensor.solcast_solar_enhanced_forecast_now",
+    val gridUsageL1EntityId: String? = "sensor.daily_grid_usage_l1",
+    val gridUsageL2EntityId: String? = "sensor.daily_grid_usage_l2",
+    val gridExportL1EntityId: String? = "sensor.daily_grid_export_l1",
+    val gridExportL2EntityId: String? = "sensor.daily_grid_export_l2",
+    val solarGenL1EntityId: String? = "sensor.daily_solar_generation_l1",
+    val solarGenL2EntityId: String? = "sensor.daily_solar_generation_l2",
+    val cmpBankBalanceEntityId: String? = "sensor.cmp_bank_balance"
+)
+
+@JsonClass(generateAdapter = true)
 data class HvacLayoutConfig(
     val version: String,
     val roomSensors: List<RoomSensorConfig>,
@@ -76,6 +137,8 @@ data class HvacLayoutConfig(
     val limits: SystemLimitsConfig? = SystemLimitsConfig(),
     val waterHeaterEntityId: String? = "input_select.water_heater_mode",
     val waterHeaterFullnessEntityId: String? = "sensor.heat_pump_water_heater_available_hot_water",
+    val poolSensors: PoolSensorConfig? = PoolSensorConfig(),
+    val solarSensors: SolarSensorConfig? = SolarSensorConfig(),
     val dynamicSections: List<DynamicSectionConfig>? = emptyList(),
     val showWeatherCard: Boolean? = true,
     val weatherLatitude: Double? = 37.7749,

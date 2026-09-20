@@ -1,12 +1,19 @@
 package com.example.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -21,10 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.DynamicCardConfig
 import com.example.model.DynamicSectionConfig
 import com.example.model.DynamicStatConfig
 import com.example.ui.theme.HvacThemeColors
+import com.example.viewmodel.HvacViewModel
 
 // Resolve icons dynamically from string names in JSON
 fun getDynamicIconByName(name: String?): ImageVector {
@@ -45,6 +54,8 @@ fun getDynamicIconByName(name: String?): ImageVector {
         "schedule", "timer", "time" -> Icons.Default.Schedule
         "shield", "security" -> Icons.Default.Shield
         "info", "help" -> Icons.Default.Info
+        "power_toggle", "switch", "toggle" -> Icons.Default.PowerSettingsNew
+        "play", "run", "action" -> Icons.Default.PlayArrow
         else -> Icons.Default.Help
     }
 }
@@ -74,7 +85,7 @@ fun getColorByName(name: String?, theme: HvacThemeColors): Color {
 }
 
 @Composable
-fun DynamicSectionRenderer(sectionConfig: DynamicSectionConfig, theme: HvacThemeColors) {
+fun DynamicSectionRenderer(sectionConfig: DynamicSectionConfig, theme: HvacThemeColors, viewModel: HvacViewModel) {
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxWidth()
@@ -98,10 +109,19 @@ fun DynamicSectionRenderer(sectionConfig: DynamicSectionConfig, theme: HvacTheme
                     PlaceholderCard(card = card, theme = theme)
                 }
                 "stats_row" -> {
-                    StatsRowCard(card = card, theme = theme)
+                    StatsRowCard(card = card, theme = theme, viewModel = viewModel)
                 }
                 "chart" -> {
                     ChartCard(card = card, theme = theme)
+                }
+                "entity_toggle" -> {
+                    EntityToggleCard(card = card, theme = theme, viewModel = viewModel)
+                }
+                "action_button" -> {
+                    ActionButtonCard(card = card, theme = theme, viewModel = viewModel)
+                }
+                "live_chart" -> {
+                    LiveChartCard(card = card, theme = theme)
                 }
                 else -> {
                     // Fallback simple card with generic layout
@@ -170,10 +190,12 @@ fun PlaceholderCard(card: DynamicCardConfig, theme: HvacThemeColors) {
 }
 
 @Composable
-fun StatsRowCard(card: DynamicCardConfig, theme: HvacThemeColors) {
+fun StatsRowCard(card: DynamicCardConfig, theme: HvacThemeColors, viewModel: HvacViewModel) {
     val stats = card.stats ?: emptyList()
     if (stats.isEmpty()) return
-    
+
+    val statesMap by viewModel.wsStates.collectAsStateWithLifecycle()
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         card.title?.let { title ->
             Text(
@@ -189,6 +211,19 @@ fun StatsRowCard(card: DynamicCardConfig, theme: HvacThemeColors) {
         ) {
             stats.forEach { stat ->
                 val statAccent = getColorByName(stat.tintColor ?: card.tintColor, theme)
+                // A live-bound stat (entityId set) shows the entity's current state or attribute,
+                // falling back to the static `value` until the first live update arrives.
+                val displayValue = if (!stat.entityId.isNullOrBlank()) {
+                    val entityState = statesMap[stat.entityId]
+                    val raw = if (!stat.attribute.isNullOrBlank()) {
+                        entityState?.getStringAttribute(stat.attribute)
+                    } else {
+                        entityState?.state
+                    }
+                    if (raw != null) "$raw${stat.unit ?: ""}" else stat.value
+                } else {
+                    stat.value
+                }
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -229,7 +264,7 @@ fun StatsRowCard(card: DynamicCardConfig, theme: HvacThemeColors) {
                                 letterSpacing = 0.5.sp
                             )
                             Text(
-                                text = stat.value,
+                                text = displayValue,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = Color.White.copy(alpha = 0.85f)
@@ -284,7 +319,7 @@ fun ChartCard(card: DynamicCardConfig, theme: HvacThemeColors) {
                     modifier = Modifier.size(18.dp)
                 )
             }
-            
+
             // Draw a highly visual, realistic pulsing telemetry chart
             Canvas(
                 modifier = Modifier
@@ -293,7 +328,7 @@ fun ChartCard(card: DynamicCardConfig, theme: HvacThemeColors) {
             ) {
                 val width = size.width
                 val height = size.height
-                
+
                 // Draw horizontal dotted grid lines
                 val gridLines = 3
                 for (i in 0..gridLines) {
@@ -305,14 +340,14 @@ fun ChartCard(card: DynamicCardConfig, theme: HvacThemeColors) {
                         strokeWidth = 1.dp.toPx()
                     )
                 }
-                
+
                 // Draw a beautiful ambient gradient bezier path
                 val path = Path().apply {
                     moveTo(0f, height * 0.7f)
                     cubicTo(width * 0.25f, height * 0.2f, width * 0.4f, height * 0.8f, width * 0.6f, height * 0.4f)
                     cubicTo(width * 0.75f, height * 0.1f, width * 0.9f, height * 0.6f, width, height * 0.5f)
                 }
-                
+
                 // Fill brush under path
                 val fillPath = Path().apply {
                     addPath(path)
@@ -320,7 +355,7 @@ fun ChartCard(card: DynamicCardConfig, theme: HvacThemeColors) {
                     lineTo(0f, height)
                     close()
                 }
-                
+
                 drawPath(
                     path = fillPath,
                     brush = Brush.verticalGradient(
@@ -329,7 +364,7 @@ fun ChartCard(card: DynamicCardConfig, theme: HvacThemeColors) {
                         endY = height
                     )
                 )
-                
+
                 // Draw path line
                 drawPath(
                     path = path,
@@ -337,6 +372,250 @@ fun ChartCard(card: DynamicCardConfig, theme: HvacThemeColors) {
                     style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
                 )
             }
+        }
+    }
+}
+
+/**
+ * A single-entity real history line chart driven by a `live_chart` dynamicSections card —
+ * unlike [ChartCard], this fetches actual HA history for `card.entityId` and plots it.
+ */
+@Composable
+fun LiveChartCard(card: DynamicCardConfig, theme: HvacThemeColors) {
+    val accentColor = getColorByName(card.tintColor, theme)
+    val entityId = card.entityId
+    var points by remember(entityId, card.historyRange) { mutableStateOf<List<Float>>(emptyList()) }
+    var isLoading by remember(entityId, card.historyRange) { mutableStateOf(true) }
+    var loadError by remember(entityId, card.historyRange) { mutableStateOf(false) }
+
+    LaunchedEffect(entityId, card.historyRange) {
+        isLoading = true
+        loadError = false
+        if (entityId.isNullOrBlank()) {
+            isLoading = false
+            loadError = true
+            return@LaunchedEffect
+        }
+        try {
+            val hours = when (card.historyRange?.lowercase()?.trim()) {
+                "6h" -> 6
+                "7d" -> 24 * 7
+                else -> 24
+            }
+            val cal = java.util.Calendar.getInstance()
+            cal.add(java.util.Calendar.HOUR_OF_DAY, -hours)
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            val startStr = sdf.format(cal.time)
+            val nowStr = sdf.format(java.util.Date())
+            val raw = com.example.api.HomeAssistantClient.service.getHistory(
+                timestamp = startStr,
+                filterEntityId = entityId,
+                endTime = nowStr
+            )
+            val series = raw.firstOrNull()?.mapNotNull { it.state.toFloatOrNull() } ?: emptyList()
+            points = series
+            loadError = series.size < 2
+        } catch (e: Exception) {
+            loadError = true
+        } finally {
+            isLoading = false
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .background(color = Color.White.copy(alpha = theme.cardOpacity), shape = RoundedCornerShape(12.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+    ) {
+        Column(modifier = Modifier.padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = card.title ?: "LIVE HISTORY",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.85f)
+                    )
+                    Text(
+                        text = card.subtitle ?: (entityId ?: ""),
+                        fontSize = 9.sp,
+                        color = Color.White.copy(alpha = 0.4f)
+                    )
+                }
+                Icon(
+                    imageVector = getDynamicIconByName(card.icon ?: "show_chart"),
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                when {
+                    isLoading -> CircularProgressIndicator(modifier = Modifier.size(20.dp), color = accentColor, strokeWidth = 2.dp)
+                    loadError -> Text("No history data available", fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                    else -> {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val width = size.width
+                            val height = size.height
+                            val minVal = points.min()
+                            val maxVal = points.max()
+                            val range = (maxVal - minVal).takeIf { it > 0.0001f } ?: 1f
+
+                            val gridLines = 3
+                            for (i in 0..gridLines) {
+                                val y = (height / gridLines) * i
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.05f),
+                                    start = androidx.compose.ui.geometry.Offset(0f, y),
+                                    end = androidx.compose.ui.geometry.Offset(width, y),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
+
+                            val path = Path()
+                            val lastIndex = (points.size - 1).coerceAtLeast(1)
+                            points.forEachIndexed { index, value ->
+                                val x = width * (index.toFloat() / lastIndex)
+                                val y = height - ((value - minVal) / range) * height
+                                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                            }
+
+                            val fillPath = Path().apply {
+                                addPath(path)
+                                lineTo(width, height)
+                                lineTo(0f, height)
+                                close()
+                            }
+
+                            drawPath(
+                                path = fillPath,
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(accentColor.copy(alpha = 0.2f), Color.Transparent),
+                                    startY = 0f,
+                                    endY = height
+                                )
+                            )
+                            drawPath(
+                                path = path,
+                                color = accentColor.copy(alpha = 0.9f),
+                                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Binds a single switch/light entity to a live-state toggle — a new control can be added
+ * purely via an OTA layout_config.json push, with no app rebuild.
+ */
+@Composable
+fun EntityToggleCard(card: DynamicCardConfig, theme: HvacThemeColors, viewModel: HvacViewModel) {
+    val entityId = card.entityId ?: return
+    val statesMap by viewModel.wsStates.collectAsStateWithLifecycle()
+    val isOn = statesMap[entityId]?.state?.lowercase() == "on"
+    val accentColor = getColorByName(card.tintColor, theme)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isOn) accentColor.copy(alpha = (theme.cardOpacity * 3f).coerceIn(0.04f, 0.4f)) else Color.White.copy(alpha = theme.cardOpacity)
+        ),
+        border = BorderStroke(1.dp, if (isOn) accentColor.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.08f)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Icon(
+                    imageVector = getDynamicIconByName(card.icon),
+                    contentDescription = null,
+                    tint = if (isOn) accentColor else Color.White.copy(alpha = 0.4f),
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(text = card.title ?: entityId, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(
+                        text = if (isOn) "ACTIVE" else "POWER OFF",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isOn) accentColor else Color.White.copy(alpha = 0.4f)
+                    )
+                }
+            }
+            Switch(
+                checked = isOn,
+                onCheckedChange = { checked ->
+                    val domain = card.domain ?: entityId.substringBefore(".", missingDelimiterValue = "homeassistant")
+                    val service = if (checked) "turn_on" else "turn_off"
+                    viewModel.callDynamicEntityService(domain, service, entityId)
+                }
+            )
+        }
+    }
+}
+
+/**
+ * A one-tap button that calls `domain.service` against `entityId` — e.g. running a Home
+ * Assistant script/scene straight from a dashboard card defined in layout_config.json.
+ */
+@Composable
+fun ActionButtonCard(card: DynamicCardConfig, theme: HvacThemeColors, viewModel: HvacViewModel) {
+    val accentColor = getColorByName(card.tintColor, theme)
+    val entityId = card.entityId ?: ""
+    val domain = card.domain ?: entityId.substringBefore(".", missingDelimiterValue = "")
+    val service = card.service ?: "turn_on"
+    val canRun = entityId.isNotBlank() && domain.isNotBlank()
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = canRun) {
+                viewModel.callDynamicEntityService(domain, service, entityId, card.serviceData ?: emptyMap(), card.title)
+            },
+        colors = CardDefaults.cardColors(containerColor = accentColor.copy(alpha = 0.12f)),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = getDynamicIconByName(card.icon ?: "play"),
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = card.title ?: "Run Action", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                card.subtitle?.let {
+                    Text(text = it, fontSize = 9.sp, color = Color.White.copy(alpha = 0.5f))
+                }
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = accentColor.copy(alpha = 0.7f),
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
@@ -372,7 +651,7 @@ fun SimpleGenericCard(card: DynamicCardConfig, theme: HvacThemeColors) {
 
 // Retain compatibility delegates for existing code structures
 @Composable
-fun SolarDataPlaceholder(theme: HvacThemeColors) {
+fun SolarDataPlaceholder(theme: HvacThemeColors, viewModel: HvacViewModel) {
     // Elegant fallbacks
     val config = DynamicSectionConfig(
         id = "solar",
@@ -401,11 +680,11 @@ fun SolarDataPlaceholder(theme: HvacThemeColors) {
             )
         )
     )
-    DynamicSectionRenderer(sectionConfig = config, theme = theme)
+    DynamicSectionRenderer(sectionConfig = config, theme = theme, viewModel = viewModel)
 }
 
 @Composable
-fun PoolDataPlaceholder(theme: HvacThemeColors) {
+fun PoolDataPlaceholder(theme: HvacThemeColors, viewModel: HvacViewModel) {
     val config = DynamicSectionConfig(
         id = "pool",
         title = "Pool Automation Dashboard",
@@ -433,5 +712,5 @@ fun PoolDataPlaceholder(theme: HvacThemeColors) {
             )
         )
     )
-    DynamicSectionRenderer(sectionConfig = config, theme = theme)
+    DynamicSectionRenderer(sectionConfig = config, theme = theme, viewModel = viewModel)
 }

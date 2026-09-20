@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -67,6 +68,7 @@ class HvacForegroundService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var pollJob: Job? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -79,9 +81,11 @@ class HvacForegroundService : Service() {
         when (action) {
             ACTION_START -> {
                 startForegroundNotification()
+                acquireWifiLock()
                 startPollingLoop()
             }
             ACTION_STOP -> {
+                releaseWifiLock()
                 stopForeground(true)
                 stopSelf()
             }
@@ -96,6 +100,7 @@ class HvacForegroundService : Service() {
             }
             ACTION_DISMISS -> {
                 scheduleRestartInFiveMinutes()
+                releaseWifiLock()
                 stopForeground(true)
                 stopSelf()
             }
@@ -108,7 +113,44 @@ class HvacForegroundService : Service() {
 
     override fun onDestroy() {
         pollJob?.cancel()
+        releaseWifiLock()
         super.onDestroy()
+    }
+
+    /**
+     * Keeps the WiFi radio at full performance for the life of the service, so Android's
+     * power-save state transitions don't stall or drop the persistent HA WebSocket while
+     * the screen is on but the radio would otherwise idle down.
+     */
+    private fun acquireWifiLock() {
+        try {
+            if (wifiLock == null) {
+                val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                @Suppress("DEPRECATION")
+                wifiLock = wifiManager?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "HvacDeck:WifiHighPerfLock")?.apply {
+                    setReferenceCounted(false)
+                }
+            }
+            wifiLock?.let {
+                if (!it.isHeld) {
+                    it.acquire()
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("HvacForegroundService", "Could not acquire WifiLock on this device", e)
+        }
+    }
+
+    private fun releaseWifiLock() {
+        try {
+            wifiLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("HvacForegroundService", "Error releasing WifiLock", e)
+        }
     }
 
     private fun startForegroundNotification() {
@@ -337,11 +379,12 @@ class HvacForegroundService : Service() {
             val wsManager = HomeAssistantWebSocketManager.getInstance(applicationContext)
 
             val url = sharedPrefs.getString("ha_url", "") ?: ""
+            val backupUrl = sharedPrefs.getString("backup_ha_url", "") ?: ""
             val token = sharedPrefs.getString("ha_token", "") ?: ""
 
             if (url.isNotEmpty() && token.isNotEmpty()) {
                 HomeAssistantClient.initialize(url, token)
-                wsManager.connect(url, token)
+                wsManager.connectWithFailover(url, backupUrl, token)
             }
 
             // Real-time state collector via WebSocket StateFlow
