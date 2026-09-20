@@ -1,4 +1,4 @@
-﻿package com.example.ui
+package com.example.ui
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
@@ -139,7 +139,7 @@ fun PoolDashboardView(
     var activeTimeFrame by remember { mutableStateOf(1) } // 0 = 6h, 1 = 24h, 2 = 7d
 
     // These stay nullable on purpose. They used to fall back to 79.0 / 7.35 / 561.0, which
-    // rendered identically to a live reading â€” so an offline monitor showed a plausible,
+    // rendered identically to a live reading — so an offline monitor showed a plausible,
     // balanced pool. A missing reading now reads as missing.
     val currentTemp = poolState.waterTemperature?.toFloat()
     val currentPh = poolState.ph?.toFloat()
@@ -267,7 +267,7 @@ fun PoolDashboardView(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = poolState.waterTemperature
-                            ?.let { "${String.format("%.1f", it)} Â°F" } ?: "-- Â°F",
+                            ?.let { "${String.format("%.1f", it)} °F" } ?: "-- °F",
                         fontSize = 38.sp,
                         fontWeight = FontWeight.Light,
                         color = if (poolState.waterTemperature != null) Color.White
@@ -395,13 +395,13 @@ fun PoolDashboardView(
 
                 Spacer(modifier = Modifier.height(4.dp))
                 // No reading means no verdict. Calling an absent sensor "IDEAL" is the failure
-                // mode worth avoiding here â€” it is the reading you would act on.
+                // mode worth avoiding here — it is the reading you would act on.
                 val isPhIdeal = ph != null && ph >= poolPhMin && ph <= poolPhMax
                 Text(
                     text = when {
-                        ph == null -> "â€¢ NO DATA"
-                        isPhIdeal -> "â€¢ IDEAL"
-                        else -> "â€¢ ADJUST REQ"
+                        ph == null -> "• NO DATA"
+                        isPhIdeal -> "• IDEAL"
+                        else -> "• ADJUST REQ"
                     },
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Bold,
@@ -443,9 +443,9 @@ fun PoolDashboardView(
                 val isOrpIdeal = orp != null && orp >= poolOrpMin && orp <= poolOrpMax
                 Text(
                     text = when {
-                        orp == null -> "â€¢ NO DATA"
-                        isOrpIdeal -> "â€¢ ADEQUATE"
-                        else -> "â€¢ LOW SANITIZER"
+                        orp == null -> "• NO DATA"
+                        isOrpIdeal -> "• ADEQUATE"
+                        else -> "• LOW SANITIZER"
                     },
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Bold,
@@ -478,7 +478,7 @@ fun PoolDashboardView(
                 Text("${poolState.wifiSignal ?: -57} dBm", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("â€¢ EXCELLENT", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = theme.ecoColor)
+                Text("• EXCELLENT", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = theme.ecoColor)
             }
         }
 
@@ -636,7 +636,7 @@ fun PoolDashboardView(
 
                     val formatLabel = { v: Float ->
                         when {
-                            isTemp -> String.format("%.1fÂ°", v)
+                            isTemp -> String.format("%.1f°", v)
                             isPh -> String.format("%.2f", v)
                             else -> String.format("%.0f", v)
                         }
@@ -895,7 +895,7 @@ fun PoolDashboardView(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "Temp: ${String.format(java.util.Locale.US, "%.1f", pt.temp)}Â°F",
+                                            text = "Temp: ${String.format(java.util.Locale.US, "%.1f", pt.temp)}°F",
                                             fontSize = 9.5.sp,
                                             color = theme.coolColor,
                                             fontWeight = FontWeight.Bold,
@@ -1019,7 +1019,7 @@ fun PoolDashboardView(
                         // WATER TEMPERATURE RANGE
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                "Water Temperature Range (Â°F)",
+                                "Water Temperature Range (°F)",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White.copy(alpha = 0.6f)
@@ -1250,7 +1250,7 @@ fun PoolDashboardView(
                 val battVal = poolState.battery ?: 4536.0
                 val isBattIdeal = battVal >= poolBatteryMin && battVal <= poolBatteryMax
                 val batteryColor = if (isBattIdeal) theme.ecoColor else theme.heatColor
-                val batteryText = "${String.format("%.0f", battVal)} mV" + (if (isBattIdeal) " â€¢ IDEAL" else " â€¢ ADJUST REQ")
+                val batteryText = "${String.format("%.0f", battVal)} mV" + (if (isBattIdeal) " • IDEAL" else " • ADJUST REQ")
 
                 DiagnosticItem("Battery Volts", batteryText, Icons.Outlined.BatteryFull, theme, valueColor = batteryColor)
                 DiagnosticItem("Monitor Serial", poolState.monitorSerial ?: "020F5F12", Icons.Outlined.Monitor, theme)

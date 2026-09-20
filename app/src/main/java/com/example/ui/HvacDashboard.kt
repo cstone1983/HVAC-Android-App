@@ -3168,7 +3168,19 @@ fun ZoneDetailPopup(
                     // Power Control Toggle
                     IconButton(
                         onClick = {
-                            viewModel.toggleZonePower(zone.climateEntityId, zone.currentHvacMode, globalHvacMode, zone.name)
+                            // Powering a zone on is a mode change, so it gets the same check the
+                            // mode buttons get. Without this the power button was a way around
+                            // the conflict guard.
+                            val conflict = if (zone.currentHvacMode.lowercase() == "off") {
+                                viewModel.detectModeConflict(
+                                    zone.key, viewModel.powerOnModeFor(globalHvacMode)
+                                )
+                            } else null
+                            if (conflict != null) {
+                                pendingModeConflict = conflict
+                            } else {
+                                viewModel.toggleZonePower(zone.climateEntityId, zone.currentHvacMode, globalHvacMode, zone.name)
+                            }
                         },
                         modifier = Modifier
                             .size(40.dp)
