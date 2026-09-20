@@ -312,7 +312,7 @@ data class ClimateZone(
     val isCalling: Boolean
         get() {
             val mode = currentHvacMode.lowercase()
-            if (mode == "off" || mode == "unavailable") return false
+            if (mode in notReportingModes) return false
             hvacAction?.lowercase()?.let { action ->
                 return action == "heating" || action == "cooling" || action == "drying"
             }
@@ -337,11 +337,19 @@ data class ClimateZone(
         get() {
             val mode = currentHvacMode.lowercase()
             if (mode == "off") return "OFF"
-            if (mode == "unavailable") return "UNAVAILABLE"
+            // A head we cannot hear from says nothing about the room. This used to fall through
+            // to the temperature comparison below and report "AT TARGET" for a head whose state
+            // was "unknown", which reads as a reassurance nobody had verified.
+            if (mode in notReportingModes) return "UNAVAILABLE"
             if (isCalling) return "RUNNING"
             if (currentTemp != null && targetTemp != null) return "AT TARGET"
             return "IDLE"
         }
+
+    private companion object {
+        /** States that mean "no usable reading", as opposed to a head deliberately switched off. */
+        val notReportingModes = setOf("unavailable", "unknown", "")
+    }
 }
 
 /**
@@ -392,6 +400,70 @@ val headOutdoorUnit: Map<String, Int> = mapOf(
 
 fun sharesOutdoorUnit(zoneKeyA: String, zoneKeyB: String): Boolean =
     outdoorUnitsFor(zoneKeyA).any { it in outdoorUnitsFor(zoneKeyB) }
+
+/** The little a zone's identity and mode that the conflict rule actually needs. */
+data class ZoneModeSnapshot(
+    val key: String,
+    val name: String,
+    val mode: String
+)
+
+/**
+ * Whether [requestedMode] can be served for [targetZoneKey] alongside whatever else is running.
+ *
+ * Pure so it can be tested. This is the guard that stops a head being asked for cool while its
+ * condenser is heating, and it has to get three things right:
+ *
+ *  - The house mode outranks everything. When it disagrees it is the blocker. When it *agrees*
+ *    the request is the corrective one, and a single stray head must not be allowed to veto it,
+ *    or a house and a zone that disagree can never be brought back into line.
+ *  - Only heads on the same outdoor unit can conflict. There are two condensers and they are
+ *    free to differ.
+ *  - The zones named as affected are the ones an override would actually move, not every zone
+ *    that happens to be running.
+ *
+ * Returns null when the request is fine. This is a courtesy check for immediate feedback; the
+ * n8n watchdog is the real enforcement.
+ */
+fun findModeConflict(
+    zones: List<ZoneModeSnapshot>,
+    globalHvacMode: String,
+    targetZoneKey: String,
+    requestedMode: String
+): ModeConflict? {
+    val requested = hvacFamilyOf(requestedMode)
+    if (requested == HvacFamily.NEUTRAL) return null
+
+    val targetName = zones.firstOrNull { it.key == targetZoneKey }?.name
+    fun conflicting(mode: String) =
+        hvacFamilyOf(mode).let { it != HvacFamily.NEUTRAL && it != requested }
+
+    val globalFamily = hvacFamilyOf(globalHvacMode)
+    if (globalFamily != HvacFamily.NEUTRAL) {
+        if (globalFamily == requested) return null
+        val wouldSwitch = zones.filter { conflicting(it.mode) }.map { it.name }
+        return ModeConflict(
+            requestedMode, "The house mode", globalHvacMode,
+            (wouldSwitch + listOfNotNull(targetName)).distinct()
+        )
+    }
+
+    // House mode off means scheduling is paused and manual per-zone control is allowed, so only
+    // a head sharing this one's condenser can actually block it.
+    val clashing = zones.filter {
+        it.key != targetZoneKey &&
+            conflicting(it.mode) &&
+            sharesOutdoorUnit(it.key, targetZoneKey)
+    }
+    val blocker = clashing.firstOrNull { it.key == "main_level" }
+        ?: clashing.firstOrNull()
+        ?: return null
+
+    return ModeConflict(
+        requestedMode, blocker.name, blocker.mode,
+        (clashing.map { it.name } + listOfNotNull(targetName)).distinct()
+    )
+}
 
 /**
  * Lowest temperature these heads may be asked to cool or dry to. n8n clamps to the same value in

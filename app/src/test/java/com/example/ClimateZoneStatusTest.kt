@@ -87,4 +87,23 @@ class ClimateZoneStatusTest {
         assertFalse(zone("heat", 70.6, 71.0).isCalling)
         assertTrue(zone("heat", 70.4, 71.0).isCalling)
     }
+
+    @Test
+    fun `a head we cannot hear from is never reported as at target`() {
+        // "unknown" used to fall through to the temperature comparison and report AT TARGET,
+        // which reads as a verified reassurance about a room nobody has a reading for. A head
+        // absent from the state map now arrives here as "unavailable" for the same reason.
+        for (mode in listOf("unavailable", "unknown", "")) {
+            val z = zone(mode, 71.0, 71.0)
+            assertFalse("$mode should not be calling", z.isCalling)
+            assertEquals("$mode should report unavailable", "UNAVAILABLE", z.statusLabel)
+        }
+    }
+
+    @Test
+    fun `off still reads as off rather than unavailable`() {
+        // Deliberately switched off is a different fact from not reporting, and the card has to
+        // keep telling them apart.
+        assertEquals("OFF", zone("off", 71.0, 71.0).statusLabel)
+    }
 }

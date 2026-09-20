@@ -565,6 +565,21 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        // Action feedback is a one-shot event modelled as a StateFlow with two consumers and,
+        // until now, one clearer: only the zone popup called clearFeedback(). A message raised
+        // from the home screen therefore stayed on the wall until something unrelated replaced
+        // it, so a stale "Failed to sync action" could sit there for hours. Expire it centrally.
+        // collectLatest cancels the pending clear when a newer message arrives, so each message
+        // gets its own full window rather than being cut short by its predecessor.
+        viewModelScope.launch {
+            _actionFeedback.collectLatest { message ->
+                if (message != null) {
+                    kotlinx.coroutines.delay(FEEDBACK_VISIBLE_MS)
+                    _actionFeedback.value = null
+                }
+            }
+        }
+
         com.example.api.GithubClient.tokenProvider = {
             val saved = sharedPrefs.getString("github_token", "") ?: ""
             val buildConfigToken = try { com.example.BuildConfig.GITHUB_TOKEN } catch (e: Exception) { "" }
@@ -830,6 +845,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** How long a one-shot action message stays on screen before clearing itself. */
+    private val FEEDBACK_VISIBLE_MS = 6000L
+
     fun clearFeedback() {
         _actionFeedback.value = null
     }
@@ -1083,7 +1101,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     ),
                     currentTemp = climate?.getDoubleAttribute("current_temperature"),
                     targetTemp = resolvedTargetTemp,
-                    currentHvacMode = climate?.state ?: "off",
+                    // A head missing from the state map is not an off head. Defaulting to "off"
+                    // made an absent entity look like a zone somebody deliberately switched off,
+                    // and the power button would then offer to turn it "on".
+                    currentHvacMode = climate?.state ?: "unavailable",
                     hvacAction = climate?.getStringAttribute("hvac_action"),
                     autoOn = auto?.state?.lowercase() == "on",
                     overrideOn = override?.state?.lowercase() == "on",
@@ -1530,7 +1551,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleZonePower(climateEntityId: String, currentHvacMode: String, globalHvacMode: String, name: String) {
-        if (currentHvacMode.lowercase() != "off") {
+        val mode = currentHvacMode.lowercase()
+        // Nothing sensible to toggle toward when we cannot hear from the head, and sending
+        // turn_off to a head that is merely unreachable is a command with no meaning.
+        if (mode == "unavailable" || mode == "unknown" || mode.isBlank()) {
+            _actionFeedback.value = "$name is not reporting — not changed"
+            return
+        }
+        if (mode != "off") {
             callServiceWithOptimisticFeedback(
                 "climate", "turn_off", mapOf("entity_id" to climateEntityId), "$name power: OFF"
             )
@@ -1657,47 +1685,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun detectModeConflict(targetZoneKey: String, requestedMode: String): com.example.model.ModeConflict? {
         val state = _uiState.value as? HvacUiState.Success ?: return null
-        val requested = com.example.model.hvacFamilyOf(requestedMode)
-        if (requested == com.example.model.HvacFamily.NEUTRAL) return null
-
-        val globalMode = state.globalSettings.globalHvacMode
-        val globalFamily = com.example.model.hvacFamilyOf(globalMode)
-
-        // The house mode outranks everything. When it disagrees, it is the blocker. When it
-        // agrees, this request is the corrective one — a single zone sitting in the other family
-        // is the thing that needs fixing, so it must not be allowed to veto the fix.
-        if (globalFamily != com.example.model.HvacFamily.NEUTRAL) {
-            if (globalFamily == requested) return null
-            val wouldSwitch = state.zones.filter {
-                com.example.model.hvacFamilyOf(it.currentHvacMode).let { f ->
-                    f != com.example.model.HvacFamily.NEUTRAL && f != requested
-                }
-            }.map { it.name }
-            val target = state.zones.firstOrNull { it.key == targetZoneKey }?.name
-            return com.example.model.ModeConflict(
-                requestedMode, "The house mode", globalMode,
-                (wouldSwitch + listOfNotNull(target)).distinct()
-            )
-        }
-
-        // House mode off means scheduling is paused and manual per-zone control is allowed.
-        // Only a head on the same outdoor unit can actually block this one.
-        val clashing = state.zones.filter {
-            it.key != targetZoneKey &&
-                com.example.model.hvacFamilyOf(it.currentHvacMode).let { f ->
-                    f != com.example.model.HvacFamily.NEUTRAL && f != requested
-                } &&
-                com.example.model.sharesOutdoorUnit(it.key, targetZoneKey)
-        }
-
-        val blocker = clashing.firstOrNull { it.key == "main_level" }
-            ?: clashing.firstOrNull()
-            ?: return null
-
-        val target = state.zones.firstOrNull { it.key == targetZoneKey }?.name
-        return com.example.model.ModeConflict(
-            requestedMode, blocker.name, blocker.currentHvacMode,
-            (clashing.map { it.name } + listOfNotNull(target)).distinct()
+        return com.example.model.findModeConflict(
+            zones = state.zones.map {
+                com.example.model.ZoneModeSnapshot(it.key, it.name, it.currentHvacMode)
+            },
+            globalHvacMode = state.globalSettings.globalHvacMode,
+            targetZoneKey = targetZoneKey,
+            requestedMode = requestedMode
         )
     }
 

@@ -2474,8 +2474,9 @@ fun ConsolidatedZoneCard(
         "heat" -> theme.heatColor
         "cool" -> theme.coolColor
         "dry" -> theme.dryColor
-        "off" -> theme.offColor
-        else -> theme.heatColor
+        // Anything else is off, unavailable or unknown. This used to fall through to the heat
+        // colour, so an unreachable head displayed in heating orange.
+        else -> theme.offColor
     }
     // Null when the zone is off or unavailable, which leaves the card its plain glass look.
     val modeTint = when (zone.currentHvacMode.lowercase()) {
@@ -2927,8 +2928,9 @@ fun ZoneDetailPopup(
         "heat" -> theme.heatColor
         "cool" -> theme.coolColor
         "dry" -> theme.dryColor
-        "off" -> theme.offColor
-        else -> Color(0xFFF59E0B)
+        // Off, unavailable or unknown. Previously a hardcoded amber, so an unreachable head
+        // rendered as though it were heating.
+        else -> theme.offColor
     }
 
     val actionFeedback by viewModel.actionFeedback.collectAsStateWithLifecycle()
@@ -2952,7 +2954,9 @@ fun ZoneDetailPopup(
 
     // Creative and robust Material 3 animations inside popup
     val infiniteTransition = rememberInfiniteTransition(label = "detail_animations")
-    val isRunning = zone.currentHvacMode.lowercase() in listOf("heat", "cool")
+    // Use the derived "is it actually working" state rather than a mode whitelist, which left
+    // out dry and treated a zone sitting at target as though it were running.
+    val isRunning = zone.isCalling
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 0.9f,
         targetValue = 1.18f,
