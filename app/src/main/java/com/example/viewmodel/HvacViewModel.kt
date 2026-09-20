@@ -1532,6 +1532,115 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         ), "$name power: ${targetMode.uppercase()}")
     }
 
+    /**
+     * When someone last arrived or left. [olderThanWindow] means recorder history held no
+     * transition at all, so the honest answer is "longer ago than we can see" rather than a
+     * fabricated timestamp.
+     */
+    data class PresenceSince(val millis: Long?, val olderThanWindow: Boolean)
+
+    /**
+     * When each person last genuinely arrived or left, keyed by entity id.
+     *
+     * An entity's `last_changed` is useless for this: Home Assistant resets it on every
+     * restart, so after a reboot all six people appear to have arrived at the same instant.
+     * Recorder history is walked backwards from the newest record while the state still
+     * matches the current one, which skips those restart artifacts and lands on the real
+     * transition. Falls back to `last_changed` when history is unavailable.
+     */
+    suspend fun fetchPresenceSince(entityIds: List<String>): Map<String, PresenceSince> =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            if (entityIds.isEmpty()) return@withContext emptyMap()
+            val result = mutableMapOf<String, PresenceSince>()
+            try {
+                // The timestamp needs the trailing Z; without a zone marker Home Assistant
+                // rejects the request outright.
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+                    .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+                val now = System.currentTimeMillis()
+                val startIso = sdf.format(java.util.Date(now - 14L * 24 * 60 * 60 * 1000))
+                val endIso = sdf.format(java.util.Date(now))
+                // Deliberately NOT minimal_response: that form omits entity_id on every record
+                // after the first, and EntityState.entity_id is non-null, so Moshi rejects the
+                // whole payload. no_attributes alone keeps it small and well-formed.
+                val response = HomeAssistantClient.service.getHistory(
+                    timestamp = startIso,
+                    filterEntityId = entityIds.joinToString(","),
+                    endTime = endIso,
+                    noAttributes = "true"
+                )
+                response.forEach { series ->
+                    if (series.isEmpty()) return@forEach
+                    val entityId = series.firstOrNull { it.entity_id.isNotBlank() }?.entity_id ?: return@forEach
+                    val current = series.last().state
+                    // Walk back over the contiguous run of the current state; a restart shows
+                    // up as a repeat of the same state and is therefore stepped over.
+                    var index = series.lastIndex
+                    while (index > 0) {
+                        val previous = series[index - 1].state
+                        if (!previous.equals(current, ignoreCase = true)) break
+                        index--
+                    }
+                    if (index == 0) {
+                        // The whole window is one unbroken state, so the change that produced
+                        // it happened before the window opened. Someone who visits every few
+                        // weeks looks exactly like this, and quoting the window start — or
+                        // worse, last_changed — would invent a duration that never happened.
+                        result[entityId] = PresenceSince(millis = null, olderThanWindow = true)
+                    } else {
+                        val stamp = series[index].last_changed ?: series[index].last_updated
+                        val millis = parseIsoUtcMillis(stamp)
+                        result[entityId] = PresenceSince(
+                            millis = millis,
+                            olderThanWindow = millis == null
+                        )
+                    }
+                }
+                // Anyone the recorder said nothing about at all is in the same position.
+                entityIds.forEach { id ->
+                    result.getOrPut(id) { PresenceSince(millis = null, olderThanWindow = true) }
+                }
+            } catch (e: Exception) {
+                // An empty map means "could not tell", which the UI renders as no duration
+                // rather than guessing from last_changed.
+                android.util.Log.w("HvacViewModel", "Presence history unavailable: ${e.message}")
+                return@withContext emptyMap()
+            }
+            result
+        }
+
+    private fun parseIsoUtcMillis(raw: String?): Long? {
+        if (raw.isNullOrBlank()) return null
+        return try {
+            val m = Regex("^(\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2})(?:\\.(\\d+))?\\s*(Z|[+-]\\d{2}:?\\d{2})?$")
+                .find(raw.trim()) ?: return null
+            val base = m.groupValues[1].replace(' ', 'T')
+            val millis = m.groupValues[2].take(3).padEnd(3, '0')
+            val off = m.groupValues[3].let {
+                when {
+                    it.isEmpty() || it == "Z" -> "+0000"
+                    else -> it.replace(":", "")
+                }
+            }
+            java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", java.util.Locale.US)
+                .parse("$base.$millis$off")?.time
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Sets one zone's mode directly. Calling this on a zone that is currently off also powers
+     * it on, which is what tapping Heat on a sleeping zone should do.
+     */
+    fun setZoneHvacMode(climateEntityId: String, mode: String, name: String) {
+        val target = mode.lowercase()
+        callServiceWithOptimisticFeedback("climate", "set_hvac_mode", mapOf(
+            "entity_id" to climateEntityId,
+            "hvac_mode" to target
+        ), "$name mode: ${target.uppercase()}")
+    }
+
     fun toggleLight(entityId: String, currentOn: Boolean, name: String) {
         val service = if (currentOn) "turn_off" else "turn_on"
         callServiceWithOptimisticFeedback("light", service, mapOf(

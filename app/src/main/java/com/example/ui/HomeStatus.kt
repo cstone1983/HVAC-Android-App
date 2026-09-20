@@ -9,6 +9,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Garage
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Sync
@@ -35,7 +38,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.api.EntityState
 import com.example.model.HomeStatusConfig
@@ -93,6 +101,57 @@ internal fun readEntityValue(
 
 private fun formatRounded(raw: String?): String? =
     raw?.toDoubleOrNull()?.let { "${it.toInt()}" } ?: raw
+
+/**
+ * Parses a Home Assistant timestamp to epoch millis.
+ *
+ * java.time needs API 26 and this module has no core library desugaring, so SimpleDateFormat
+ * it is — but HA emits microseconds ("...:06.787957+00:00") and SimpleDateFormat would read
+ * those six digits as milliseconds and land ~13 minutes late. Fractional seconds are
+ * therefore truncated to three digits and the offset normalised before parsing.
+ */
+internal fun parseHaTimestamp(raw: String?): Long? {
+    if (raw.isNullOrBlank()) return null
+    return try {
+        val match = Regex("^(\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2})(?:\\.(\\d+))?\\s*(Z|[+-]\\d{2}:?\\d{2})?$")
+            .find(raw.trim()) ?: return null
+        val base = match.groupValues[1].replace(' ', 'T')
+        val millis = match.groupValues[2].take(3).padEnd(3, '0')
+        val offsetRaw = match.groupValues[3]
+        val offset = when {
+            offsetRaw.isEmpty() || offsetRaw == "Z" -> "+0000"
+            else -> offsetRaw.replace(":", "")
+        }
+        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", java.util.Locale.US)
+            .parse("$base.$millis$offset")?.time
+    } catch (e: Exception) {
+        null
+    }
+}
+
+/** "4d 3h", "5h 12m", "42m", "just now" — coarse on purpose. */
+internal fun formatElapsed(sinceMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
+    val delta = nowMillis - sinceMillis
+    if (delta < 60_000L) return "just now"
+    val minutes = delta / 60_000L
+    val hours = minutes / 60
+    val days = hours / 24
+    return when {
+        days >= 1 -> "${days}d ${hours % 24}h"
+        hours >= 1 -> "${hours}h ${minutes % 60}m"
+        else -> "${minutes}m"
+    }
+}
+
+/** Clock time, with the date added once the event is no longer today. */
+private fun formatClock(millis: Long): String {
+    val now = java.util.Calendar.getInstance()
+    val then = java.util.Calendar.getInstance().apply { timeInMillis = millis }
+    val sameDay = now.get(java.util.Calendar.YEAR) == then.get(java.util.Calendar.YEAR) &&
+        now.get(java.util.Calendar.DAY_OF_YEAR) == then.get(java.util.Calendar.DAY_OF_YEAR)
+    val pattern = if (sameDay) "h:mm a" else "EEE h:mm a"
+    return java.text.SimpleDateFormat(pattern, java.util.Locale.US).format(java.util.Date(millis))
+}
 
 /**
  * The one line on the home screen that is normally absent. It surfaces, in priority order:
@@ -240,7 +299,10 @@ fun HumidityCard(
 fun PresenceCard(
     viewModel: HvacViewModel,
     presenceEntityIds: List<String>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lastInteractionTime: Long = 0L,
+    popupTimeoutMillis: Long = 20_000L,
+    onInteraction: () -> Unit = {}
 ) {
     if (presenceEntityIds.isEmpty()) return
     val states by viewModel.entityStates.collectAsStateWithLifecycle()
@@ -248,13 +310,63 @@ fun PresenceCard(
         val entity = states[id] ?: return@mapNotNull null
         val name = entity.getStringAttribute("friendly_name")
             ?: id.substringAfter('.').replace('_', ' ')
-        name to entity.state.equals("home", true)
+        PersonPresence(
+            entityId = id,
+            name = name,
+            isHome = entity.state.equals("home", true),
+            sinceMillis = parseHaTimestamp(entity.last_changed)
+        )
     }
     if (people.isEmpty()) return
-    val homeCount = people.count { it.second }
+    val homeCount = people.count { it.isHome }
+
+    var showDetails by remember { mutableStateOf(false) }
+
+    // The kiosk idle timer has to reach this popup too, otherwise it is the one thing left
+    // open on the wall after everything else has returned to the dashboard.
+    LaunchedEffect(lastInteractionTime, showDetails) {
+        if (showDetails && lastInteractionTime > 0) {
+            kotlinx.coroutines.delay(popupTimeoutMillis)
+            showDetails = false
+        }
+    }
+
+    if (showDetails) {
+        // last_changed resets on a Home Assistant restart, so the real transition times come
+        // from recorder history, fetched once when the popup opens.
+        var historySince by remember {
+            mutableStateOf<Map<String, HvacViewModel.PresenceSince>>(emptyMap())
+        }
+        var historyLoaded by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            historySince = viewModel.fetchPresenceSince(presenceEntityIds)
+            historyLoaded = true
+        }
+        PresenceDetailDialog(
+            people = people.map { person ->
+                val fromHistory = historySince[person.entityId]
+                when {
+                    // History is authoritative. last_changed only survives as a fallback when
+                    // the history call itself failed, because a restart resets it and would
+                    // otherwise report everyone as having moved at the same instant.
+                    fromHistory != null -> person.copy(
+                        sinceMillis = fromHistory.millis,
+                        unknownDuration = fromHistory.millis == null
+                    )
+                    historyLoaded -> person.copy(sinceMillis = null, unknownDuration = true)
+                    else -> person
+                }
+            },
+            resolved = historyLoaded,
+            onDismiss = { showDetails = false },
+            onInteraction = onInteraction
+        )
+    }
 
     Card(
-        modifier = modifier.testTag("presence_card"),
+        modifier = modifier
+            .clickable { showDetails = true }
+            .testTag("presence_card"),
         colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
         border = BorderStroke(1.dp, hvacBorderAlphaColor()),
         shape = hvacCardShape(12)
@@ -269,7 +381,9 @@ fun PresenceCard(
             )
             Spacer(Modifier.height(7.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                people.take(6).forEach { (name, isHome) ->
+                people.take(6).forEach { person ->
+                    val name = person.name
+                    val isHome = person.isHome
                     val tint = if (isHome) Color(0xFF10B981) else Color.White.copy(alpha = 0.25f)
                     Box(
                         modifier = Modifier
@@ -295,6 +409,183 @@ fun PresenceCard(
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.8.sp,
                 color = Color.White.copy(alpha = 0.45f)
+            )
+        }
+    }
+}
+
+internal data class PersonPresence(
+    val entityId: String,
+    val name: String,
+    val isHome: Boolean,
+    /** When they arrived or left. Null when nothing reliable could be determined. */
+    val sinceMillis: Long?,
+    /** Recorder history held no transition, so the change predates what we can see. */
+    val unknownDuration: Boolean = false
+)
+
+/**
+ * Who is home, when each of them arrived or left, and how long it has been. This is the
+ * answer to "why did the house go into Away mode" — presence drives that automation, and
+ * until now nothing on the panel showed it.
+ */
+@Composable
+private fun PresenceDetailDialog(
+    people: List<PersonPresence>,
+    resolved: Boolean,
+    onDismiss: () -> Unit,
+    onInteraction: () -> Unit = {}
+) {
+    val home = people.filter { it.isHome }.sortedByDescending { it.sinceMillis ?: 0L }
+    val away = people.filterNot { it.isHome }.sortedByDescending { it.sinceMillis ?: 0L }
+    val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = screenHeight * 0.85f)
+                .padding(vertical = 12.dp)
+                .dialogInteractionReporter(onInteraction)
+                .testTag("presence_detail_dialog"),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(18.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "WHO'S HOME",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 2.sp,
+                        color = Color.White
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .clickable(onClick = onDismiss),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = if (resolved) "${home.size} HOME · ${away.size} AWAY"
+                    else "${home.size} HOME · ${away.size} AWAY · CHECKING HISTORY…",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = Color.White.copy(alpha = 0.45f)
+                )
+                Spacer(Modifier.height(14.dp))
+
+                listOf(true to home, false to away).forEach { (isHomeGroup, group) ->
+                    if (group.isEmpty()) return@forEach
+                    Text(
+                        text = if (isHomeGroup) "HOME" else "AWAY",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.3.sp,
+                        color = if (isHomeGroup) Color(0xFF10B981) else Color.White.copy(alpha = 0.4f)
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    group.forEach { person -> PresenceRow(person) }
+                    Spacer(Modifier.height(14.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PresenceRow(person: PersonPresence) {
+    val tint = if (person.isHome) Color(0xFF10B981) else Color.White.copy(alpha = 0.3f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(11.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(if (person.isHome) tint.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.04f))
+                .border(BorderStroke(1.5.dp, tint.copy(alpha = if (person.isHome) 0.7f else 0.2f)), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = person.name.take(1).uppercase(),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Black,
+                color = if (person.isHome) tint else Color.White.copy(alpha = 0.4f)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = person.name,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(2.dp))
+            val since = person.sinceMillis
+            Text(
+                text = when {
+                    since != null && person.isHome -> "Arrived ${formatClock(since)}"
+                    since != null -> "Left ${formatClock(since)}"
+                    person.unknownDuration -> "No change in recorded history"
+                    person.isHome -> "Home"
+                    else -> "Away"
+                },
+                fontSize = 11.sp,
+                color = Color.White.copy(alpha = 0.55f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = when {
+                    person.sinceMillis != null -> formatElapsed(person.sinceMillis)
+                    person.unknownDuration -> "2w+"
+                    else -> "--"
+                },
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = when {
+                    person.sinceMillis == null -> Color.White.copy(alpha = 0.35f)
+                    person.isHome -> tint
+                    else -> Color.White.copy(alpha = 0.6f)
+                }
+            )
+            Text(
+                text = if (person.isHome) "HOME FOR" else "GONE FOR",
+                fontSize = 7.5.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.8.sp,
+                color = Color.White.copy(alpha = 0.35f)
             )
         }
     }

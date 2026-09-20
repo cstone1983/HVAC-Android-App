@@ -909,7 +909,7 @@ fun DynamicTabContent(
     var activeLightPopupId by remember { mutableStateOf<String?>(null) }
     var activeSwitchPopupId by remember { mutableStateOf<String?>(null) }
 
-    val popupTimeoutMillis = (layoutConfig.popupTimeoutSeconds ?: 60).coerceAtLeast(10) * 1000L
+    val popupTimeoutMillis = (layoutConfig.popupTimeoutSeconds ?: 20).coerceAtLeast(5) * 1000L
     LaunchedEffect(lastInteractionTime) {
         if (lastInteractionTime > 0) {
             kotlinx.coroutines.delay(popupTimeoutMillis)
@@ -1405,7 +1405,8 @@ fun HvacDashboardContent(
     // own windows, so their touches never reached the root pointerInput below — which meant
     // this fired mid-adjustment and disposed the open popup. They now report interaction
     // through onInteraction, and the window is long enough to read a chart on the wall.
-    val idleReturnMillis = (layoutConfig.idleReturnSeconds ?: 120).coerceAtLeast(15) * 1000L
+    val idleReturnMillis = (layoutConfig.idleReturnSeconds ?: 20).coerceAtLeast(5) * 1000L
+    val popupTimeoutMillis = (layoutConfig.popupTimeoutSeconds ?: 20).coerceAtLeast(5) * 1000L
     LaunchedEffect(lastInteractionTime) {
         kotlinx.coroutines.delay(idleReturnMillis)
         selectedTab = 0
@@ -1816,7 +1817,10 @@ fun HvacDashboardContent(
                     PresenceCard(
                         viewModel = viewModel,
                         presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        lastInteractionTime = lastInteractionTime,
+                        popupTimeoutMillis = popupTimeoutMillis,
+                        onInteraction = { lastInteractionTime = System.currentTimeMillis() }
                     )
 
                     QuickActionsCard(
@@ -1850,7 +1854,10 @@ fun HvacDashboardContent(
                 PresenceCard(
                     viewModel = viewModel,
                     presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    lastInteractionTime = lastInteractionTime,
+                    popupTimeoutMillis = popupTimeoutMillis,
+                    onInteraction = { lastInteractionTime = System.currentTimeMillis() }
                 )
             }
 
@@ -3158,6 +3165,74 @@ fun ZoneDetailPopup(
                             fontSize = 8.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White.copy(alpha = 0.4f)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Per-zone mode. Off is deliberately absent — the power button above owns it.
+                Text(
+                    text = "ZONE MODE",
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White.copy(alpha = 0.5f),
+                    letterSpacing = 1.3.sp
+                )
+                Spacer(modifier = Modifier.height(7.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    listOf(
+                        Triple("heat", Icons.Default.Whatshot, Color(0xFFF59E0B)),
+                        Triple("cool", Icons.Default.AcUnit, Color(0xFF2196F3)),
+                        Triple("dry", Icons.Default.Air, Color(0xFF8B5CF6))
+                    ).forEach { (mode, icon, color) ->
+                        SegmentedControlButton(
+                            label = mode,
+                            icon = icon,
+                            color = color,
+                            isSelected = zone.currentHvacMode.lowercase() == mode,
+                            contentDescription = "Set ${zone.name} to $mode",
+                            testTagId = "zone_mode_btn_${zone.key}_$mode",
+                            onClick = { viewModel.setZoneHvacMode(zone.climateEntityId, mode, zone.name) }
+                        )
+                    }
+                }
+
+                // A multi-split shares one outdoor unit, so a head asking for cool while the
+                // house is heating (or the reverse) is a conflict the equipment cannot serve.
+                val zoneModeLower = zone.currentHvacMode.lowercase()
+                val houseModeLower = globalHvacMode.lowercase()
+                val coolFamily = setOf("cool", "dry")
+                val conflictsWithHouse = houseModeLower != "off" && zoneModeLower != "off" &&
+                    ((zoneModeLower == "heat" && houseModeLower in coolFamily) ||
+                        (zoneModeLower in coolFamily && houseModeLower == "heat"))
+                if (conflictsWithHouse) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFF59E0B).copy(alpha = 0.10f))
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFF59E0B),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Text(
+                            text = "This zone is set to ${zoneModeLower.uppercase()} while the house is " +
+                                "${houseModeLower.uppercase()}. The outdoor unit can only do one at a time.",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFF59E0B).copy(alpha = 0.95f),
+                            lineHeight = 12.sp
                         )
                     }
                 }

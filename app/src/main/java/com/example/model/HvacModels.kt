@@ -196,8 +196,8 @@ data class HvacLayoutConfig(
     val showWeatherCard: Boolean? = true,
     // Idle behaviour, in seconds. Both were hardcoded to 30, which was too short to read a
     // chart and short enough to close a popup while it was being used.
-    val idleReturnSeconds: Int? = 120,
-    val popupTimeoutSeconds: Int? = 60,
+    val idleReturnSeconds: Int? = 20,
+    val popupTimeoutSeconds: Int? = 20,
     val weatherLatitude: Double? = 37.7749,
     val weatherLongitude: Double? = -122.4194,
     val tabs: List<TabConfig>? = listOf(

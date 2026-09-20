@@ -1,5 +1,5 @@
 {
-  "version": "6.1.1",
+  "version": "6.1.2",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -410,8 +410,8 @@
       "name": "Workshop"
     }
   ],
-  "idleReturnSeconds": 120,
-  "popupTimeoutSeconds": 60,
+  "idleReturnSeconds": 20,
+  "popupTimeoutSeconds": 20,
   "waterHeaterRunningEntityId": "binary_sensor.heat_pump_water_heater_running",
   "homeStatus": {
     "outdoorTempEntityId": "sensor.hp_living_room_outdoor_temperature",
