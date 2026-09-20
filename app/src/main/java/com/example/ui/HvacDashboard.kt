@@ -319,8 +319,15 @@ fun HvacDashboard(
     val bgGradient = Brush.verticalGradient(listOf(bgStartColor, bgEndColor))
 
     val hvacThemeColors = HvacThemeColors(
-        heatColor = parseHexColor(themeConfig.accentColorHex, Color(0xFFF59E0B)),
+        // Falls back to the accent only when no explicit heat colour is configured, so the
+        // built-in presets keep their identity while a config that sets heatColorHex gets a
+        // heat colour independent of its accent.
+        heatColor = parseHexColor(
+            themeConfig.heatColorHex ?: themeConfig.accentColorHex,
+            Color(0xFFF59E0B)
+        ),
         coolColor = parseHexColor(themeConfig.coolColorHex, Color(0xFF2196F3)),
+        dryColor = parseHexColor(themeConfig.dryColorHex, Color(0xFF8B5CF6)),
         offColor = parseHexColor(themeConfig.offColorHex, Color(0xFF64748B)),
         bgStart = bgStartColor,
         bgEnd = bgEndColor,
@@ -861,9 +868,9 @@ fun HvacDashboard(
                                                 },
                                                 colors = ButtonDefaults.buttonColors(
                                                     containerColor = when (pendingHvacMode!!.lowercase()) {
-                                                        "cool" -> Color(0xFF2196F3)
-                                                        "dry" -> Color(0xFF8B5CF6)
-                                                        else -> Color(0xFFF59E0B)
+                                                        "cool" -> hvacThemeColors.coolColor
+                                                        "dry" -> hvacThemeColors.dryColor
+                                                        else -> hvacThemeColors.heatColor
                                                     }
                                                 ),
                                                 modifier = Modifier
@@ -1383,6 +1390,7 @@ fun HvacDashboardContent(
     onShowSettings: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
+    val theme = LocalHvacTheme.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(0) }
@@ -1514,10 +1522,10 @@ fun HvacDashboardContent(
                         activeTabs.forEachIndexed { index, tabConfig ->
                             val isSelected = selectedTab == index
                             val activeColor = when (state.globalSettings.globalHvacMode) {
-                                "cool" -> Color(0xFF2196F3)
-                                "dry" -> Color(0xFF8B5CF6)
-                                "off" -> Color(0xFF64748B)
-                                else -> Color(0xFFF59E0B)
+                                "cool" -> theme.coolColor
+                                "dry" -> theme.dryColor
+                                "off" -> theme.offColor
+                                else -> theme.heatColor
                             }
                             Row(
                                 modifier = Modifier
@@ -1929,10 +1937,10 @@ fun HvacDashboardContent(
                 activeTabs.forEachIndexed { index, tabConfig ->
                     val isSelected = selectedTab == index
                     val activeColor = when (state.globalSettings.globalHvacMode) {
-                        "cool" -> Color(0xFF2196F3)
-                        "dry" -> Color(0xFF8B5CF6)
-                        "off" -> Color(0xFF64748B)
-                        else -> Color(0xFFF59E0B)
+                        "cool" -> theme.coolColor
+                        "dry" -> theme.dryColor
+                        "off" -> theme.offColor
+                        else -> theme.heatColor
                     }
                     Column(
                         modifier = Modifier
@@ -2228,6 +2236,7 @@ private fun HouseModeGroup(
     titleFontSize: androidx.compose.ui.unit.TextUnit,
     modifier: Modifier = Modifier
 ) {
+    val theme = LocalHvacTheme.current
     Column(modifier = modifier) {
         Text(
             "HOUSE MODE",
@@ -2244,9 +2253,9 @@ private fun HouseModeGroup(
             horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             listOf(
-                Triple("heat", Icons.Default.Whatshot, Color(0xFFF59E0B)),
-                Triple("cool", Icons.Default.AcUnit, Color(0xFF2196F3)),
-                Triple("dry", Icons.Default.Air, Color(0xFF8B5CF6))
+                Triple("heat", Icons.Default.Whatshot, theme.heatColor),
+                Triple("cool", Icons.Default.AcUnit, theme.coolColor),
+                Triple("dry", Icons.Default.Air, theme.dryColor)
             ).forEach { (label, icon, color) ->
                 val isSelected = state.globalSettings.globalHvacMode.lowercase() == label.lowercase()
                 SegmentedControlButton(
@@ -2464,9 +2473,17 @@ fun ConsolidatedZoneCard(
     val activeColor = when (zone.currentHvacMode.lowercase()) {
         "heat" -> theme.heatColor
         "cool" -> theme.coolColor
-        "dry" -> Color(0xFF8B5CF6)
+        "dry" -> theme.dryColor
         "off" -> theme.offColor
         else -> theme.heatColor
+    }
+    // Null when the zone is off or unavailable, which leaves the card its plain glass look.
+    val modeTint = when (zone.currentHvacMode.lowercase()) {
+        "heat" -> theme.heatColor
+        "cool" -> theme.coolColor
+        "dry" -> theme.dryColor
+        "fan_only" -> theme.coolColor
+        else -> null
     }
 
     // Advanced Compose Animations: Thermal Aura Gradient and Pulsing Vector Indicators
@@ -2532,21 +2549,22 @@ fun ConsolidatedZoneCard(
                     )
                 }
             },
+        // The card body now carries the MODE: orange heating, blue cooling, purple drying,
+        // plain when off. Previously the body only tinted for override and borrowed the heat
+        // colour to do it, so a held, idle zone looked like it was heating while a genuinely
+        // heating zone looked like every other card.
         colors = CardDefaults.cardColors(
-            containerColor = if (zone.overrideOn) {
-                hvacActiveCardBgColor(theme.heatColor)
-            } else {
-                hvacCardBgColor()
-            }
+            containerColor = modeTint?.let { hvacActiveCardBgColor(it) } ?: hvacCardBgColor()
         ),
+        // The border carries the EXCEPTION: red for a zone that is not following its schedule,
+        // whether that is an override or automations being off. Mode owns the body, so red
+        // here never gets confused for heat.
         border = BorderStroke(
             1.dp,
-            if (zone.overrideOn) {
-                hvacActiveBorderAlphaColor(theme.heatColor)
-            } else if (!zone.autoOn) {
-                hvacActiveBorderAlphaColor(theme.boostColor)
-            } else {
-                hvacBorderAlphaColor()
+            when {
+                zone.overrideOn || !zone.autoOn -> hvacActiveBorderAlphaColor(theme.boostColor)
+                modeTint != null -> hvacActiveBorderAlphaColor(modeTint)
+                else -> hvacBorderAlphaColor()
             }
         ),
         shape = hvacCardShape(12)
@@ -2633,13 +2651,13 @@ fun ConsolidatedZoneCard(
                     if (zone.overrideOn) {
                         Box(
                             modifier = Modifier
-                                .background(theme.heatColor.copy(alpha = 0.14f), RoundedCornerShape(5.dp))
+                                .background(theme.boostColor.copy(alpha = 0.14f), RoundedCornerShape(5.dp))
                                 .padding(horizontal = 4.dp, vertical = 3.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Shield,
                                 contentDescription = "Override active",
-                                tint = theme.heatColor,
+                                tint = theme.boostColor,
                                 modifier = Modifier.size(9.dp)
                             )
                         }
@@ -2888,11 +2906,12 @@ fun ZoneDetailPopup(
     viewModel: HvacViewModel,
     onInteraction: () -> Unit = {}
 ) {
+    val theme = LocalHvacTheme.current
     val activeColor = when (zone.currentHvacMode.lowercase()) {
-        "heat" -> Color(0xFFF59E0B)
-        "cool" -> Color(0xFF2196F3)
-        "dry" -> Color(0xFF8B5CF6)
-        "off" -> Color(0xFF64748B)
+        "heat" -> theme.heatColor
+        "cool" -> theme.coolColor
+        "dry" -> theme.dryColor
+        "off" -> theme.offColor
         else -> Color(0xFFF59E0B)
     }
 
@@ -3187,9 +3206,9 @@ fun ZoneDetailPopup(
                     horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
                     listOf(
-                        Triple("heat", Icons.Default.Whatshot, Color(0xFFF59E0B)),
-                        Triple("cool", Icons.Default.AcUnit, Color(0xFF2196F3)),
-                        Triple("dry", Icons.Default.Air, Color(0xFF8B5CF6))
+                        Triple("heat", Icons.Default.Whatshot, theme.heatColor),
+                        Triple("cool", Icons.Default.AcUnit, theme.coolColor),
+                        Triple("dry", Icons.Default.Air, theme.dryColor)
                     ).forEach { (mode, icon, color) ->
                         SegmentedControlButton(
                             label = mode,

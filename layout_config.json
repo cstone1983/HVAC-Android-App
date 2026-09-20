@@ -1,5 +1,5 @@
 {
-  "version": "6.1.4",
+  "version": "6.2.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -55,14 +55,16 @@
   },
   "theme": {
     "accentColorHex": "#10B981",
-    "coolColorHex": "#6366F1",
+    "coolColorHex": "#2196F3",
     "offColorHex": "#475569",
     "bgStartColorHex": "#0A0D14",
     "bgEndColorHex": "#121824",
     "glowColorHex": "#10B981",
     "glowAlpha": 0.15,
     "chartShadingAlpha": 0.05,
-    "showChartShading": true
+    "showChartShading": true,
+    "heatColorHex": "#F59E0B",
+    "dryColorHex": "#8B5CF6"
   },
   "tabs": [
     {

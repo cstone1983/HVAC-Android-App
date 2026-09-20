@@ -40,7 +40,7 @@ class ClimateZoneStatusTest {
         // The thermostats expose hvac_action; trust it over any inference.
         assertTrue(zone("heat", 60.0, 70.0, action = "heating").isCalling)
         assertFalse(zone("heat", 60.0, 70.0, action = "idle").isCalling)
-        assertEquals("HEATING", zone("heat", 60.0, 70.0, action = "heating").statusLabel)
+        assertEquals("RUNNING", zone("heat", 60.0, 70.0, action = "heating").statusLabel)
         assertEquals("AT TARGET", zone("heat", 60.0, 70.0, action = "idle").statusLabel)
     }
 
@@ -48,7 +48,7 @@ class ClimateZoneStatusTest {
     fun `heating is inferred when the room is below target`() {
         // The Fujitsu heads report no hvac_action at all.
         assertTrue(zone("heat", 67.0, 71.0).isCalling)
-        assertEquals("HEATING", zone("heat", 67.0, 71.0).statusLabel)
+        assertEquals("RUNNING", zone("heat", 67.0, 71.0).statusLabel)
     }
 
     @Test
@@ -62,8 +62,9 @@ class ClimateZoneStatusTest {
     fun `cooling and drying invert the comparison`() {
         assertTrue(zone("cool", 76.0, 71.0).isCalling)
         assertFalse(zone("cool", 68.0, 71.0).isCalling)
-        assertEquals("COOLING", zone("cool", 76.0, 71.0).statusLabel)
-        assertEquals("DRYING", zone("dry", 76.0, 71.0).statusLabel)
+        // The status is deliberately mode-agnostic now; the card tint carries the mode.
+        assertEquals("RUNNING", zone("cool", 76.0, 71.0).statusLabel)
+        assertEquals("RUNNING", zone("dry", 76.0, 71.0).statusLabel)
     }
 
     @Test
@@ -77,7 +78,7 @@ class ClimateZoneStatusTest {
     fun `missing readings do not claim the zone is running`() {
         assertFalse(zone("heat", null, 71.0).isCalling)
         assertFalse(zone("heat", 67.0, null).isCalling)
-        assertEquals("HEAT · IDLE", zone("heat", null, 71.0).statusLabel)
+        assertEquals("IDLE", zone("heat", null, 71.0).statusLabel)
     }
 
     @Test

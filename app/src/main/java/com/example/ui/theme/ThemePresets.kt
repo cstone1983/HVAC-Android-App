@@ -23,6 +23,8 @@ data class HvacThemePreset(
 data class HvacThemeColors(
     val heatColor: Color,
     val coolColor: Color,
+    // Dry is a distinct mode on these heads and was hardcoded purple in eight separate places.
+    val dryColor: Color = Color(0xFF8B5CF6),
     val offColor: Color,
     val ecoColor: Color = Color(0xFF10B981),
     val boostColor: Color = Color(0xFFEF4444),
@@ -40,6 +42,7 @@ val LocalHvacTheme = staticCompositionLocalOf {
     HvacThemeColors(
         heatColor = Color(0xFFF59E0B),
         coolColor = Color(0xFF2196F3),
+        dryColor = Color(0xFF8B5CF6),
         offColor = Color(0xFF64748B),
         bgStart = Color(0xFF0F172A),
         bgEnd = Color(0xFF1E293B),

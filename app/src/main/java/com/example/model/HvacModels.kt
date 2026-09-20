@@ -5,7 +5,12 @@ import com.squareup.moshi.JsonClass
 @JsonClass(generateAdapter = true)
 data class HvacThemeConfig(
     val accentColorHex: String? = "#F59E0B",
+    // Heat used to borrow accentColorHex, so a green accent painted "heating" green while the
+    // quick-control row drew it orange. Heat now has a colour of its own; when it is absent the
+    // accent is still used, which keeps the built-in theme presets looking as they always did.
+    val heatColorHex: String? = null,
     val coolColorHex: String? = "#2196F3",
+    val dryColorHex: String? = "#8B5CF6",
     val offColorHex: String? = "#64748B",
     val bgStartColorHex: String? = "#0F172A",
     val bgEndColorHex: String? = "#1E293B",
@@ -322,23 +327,20 @@ data class ClimateZone(
         }
 
     /**
-     * Short status for the card: what the zone is doing, not merely which mode it is set to.
+     * Short status for the card. Deliberately says nothing about which mode the zone is in:
+     * the card's colour already carries that (orange heating, blue cooling, purple drying),
+     * so repeating "HEATING" in text spends the only line available restating what the tint
+     * just said. What colour cannot show is whether the unit is actually working, which is
+     * all this reports.
      */
     val statusLabel: String
         get() {
             val mode = currentHvacMode.lowercase()
             if (mode == "off") return "OFF"
             if (mode == "unavailable") return "UNAVAILABLE"
-            if (isCalling) {
-                return when (mode) {
-                    "cool" -> "COOLING"
-                    "dry" -> "DRYING"
-                    "fan_only" -> "FAN"
-                    else -> "HEATING"
-                }
-            }
+            if (isCalling) return "RUNNING"
             if (currentTemp != null && targetTemp != null) return "AT TARGET"
-            return "${mode.uppercase()} · IDLE"
+            return "IDLE"
         }
 }
 
