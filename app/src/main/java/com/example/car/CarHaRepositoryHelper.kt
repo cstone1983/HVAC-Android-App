@@ -384,9 +384,10 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
             else -> mode.replace("_", " ").replaceFirstChar { it.uppercase() }
         }
 
+        // Missing used to mean 100.0, so a dead sensor reported a full tank — the one direction
+        // this reading must never fail in.
         val percentVal = hotWaterSensor?.state?.toDoubleOrNull()
             ?: whEntity?.getDoubleAttribute("available_hot_water")
-            ?: 100.0
 
         val currentTemp = whEntity?.getDoubleAttribute("current_temperature")
         val targetTemp = whEntity?.getDoubleAttribute("temperature")
@@ -394,7 +395,7 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
         return WaterHeaterState(
             mode = formattedMode,
             rawMode = mode,
-            availablePercent = percentVal.toInt().coerceIn(0, 100),
+            availablePercent = percentVal?.toInt()?.coerceIn(0, 100),
             currentTemp = currentTemp,
             targetTemp = targetTemp
         )
@@ -402,17 +403,18 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
 
     fun getPoolState(): PoolCarState {
         val s = states.value
+        // The sensor.pool_water_temperature / sensor.pool_temperature / sensor.pool_water_status
+        // fallbacks that used to sit here do not exist in HA and never have.
         val tempSensor = s["sensor.my_pool_water_temperature"]
-            ?: s["sensor.pool_water_temperature"]
-            ?: s["sensor.pool_temperature"]
-
         val statusSensor = s["sensor.my_pool_water_status"]
-            ?: s["sensor.pool_water_status"]
-
         val pumpSwitch = s["switch.pool_pump"]
 
         val temp = tempSensor?.state?.toDoubleOrNull()
-        val status = statusSensor?.state ?: "Normal"
+        // A missing status used to display as "Normal", so an offline monitor reported a healthy
+        // pool. Say nothing rather than vouch for water nobody has measured.
+        val status = statusSensor?.state?.takeIf {
+            !it.equals("unavailable", true) && !it.equals("unknown", true)
+        } ?: "No data"
         val isPumpOn = pumpSwitch?.state?.equals("on", ignoreCase = true) ?: false
 
         return PoolCarState(
@@ -522,7 +524,8 @@ data class GarageState(
 data class WaterHeaterState(
     val mode: String,
     val rawMode: String,
-    val availablePercent: Int,
+    /** Null when no reading is available. Never assume a full tank. */
+    val availablePercent: Int?,
     val currentTemp: Double?,
     val targetTemp: Double?
 )

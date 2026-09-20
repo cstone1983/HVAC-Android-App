@@ -1,4 +1,4 @@
-package com.example.ui
+﻿package com.example.ui
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
@@ -138,12 +138,14 @@ fun PoolDashboardView(
     var activeTrendTab by remember { mutableStateOf(0) } // 0 = Temp, 1 = pH, 2 = ORP
     var activeTimeFrame by remember { mutableStateOf(1) } // 0 = 6h, 1 = 24h, 2 = 7d
 
-    val currentTemp = poolState.waterTemperature?.toFloat() ?: 79.0f
-    val currentPh = poolState.ph?.toFloat() ?: 7.35f
-    val currentOrp = poolState.orp?.toFloat() ?: 561.0f
+    // These stay nullable on purpose. They used to fall back to 79.0 / 7.35 / 561.0, which
+    // rendered identically to a live reading â€” so an offline monitor showed a plausible,
+    // balanced pool. A missing reading now reads as missing.
+    val currentTemp = poolState.waterTemperature?.toFloat()
+    val currentPh = poolState.ph?.toFloat()
+    val currentOrp = poolState.orp?.toFloat()
 
-    // Highly authentic historical data points anchored directly to active live metrics
-    // Highly authentic historical data points anchored directly to active live metrics
+    // Recorder history from Home Assistant, narrowed to the selected time frame.
     val displayHistory = remember(poolHistory, activeTimeFrame, currentTemp, currentPh, currentOrp) {
         if (poolHistory.isNotEmpty()) {
             val nowMs = System.currentTimeMillis()
@@ -214,118 +216,8 @@ fun PoolDashboardView(
             if (filteredPoints.isNotEmpty()) filteredPoints else poolHistory
         } else {
             emptyList()
-            /*
-            // BACKWARD MOCK FALLBACK: Use pristine beautiful generated curves if offline or not synced
-            val estTz = java.util.TimeZone.getTimeZone("America/New_York")
-            val calendar = java.util.Calendar.getInstance(estTz)
-            val nowMs = System.currentTimeMillis()
-            when (activeTimeFrame) {
-                0 -> {
-                    // 6-Hour Fallback (granular, say every 10 mins)
-                    val list = mutableListOf<PoolHistoryPoint>()
-                    val intervalMinutes = 10
-                    val intervalMillis = intervalMinutes * 60 * 1000L
-                    val totalIntervals = (6 * 60) / intervalMinutes // 36 intervals
-                    val timeFormatter = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).apply {
-                        timeZone = estTz
-                    }
-                    for (i in totalIntervals downTo 0) {
-                        val tMillis = nowMs - i * intervalMillis
-                        calendar.timeInMillis = tMillis
-                        val hour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
-                        val minute = calendar.get(java.util.Calendar.MINUTE)
-                        val timeStr = timeFormatter.format(java.util.Date(tMillis))
-                        
-                        val tDecimal = hour + (minute / 60f)
-                        val angle = (tDecimal - 6) * (2.0 * Math.PI / 24.0)
-                        val tempOffset = -Math.cos(angle).toFloat() * 1.5f + (Math.sin(angle * 2).toFloat() * 0.2f)
-                        val phOffset = Math.sin(angle).toFloat() * 0.03f
-                        val orpOffset = Math.cos(angle).toFloat() * 12f
-
-                        // Add fine granular noise
-                        val noiseTemp = ((Math.random() - 0.5) * 0.04).toFloat()
-                        val noisePh = ((Math.random() - 0.5) * 0.004).toFloat()
-                        val noiseOrp = ((Math.random() - 0.5) * 0.8).toFloat()
-
-                        list.add(
-                            PoolHistoryPoint(
-                                timestamp = timeStr,
-                                temp = currentTemp + tempOffset + noiseTemp,
-                                ph = currentPh + phOffset + noisePh,
-                                orp = currentOrp + orpOffset + noiseOrp
-                            )
-                        )
-                    }
-                    list
-                }
-                1 -> {
-                    // 24-Hour Fallback
-                    val list = mutableListOf<PoolHistoryPoint>()
-                    val intervalMinutes = 60
-                    val intervalMillis = intervalMinutes * 60 * 1000L
-                    val totalIntervals = 24
-                    val timeFormatter = java.text.SimpleDateFormat("HH:00", java.util.Locale.US).apply {
-                        timeZone = estTz
-                    }
-                    for (i in totalIntervals downTo 0) {
-                        val tMillis = nowMs - i * intervalMillis
-                        calendar.timeInMillis = tMillis
-                        val hour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
-                        val timeStr = timeFormatter.format(java.util.Date(tMillis))
-                        
-                        val angle = (hour - 6) * (2.0 * Math.PI / 24.0)
-                        val tempOffset = -Math.cos(angle).toFloat() * 1.5f + (Math.sin(angle * 2).toFloat() * 0.2f)
-                        val phOffset = Math.sin(angle).toFloat() * 0.03f
-                        val orpOffset = Math.cos(angle).toFloat() * 12f
-
-                        list.add(
-                            PoolHistoryPoint(
-                                timestamp = timeStr,
-                                temp = currentTemp + tempOffset,
-                                ph = currentPh + phOffset,
-                                orp = currentOrp + orpOffset
-                            )
-                        )
-                    }
-                    list
-                }
-                2 -> {
-                    // 7-Day Fallback
-                    val list = mutableListOf<PoolHistoryPoint>()
-                    val intervalHours = 6
-                    val intervalMillis = intervalHours * 60 * 60 * 1000L
-                    val totalIntervals = (7 * 24) / intervalHours // 28 intervals
-                    val dayFormatter = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.US).apply {
-                        timeZone = estTz
-                    }
-                    for (i in totalIntervals downTo 0) {
-                        val tMillis = nowMs - i * intervalMillis
-                        calendar.timeInMillis = tMillis
-                        val dayIndex = calendar.get(java.util.Calendar.DAY_OF_YEAR)
-                        val hour = calendar.get(java.util.Calendar.HOUR_OF_DAY)
-                        val timeStr = dayFormatter.format(java.util.Date(tMillis))
-                        
-                        val angle = (hour - 6) * (2.0 * Math.PI / 24.0)
-                        val trendAngle = dayIndex * (2.0 * Math.PI / 7.0)
-                        
-                        val tempOffset = -Math.cos(angle).toFloat() * 1.1f + Math.sin(trendAngle).toFloat() * 1.5f + (Math.sin(angle * 3).toFloat() * 0.15f)
-                        val phOffset = Math.sin(angle).toFloat() * 0.03f + Math.cos(trendAngle).toFloat() * 0.015f
-                        val orpOffset = Math.cos(angle).toFloat() * 8f - Math.sin(trendAngle).toFloat() * 9f
-
-                        list.add(
-                            PoolHistoryPoint(
-                                timestamp = timeStr,
-                                temp = currentTemp + tempOffset,
-                                ph = currentPh + phOffset,
-                                orp = currentOrp + orpOffset
-                            )
-                        )
-                    }
-                    list
-                }
-                else -> emptyList()
-            }
-            */
+            // No recorder history yet: show an empty chart. This used to fall through to a
+            // generated cos-plus-noise curve drawn exactly like real data.
         }
     }
 
@@ -374,10 +266,12 @@ fun PoolDashboardView(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "${String.format("%.1f", poolState.waterTemperature ?: 79.0)} °F",
+                        text = poolState.waterTemperature
+                            ?.let { "${String.format("%.1f", it)} Â°F" } ?: "-- Â°F",
                         fontSize = 38.sp,
                         fontWeight = FontWeight.Light,
-                        color = Color.White,
+                        color = if (poolState.waterTemperature != null) Color.White
+                                else Color.White.copy(alpha = 0.35f),
                         letterSpacing = (-0.5).sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
@@ -491,16 +385,31 @@ fun PoolDashboardView(
                     Icon(Icons.Default.WaterDrop, contentDescription = null, tint = theme.coolColor, modifier = Modifier.size(12.dp))
                 }
                  Spacer(modifier = Modifier.height(4.dp))
-                 val ph = poolState.ph ?: 7.35
-                 Text("${String.format("%.2f", ph)}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                
+                 val ph = poolState.ph
+                 Text(
+                     text = ph?.let { String.format("%.2f", it) } ?: "--",
+                     fontSize = 18.sp,
+                     fontWeight = FontWeight.Bold,
+                     color = if (ph != null) Color.White else Color.White.copy(alpha = 0.35f)
+                 )
+
                 Spacer(modifier = Modifier.height(4.dp))
-                val isPhIdeal = ph >= poolPhMin && ph <= poolPhMax
+                // No reading means no verdict. Calling an absent sensor "IDEAL" is the failure
+                // mode worth avoiding here â€” it is the reading you would act on.
+                val isPhIdeal = ph != null && ph >= poolPhMin && ph <= poolPhMax
                 Text(
-                    text = if (isPhIdeal) "• IDEAL" else "• ADJUST REQ",
+                    text = when {
+                        ph == null -> "â€¢ NO DATA"
+                        isPhIdeal -> "â€¢ IDEAL"
+                        else -> "â€¢ ADJUST REQ"
+                    },
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isPhIdeal) theme.ecoColor else theme.heatColor
+                    color = when {
+                        ph == null -> Color.White.copy(alpha = 0.35f)
+                        isPhIdeal -> theme.ecoColor
+                        else -> theme.heatColor
+                    }
                 )
             }
  
@@ -522,16 +431,29 @@ fun PoolDashboardView(
                     Icon(Icons.Default.FlashOn, contentDescription = null, tint = theme.heatColor, modifier = Modifier.size(12.dp))
                 }
                 Spacer(modifier = Modifier.height(4.dp))
-                val orp = poolState.orp ?: 561.0
-                Text("${orp.toInt()} mV", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                
-                Spacer(modifier = Modifier.height(4.dp))
-                val isOrpIdeal = orp >= poolOrpMin && orp <= poolOrpMax
+                val orp = poolState.orp
                 Text(
-                    text = if (isOrpIdeal) "• ADEQUATE" else "• LOW SANITIZER",
+                    text = orp?.let { "${it.toInt()} mV" } ?: "-- mV",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (orp != null) Color.White else Color.White.copy(alpha = 0.35f)
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+                val isOrpIdeal = orp != null && orp >= poolOrpMin && orp <= poolOrpMax
+                Text(
+                    text = when {
+                        orp == null -> "â€¢ NO DATA"
+                        isOrpIdeal -> "â€¢ ADEQUATE"
+                        else -> "â€¢ LOW SANITIZER"
+                    },
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isOrpIdeal) theme.ecoColor else theme.boostColor
+                    color = when {
+                        orp == null -> Color.White.copy(alpha = 0.35f)
+                        isOrpIdeal -> theme.ecoColor
+                        else -> theme.boostColor
+                    }
                 )
             }
 
@@ -556,7 +478,7 @@ fun PoolDashboardView(
                 Text("${poolState.wifiSignal ?: -57} dBm", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("• EXCELLENT", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = theme.ecoColor)
+                Text("â€¢ EXCELLENT", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = theme.ecoColor)
             }
         }
 
@@ -714,7 +636,7 @@ fun PoolDashboardView(
 
                     val formatLabel = { v: Float ->
                         when {
-                            isTemp -> String.format("%.1f°", v)
+                            isTemp -> String.format("%.1fÂ°", v)
                             isPh -> String.format("%.2f", v)
                             else -> String.format("%.0f", v)
                         }
@@ -973,7 +895,7 @@ fun PoolDashboardView(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = "Temp: ${String.format(java.util.Locale.US, "%.1f", pt.temp)}°F",
+                                            text = "Temp: ${String.format(java.util.Locale.US, "%.1f", pt.temp)}Â°F",
                                             fontSize = 9.5.sp,
                                             color = theme.coolColor,
                                             fontWeight = FontWeight.Bold,
@@ -1097,7 +1019,7 @@ fun PoolDashboardView(
                         // WATER TEMPERATURE RANGE
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                "Water Temperature Range (°F)",
+                                "Water Temperature Range (Â°F)",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White.copy(alpha = 0.6f)
@@ -1328,7 +1250,7 @@ fun PoolDashboardView(
                 val battVal = poolState.battery ?: 4536.0
                 val isBattIdeal = battVal >= poolBatteryMin && battVal <= poolBatteryMax
                 val batteryColor = if (isBattIdeal) theme.ecoColor else theme.heatColor
-                val batteryText = "${String.format("%.0f", battVal)} mV" + (if (isBattIdeal) " • IDEAL" else " • ADJUST REQ")
+                val batteryText = "${String.format("%.0f", battVal)} mV" + (if (isBattIdeal) " â€¢ IDEAL" else " â€¢ ADJUST REQ")
 
                 DiagnosticItem("Battery Volts", batteryText, Icons.Outlined.BatteryFull, theme, valueColor = batteryColor)
                 DiagnosticItem("Monitor Serial", poolState.monitorSerial ?: "020F5F12", Icons.Outlined.Monitor, theme)

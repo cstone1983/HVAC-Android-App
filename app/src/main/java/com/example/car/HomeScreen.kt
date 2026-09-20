@@ -158,9 +158,17 @@ class HomeScreen(
         ).setTint(CarColor.PRIMARY).build()
 
         val whRow = Row.Builder()
-            .setTitle("Hot Water: ${waterHeater.mode} (${waterHeater.availablePercent}%)")
+            .setTitle(
+                waterHeater.availablePercent
+                    ?.let { "Hot Water: ${waterHeater.mode} ($it%)" }
+                    ?: "Hot Water: ${waterHeater.mode}"
+            )
             .setImage(whIcon, Row.IMAGE_TYPE_ICON)
-            .addText("Tank Reserve: ${waterHeater.availablePercent}% available")
+            .addText(
+                waterHeater.availablePercent
+                    ?.let { "Tank Reserve: $it% available" }
+                    ?: "Tank Reserve: no reading"
+            )
             .addText("Tap to cycle mode (Eco / Heat Pump / High Demand)")
             .setOnClickListener {
                 repository.cycleWaterHeaterMode { newMode ->
