@@ -115,35 +115,42 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
     // ==========================================
 
     /**
-     * Toggle South Garage Door (cover.garage_door_south or switch.konnected_d332ec_str_output)
+     * The doors the dashboard is configured with, in order. These used to be hardcoded, and
+     * the identifiers had drifted: the "south" door pointed at cover.garage_door_south, which
+     * has never existed in this install, so the car silently fell through to pulsing the raw
+     * relay while reporting success. Reading the same config the panel uses keeps the car
+     * correct when doors are added or replaced.
      */
-    fun toggleSouthGarage(onComplete: ((Boolean) -> Unit)? = null) {
-        scope.launch {
-            val currentStates = states.value
-            val coverEntity = currentStates["cover.garage_door_south"]
-            val success = if (coverEntity != null) {
-                callService("cover", "toggle", "cover.garage_door_south")
-            } else {
-                callService("switch", "toggle", "switch.konnected_d332ec_str_output")
-            }
-            onComplete?.invoke(success)
-        }
+    private fun configuredCovers(): List<com.example.model.CoverControlConfig> {
+        // The car app routinely starts cold, without the phone UI ever having run, so the
+        // ViewModel singleton may not exist yet. Fall back to the shipped defaults rather
+        // than showing the driver an empty, unusable list.
+        val fromConfig = com.example.viewmodel.HvacViewModel.getInstance()
+            ?.getActiveLayoutConfig()?.covers
+        if (!fromConfig.isNullOrEmpty()) return fromConfig
+        return listOf(
+            com.example.model.CoverControlConfig("cover.konnected_d332ec_garage_door", "Garage South"),
+            com.example.model.CoverControlConfig("cover.garage_garage_door_north_garage_door", "Garage North"),
+            com.example.model.CoverControlConfig("switch.shellyplus1_b8d61a8a78b0_switch_0", "Workshop")
+        )
     }
 
-    /**
-     * Toggle Left Garage Door (switch.shelly1_e8db84d7217d or cover.garage_door_left)
-     */
+    private fun coverAt(index: Int): com.example.model.CoverControlConfig? =
+        configuredCovers().getOrNull(index)
+
+    private suspend fun toggleConfiguredCover(index: Int): Boolean {
+        val cover = coverAt(index) ?: return false
+        val domain = cover.entityId.substringBefore('.', "cover")
+        // A relay-backed door only accepts a pulse; a real cover entity accepts toggle.
+        return callService(domain, "toggle", cover.entityId)
+    }
+
+    fun toggleSouthGarage(onComplete: ((Boolean) -> Unit)? = null) {
+        scope.launch { onComplete?.invoke(toggleConfiguredCover(0)) }
+    }
+
     fun toggleLeftGarage(onComplete: ((Boolean) -> Unit)? = null) {
-        scope.launch {
-            val currentStates = states.value
-            val switchEntity = currentStates["switch.shelly1_e8db84d7217d"]
-            val success = if (switchEntity != null) {
-                callService("switch", "toggle", "switch.shelly1_e8db84d7217d")
-            } else {
-                callService("cover", "toggle", "cover.garage_door_left")
-            }
-            onComplete?.invoke(success)
-        }
+        scope.launch { onComplete?.invoke(toggleConfiguredCover(1)) }
     }
 
     /**
@@ -281,55 +288,33 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
     // State Extractors for UI Rendering
     // ==========================================
 
-    fun getSouthGarageState(): GarageState {
-        val s = states.value
-        val cover = s["cover.garage_door_south"]
-        val sw = s["switch.konnected_d332ec_str_output"]
+    private fun garageStateAt(index: Int, fallbackName: String): GarageState {
+        val cover = coverAt(index)
+            ?: return GarageState(fallbackName, "", isOpen = false, statusText = "UNAVAILABLE")
+        val entity = states.value[cover.entityId]
+        val raw = entity?.state
 
-        val isOpen = when {
-            cover != null -> cover.state.equals("open", ignoreCase = true) || cover.state.equals("opening", ignoreCase = true)
-            sw != null -> sw.state.equals("on", ignoreCase = true)
-            else -> false
-        }
-
-        val stateText = when {
-            cover != null -> cover.state.uppercase(Locale.US)
-            sw != null -> if (sw.state.equals("on", ignoreCase = true)) "OPEN" else "CLOSED"
-            else -> "CLOSED"
-        }
-
-        return GarageState(
-            name = "South Garage Door",
-            entityId = cover?.entity_id ?: "cover.garage_door_south",
-            isOpen = isOpen,
-            statusText = stateText
-        )
-    }
-
-    fun getLeftGarageState(): GarageState {
-        val s = states.value
-        val sw = s["switch.shelly1_e8db84d7217d"]
-        val cover = s["cover.garage_door_left"]
-
-        val isOpen = when {
-            cover != null -> cover.state.equals("open", ignoreCase = true)
-            sw != null -> sw.state.equals("on", ignoreCase = true)
-            else -> false
-        }
-
-        val stateText = when {
-            cover != null -> cover.state.uppercase(Locale.US)
-            sw != null -> if (sw.state.equals("on", ignoreCase = true)) "OPEN" else "CLOSED"
-            else -> "CLOSED"
+        // A relay-backed door reports its own on/off, which says nothing about the door, so
+        // it is reported as UNKNOWN rather than being dressed up as OPEN or CLOSED.
+        val isCover = cover.entityId.startsWith("cover.")
+        val isOpen = isCover && (raw.equals("open", true) || raw.equals("opening", true))
+        val statusText = when {
+            raw == null -> "UNAVAILABLE"
+            isCover -> raw.uppercase(Locale.US)
+            else -> "UNKNOWN"
         }
 
         return GarageState(
-            name = "Left Garage Door",
-            entityId = sw?.entity_id ?: cover?.entity_id ?: "switch.shelly1_e8db84d7217d",
+            name = cover.name,
+            entityId = cover.entityId,
             isOpen = isOpen,
-            statusText = stateText
+            statusText = statusText
         )
     }
+
+    fun getSouthGarageState(): GarageState = garageStateAt(0, "Garage Door 1")
+
+    fun getLeftGarageState(): GarageState = garageStateAt(1, "Garage Door 2")
 
     fun getWaterHeaterState(): WaterHeaterState {
         val s = states.value

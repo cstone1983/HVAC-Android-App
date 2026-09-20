@@ -1,5 +1,5 @@
 {
-  "version": "6.1.3",
+  "version": "6.1.4",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -402,8 +402,8 @@
       "name": "Garage South"
     },
     {
-      "entityId": "switch.shelly1_e8db84d7217d",
-      "name": "Garage Left"
+      "entityId": "cover.garage_garage_door_north_garage_door",
+      "name": "Garage North"
     },
     {
       "entityId": "switch.shellyplus1_b8d61a8a78b0_switch_0",
@@ -437,6 +437,14 @@
       {
         "name": "Garage South",
         "stateEntityId": "cover.konnected_d332ec_garage_door",
+        "openStates": [
+          "open",
+          "opening"
+        ]
+      },
+      {
+        "name": "Garage North",
+        "stateEntityId": "cover.garage_garage_door_north_garage_door",
         "openStates": [
           "open",
           "opening"

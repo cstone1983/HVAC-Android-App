@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  The only valid <uses> names here are media, notification, sms and template. "iot" is not
+  one of them: the IOT designation belongs in the CarAppService intent-filter category
+  (androidx.car.app.category.IOT), which the manifest already declares. An unrecognised entry
+  risks Android Auto rejecting the descriptor and never listing the app.
+-->
 <automotiveApp>
     <uses name="template" />
-    <uses name="iot" />
 </automotiveApp>
