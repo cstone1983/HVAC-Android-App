@@ -216,12 +216,12 @@ class HvacForegroundService : Service() {
             if (cached != -1f) bedroom2Temp = cached.toDouble()
         }
 
-        // 3. Outside Temp
-        var outdoorTemp: Double? = null
-        val weatherStateVal = viewModel?.weatherState?.value
-        val firstDay = weatherStateVal?.days?.firstOrNull()
-        if (firstDay != null) {
-            outdoorTemp = firstDay.avgHighTemp
+        // 3. Outside Temp. This used to read the day's forecast HIGH, so the notification
+        // disagreed with the panel beside it for most of the day and read materially warmer.
+        // The panel's own value comes from the configured outdoor sensor; use the same one.
+        var outdoorTemp: Double? = viewModel?.let { vm ->
+            val id = vm.getActiveLayoutConfig().homeStatus?.outdoorTempEntityId
+            id?.let { vm.entityStates.value[it]?.state?.toDoubleOrNull() }
         }
         if (outdoorTemp == null) {
             val cached = sharedPrefs.getFloat("last_known_outdoor_temp", -1f)
@@ -251,12 +251,6 @@ class HvacForegroundService : Service() {
             if (cached != -1f) solarKw = cached.toDouble()
         }
 
-        var batterySoc: Double? = null
-        val cachedBatt = sharedPrefs.getFloat("last_known_battery_soc", -1f)
-        if (cachedBatt != -1f) {
-            batterySoc = cachedBatt.toDouble()
-        }
-
         var hwFullness: Double? = if (uiState is HvacUiState.Success) {
             uiState.globalSettings.waterHeaterFullness
         } else null
@@ -271,14 +265,13 @@ class HvacForegroundService : Service() {
             hwTemp = cachedHwTemp.toDouble()
         }
 
-        val masterTemp = (if (uiState is HvacUiState.Success) uiState.zones.find { it.key == "master_bedroom" }?.currentTemp else null)
+        // Zone key "master_bedroom" does not exist in layout_config; the six keys are main_level,
+        // anthony, autumn, bedroom_1, bedroom_2 and basement. This line was permanently dead.
+        val masterTemp = (if (uiState is HvacUiState.Success) uiState.zones.find { it.key == "bedroom_1" }?.currentTemp else null)
             ?: sharedPrefs.getFloat("last_known_master_temp", -1f).takeIf { it != -1f }?.toDouble()
 
         val basementTemp = (if (uiState is HvacUiState.Success) uiState.zones.find { it.key == "basement" }?.currentTemp else null)
             ?: sharedPrefs.getFloat("last_known_basement_temp", -1f).takeIf { it != -1f }?.toDouble()
-
-        val bed1Temp = (if (uiState is HvacUiState.Success) uiState.zones.find { it.key == "bedroom_1" }?.currentTemp else null)
-            ?: sharedPrefs.getFloat("last_known_bed1_temp", -1f).takeIf { it != -1f }?.toDouble()
 
         // Formatting text tokens
         val livingStr = formatTemp(livingRoomTemp)
@@ -296,13 +289,11 @@ class HvacForegroundService : Service() {
         bigTextBuilder.append("🏠 Living Room: $livingStr    •    🛏️ Bedroom 2: $bed2Str\n")
         bigTextBuilder.append("⛅ Outside Temp: $outdoorStr    •    🏊 Pool Water: $poolStr\n")
 
+        // No battery entity exists in this Home Assistant instance, so the battery line could
+        // never populate. Dropped rather than left as a branch that reads as unimplemented.
         val extraTelemetry = mutableListOf<String>()
         if (solarKw != null && solarKw >= 0.0) {
-            val solarText = String.format(Locale.US, "☀️ Solar: %.1f kW", solarKw)
-            val battText = if (batterySoc != null && batterySoc >= 0.0) " (🔋 ${batterySoc.toInt()}%)" else ""
-            extraTelemetry.add("$solarText$battText")
-        } else if (batterySoc != null && batterySoc >= 0.0) {
-            extraTelemetry.add("🔋 Battery: ${batterySoc.toInt()}%")
+            extraTelemetry.add(String.format(Locale.US, "☀️ Solar: %.1f kW", solarKw))
         }
 
         if (hwFullness != null && hwFullness >= 0.0) {
@@ -314,10 +305,12 @@ class HvacForegroundService : Service() {
             bigTextBuilder.append(extraTelemetry.joinToString("   •   ")).append("\n")
         }
 
+        // bedroom_1 is "Master 1" on the panel and in the config. It was labelled "Gym" here and
+        // separately read as a second "Master" line from a climate entity that does not exist,
+        // so one room had two names in one notification and neither matched the panel.
         val extraRooms = mutableListOf<String>()
-        if (masterTemp != null) extraRooms.add("Master: ${formatTemp(masterTemp)}")
+        if (masterTemp != null) extraRooms.add("Master 1: ${formatTemp(masterTemp)}")
         if (basementTemp != null) extraRooms.add("Basement: ${formatTemp(basementTemp)}")
-        if (bed1Temp != null) extraRooms.add("Gym: ${formatTemp(bed1Temp)}")
         if (extraRooms.isNotEmpty()) {
             bigTextBuilder.append("🛏️ " + extraRooms.joinToString("  •  ")).append("\n")
         }
@@ -413,9 +406,11 @@ class HvacForegroundService : Service() {
                             editor.putFloat("last_known_bedroom2_temp", parsedBed2Temp.toFloat())
                         }
 
-                        // Outside temp
-                        val outdoorTemp = statesMap["sensor.outdoor_temperature"]?.state?.toDoubleOrNull()
-                            ?: statesMap["sensor.outside_temperature"]?.state?.toDoubleOrNull()
+                        // Outside temp. sensor.outdoor_temperature and sensor.outside_temperature
+                        // do not exist here; the configured sensor is the one the panel uses.
+                        val outdoorId = HvacViewModel.getInstance()
+                            ?.getActiveLayoutConfig()?.homeStatus?.outdoorTempEntityId
+                        val outdoorTemp = outdoorId?.let { statesMap[it]?.state?.toDoubleOrNull() }
                             ?: statesMap["weather.home"]?.getDoubleAttribute("temperature")
                             ?: statesMap["weather.forecast_home"]?.getDoubleAttribute("temperature")
                         if (outdoorTemp != null) {
@@ -430,17 +425,14 @@ class HvacForegroundService : Service() {
                             editor.putFloat("last_known_pool_temp", poolTemp.toFloat())
                         }
 
-                        // Solar power & Battery
-                        val solarWatts = statesMap["sensor.envoy_122223062334_current_power_production"]?.state?.toDoubleOrNull()
-                            ?: statesMap["sensor.solar_power"]?.state?.toDoubleOrNull()
-                        if (solarWatts != null) {
-                            editor.putFloat("last_known_solar_kw", (solarWatts / 1000.0).toFloat())
-                        }
-
-                        val batterySoc = statesMap["sensor.encharge_battery_percentage"]?.state?.toDoubleOrNull()
-                            ?: statesMap["sensor.battery_soc"]?.state?.toDoubleOrNull()
-                        if (batterySoc != null) {
-                            editor.putFloat("last_known_battery_soc", batterySoc.toFloat())
+                        // Solar production, summed across both phases. The Envoy and
+                        // sensor.solar_power ids previously read here do not exist, so this line
+                        // never populated. The phase sensors report kW directly.
+                        val solarCfg = HvacViewModel.getInstance()?.getActiveLayoutConfig()?.solarSensors
+                        val phaseA = solarCfg?.phaseAPowerEntityId?.let { statesMap[it]?.state?.toDoubleOrNull() }
+                        val phaseB = solarCfg?.phaseBPowerEntityId?.let { statesMap[it]?.state?.toDoubleOrNull() }
+                        if (phaseA != null || phaseB != null) {
+                            editor.putFloat("last_known_solar_kw", ((phaseA ?: 0.0) + (phaseB ?: 0.0)).toFloat())
                         }
 
                         // Hot water
@@ -449,13 +441,16 @@ class HvacForegroundService : Service() {
                             editor.putFloat("last_known_hot_water_fullness", hwFullness.toFloat())
                         }
 
-                        val hwTemp = statesMap["water_heater.my_water_heater"]?.getDoubleAttribute("current_temperature")
+                        // water_heater.my_water_heater does not exist; the real entity is the one
+                        // the car module already reads.
+                        val hwTemp = statesMap["water_heater.heat_pump_water_heater"]?.getDoubleAttribute("current_temperature")
                         if (hwTemp != null) {
                             editor.putFloat("last_known_hot_water_temp", hwTemp.toFloat())
                         }
 
-                        // Other zones
-                        val masterTemp = statesMap["climate.hp_master_bedroom"]?.getDoubleAttribute("current_temperature")
+                        // Master 1. climate.hp_master_bedroom does not exist; the head is
+                        // climate.hp_bedroom, which the config calls bedroom_1.
+                        val masterTemp = statesMap["climate.hp_bedroom"]?.getDoubleAttribute("current_temperature")
                         if (masterTemp != null) {
                             editor.putFloat("last_known_master_temp", masterTemp.toFloat())
                         }
@@ -463,11 +458,6 @@ class HvacForegroundService : Service() {
                         val basementTemp = statesMap["climate.hp_basement"]?.getDoubleAttribute("current_temperature")
                         if (basementTemp != null) {
                             editor.putFloat("last_known_basement_temp", basementTemp.toFloat())
-                        }
-
-                        val bed1Temp = statesMap["climate.hp_bedroom_1"]?.getDoubleAttribute("current_temperature")
-                        if (bed1Temp != null) {
-                            editor.putFloat("last_known_bed1_temp", bed1Temp.toFloat())
                         }
 
                         editor.apply()
@@ -479,10 +469,16 @@ class HvacForegroundService : Service() {
             // Fallback baseline sync or periodic weather update check
             while (isActive) {
                 try {
+                    // Refresh the cached outdoor reading from the real sensor. This used to write
+                    // the day's forecast HIGH over the cache every minute, so even the fallback
+                    // value was wrong.
                     val activeViewModel = HvacViewModel.getInstance()
-                    val firstHigh = activeViewModel?.weatherState?.value?.days?.firstOrNull()?.avgHighTemp
-                    if (firstHigh != null) {
-                        sharedPrefs.edit().putFloat("last_known_outdoor_temp", firstHigh.toFloat()).apply()
+                    val outdoorId = activeViewModel?.getActiveLayoutConfig()?.homeStatus?.outdoorTempEntityId
+                    val liveOutdoor = outdoorId?.let {
+                        activeViewModel.entityStates.value[it]?.state?.toFloatOrNull()
+                    }
+                    if (liveOutdoor != null) {
+                        sharedPrefs.edit().putFloat("last_known_outdoor_temp", liveOutdoor).apply()
                     }
                     updateNotification()
                 } catch (e: Exception) {
