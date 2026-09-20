@@ -224,10 +224,50 @@ that would hear about the zone coming on at all.
 
 ---
 
+## Decided — do not re-raise
+
+- **Turning the house off stays unconfirmed.** Owner's decision, 2026-09-20. It was raised
+  because switching heat to cool prompts and switching the house off does not, so the guard
+  protects the compressor and not the house. The asymmetry is deliberate: the heat-to-cool prompt
+  exists to protect the equipment from a reversed cycle, and off carries no such risk. Off is also
+  a routine action that should not nag. This applies to every surface, including the notification
+  buttons. Any future audit flagging "no confirmation on OFF" should stop here.
+
+## Parked — wanted later, not now
+
+### Freeze failsafe
+
+Owner's intent, 2026-09-20: eventually a failsafe that kicks heads onto heat if they are turned
+off and left off. **Explicitly not being built now.** Captured while the surrounding context is
+fresh, because the interactions are not obvious.
+
+Where it belongs: the n8n Watchdog. HVAC logic lives in n8n, and the Watchdog already polls every
+minute, already reads every head and helper, and already has the two-unit family model.
+
+Interactions that will need answering when it is built:
+
+- **It has to outrank the manual-override latch.** A zone suspended by drift detection is exactly
+  the zone most likely to be sitting off and forgotten. A failsafe that respects the override is
+  a failsafe that does not fire when it matters.
+- **It has to outrank `zone_enable`.** The basement is deliberately disabled, which makes it
+  invisible to both the sequencer and the drift check. Freeze protection is the one thing that
+  should still cover it.
+- **It cannot ignore the outdoor-unit family rule.** Forcing heat onto a head whose condenser is
+  serving cool would be refused by the equipment and would trip the conflict rule, which would
+  then turn the head off again. Either skip a unit that is committed to cooling, or move that
+  whole unit to heat.
+- **Global mode off must not disable it.** Off means scheduling paused. That is precisely the
+  state in which a head gets turned off and forgotten.
+- **It needs its own setpoint**, well below every schedule value, so it never competes with normal
+  operation. A failsafe that heats to comfort temperature is a scheduler.
+- **It should latch loudly.** A fired failsafe means something else already failed, so it warrants
+  a Telegram message that says which zone and what the room temperature was.
+
+A room sensor is the right trigger rather than the head's own reading, since a head that is off
+may not report a useful current temperature.
+
 ## Still open, needing a decision rather than a fix
 
-- **Turning the house off asks for no confirmation**, while switching heat to cool does. The
-  guard protects the compressor and leaves the house unprotected in winter.
 - **Temperature limits come from different bases.** The apply-now path clamps against the zone's
   own mode; the preset path clamps against whether the edited preset is a heat or cool one.
   Defensible either way, but worth knowing they are not the same test.
