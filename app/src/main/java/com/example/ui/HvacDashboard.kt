@@ -618,22 +618,15 @@ fun HvacDashboard(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 ThemeCoreIcon(presetId = activeThemePreset, size = 28.dp)
-                                Column {
-                                    Text(
-                                        layoutConfig.appTitle ?: "Home Control",
-                                        fontWeight = FontWeight.Black,
-                                        letterSpacing = 3.sp,
-                                        fontSize = 18.sp,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        layoutConfig.appSubtitle ?: "HVAC SYSTEM CONTROLLER",
-                                        fontSize = 8.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White.copy(alpha = 0.6f),
-                                        letterSpacing = 1.sp
-                                    )
-                                }
+                                Text(
+                                    layoutConfig.appTitle ?: "Home Control",
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 2.5.sp,
+                                    fontSize = 18.sp,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         },
                         actions = {
@@ -642,6 +635,15 @@ fun HvacDashboard(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 modifier = Modifier.padding(end = 12.dp)
                             ) {
+                                // Real outdoor reading from Home Assistant. The weather card
+                                // below shows a forecast, which is not the same thing and
+                                // defaults to the wrong hemisphere until coordinates are set.
+                                OutdoorReadingChip(
+                                    viewModel = viewModel,
+                                    entityId = layoutConfig.homeStatus?.outdoorTempEntityId,
+                                    compact = true
+                                )
+
                                 // Settings Button
                                 Box(
                                     modifier = Modifier
@@ -897,7 +899,8 @@ fun DynamicTabContent(
     state: HvacUiState.Success,
     viewModel: HvacViewModel,
     listState: LazyListState,
-    lastInteractionTime: Long = 0L
+    lastInteractionTime: Long = 0L,
+    onInteraction: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val theme = LocalHvacTheme.current
@@ -906,9 +909,10 @@ fun DynamicTabContent(
     var activeLightPopupId by remember { mutableStateOf<String?>(null) }
     var activeSwitchPopupId by remember { mutableStateOf<String?>(null) }
 
+    val popupTimeoutMillis = (layoutConfig.popupTimeoutSeconds ?: 60).coerceAtLeast(10) * 1000L
     LaunchedEffect(lastInteractionTime) {
         if (lastInteractionTime > 0) {
-            kotlinx.coroutines.delay(30000L)
+            kotlinx.coroutines.delay(popupTimeoutMillis)
             activeZoneDetail = null
             activeLightPopupId = null
             activeSwitchPopupId = null
@@ -950,11 +954,16 @@ fun DynamicTabContent(
             lastNonOffHvacMode = state.globalSettings.lastNonOffHvacMode,
             activeScheduleState = state.globalSettings.houseSchedule,
             onDismiss = { activeZoneDetail = null },
-            viewModel = viewModel
+            viewModel = viewModel,
+            onInteraction = onInteraction
         )
     }
 
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    // Measured width of the content area, not the screen: on the wall tablets the rail and
+    // the house panel take ~270dp before any card is drawn.
+    val maxContentWidth = this@BoxWithConstraints.maxWidth
     LazyColumn(
         state = listState,
         modifier = Modifier
@@ -975,31 +984,24 @@ fun DynamicTabContent(
                         }
                     }
 
+                    // Normally absent. Appears for an open door, a lost connection, or a
+                    // command that failed or is still being applied.
                     item {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Layers,
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.6f),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "${state.zones.size} ACTIVE ZONE CONTROLLERS",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White.copy(alpha = 0.7f),
-                                letterSpacing = 1.sp
-                            )
-                        }
+                        HomeAlertStrip(
+                            viewModel = viewModel,
+                            homeStatus = layoutConfig.homeStatus,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
                     }
 
-                    val chunkedZones = state.zones.chunked(2)
+                    // A fixed two-column grid left ~500dp-wide cards on the wall tablets.
+                    // Pick the column count from the space actually available instead.
+                    val zoneColumns = when {
+                        maxContentWidth >= 1000.dp -> 3
+                        maxContentWidth >= 660.dp && isLandscape -> 3
+                        else -> 2
+                    }
+                    val chunkedZones = state.zones.chunked(zoneColumns)
                     items(chunkedZones, key = { pair -> pair.joinToString("-") { it.key } }) { pair ->
                         Row(
                             modifier = Modifier
@@ -1016,7 +1018,7 @@ fun DynamicTabContent(
                                     )
                                 }
                             }
-                            if (pair.size < 2) {
+                            repeat(zoneColumns - pair.size) {
                                 Spacer(modifier = Modifier.weight(1f))
                             }
                         }
@@ -1355,6 +1357,7 @@ fun DynamicTabContent(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -1382,9 +1385,13 @@ fun HvacDashboardContent(
     val listStates = remember { List(10) { LazyListState() } }
     var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    // Revert to Main Tab and Top of Page after 30 seconds of inactivity
+    // Revert to Main Tab and Top of Page after a period of inactivity. Dialogs live in their
+    // own windows, so their touches never reached the root pointerInput below — which meant
+    // this fired mid-adjustment and disposed the open popup. They now report interaction
+    // through onInteraction, and the window is long enough to read a chart on the wall.
+    val idleReturnMillis = (layoutConfig.idleReturnSeconds ?: 120).coerceAtLeast(15) * 1000L
     LaunchedEffect(lastInteractionTime) {
-        kotlinx.coroutines.delay(30000L)
+        kotlinx.coroutines.delay(idleReturnMillis)
         selectedTab = 0
         if (listStates.isNotEmpty()) {
             try {
@@ -1444,22 +1451,15 @@ fun HvacDashboardContent(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 ThemeCoreIcon(presetId = activeThemePreset, size = 30.dp)
-                                Column {
-                                    Text(
-                                        layoutConfig.appTitle ?: "Home Control",
-                                        fontWeight = FontWeight.Black,
-                                        letterSpacing = 2.sp,
-                                        fontSize = 15.sp,
-                                        color = Color.White
-                                    )
-                                    Text(
-                                        layoutConfig.appSubtitle ?: "HVAC CONTROLLER",
-                                        fontSize = 7.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White.copy(alpha = 0.6f),
-                                        letterSpacing = 1.sp
-                                    )
-                                }
+                                Text(
+                                    layoutConfig.appTitle ?: "Home Control",
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 2.sp,
+                                    fontSize = 15.sp,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                             IconButton(
                                 onClick = { isMenuExpanded = false },
@@ -1605,18 +1605,16 @@ fun HvacDashboardContent(
                             )
                         }
 
-                        // Logout / User Info
+                        // Outdoor reading + settings
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "OPERATOR",
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White.copy(alpha = 0.4f),
-                                letterSpacing = 0.5.sp
+                            OutdoorReadingChip(
+                                viewModel = viewModel,
+                                entityId = layoutConfig.homeStatus?.outdoorTempEntityId,
+                                compact = false
                             )
 
                             Row(
@@ -1722,7 +1720,8 @@ fun HvacDashboardContent(
                                     state = state,
                                     viewModel = viewModel,
                                     listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)],
-                                    lastInteractionTime = lastInteractionTime
+                                    lastInteractionTime = lastInteractionTime,
+                                    onInteraction = { lastInteractionTime = System.currentTimeMillis() }
                                 )
                             }
                         }
@@ -1731,81 +1730,118 @@ fun HvacDashboardContent(
 
                 Spacer(modifier = Modifier.width(16.dp))
 
-                // Consolidated, minimal right-hand room sensors side panel
+                // Right-hand house panel. This used to be a "TEMPS" column that repeated
+                // rooms which already have their own zone card — Living read 65° here while
+                // Main Level read 67° two inches away. It now carries only what the zone
+                // cards don't: humidity, presence, the non-zone rooms, and quick actions.
+                val homeStatusCfg = layoutConfig.homeStatus
+                val hiddenRoomIds = homeStatusCfg?.hideRoomSensorIds.orEmpty().toSet()
+                val secondaryRooms = state.roomSensors.filter { it.id !in hiddenRoomIds }
+
                 Column(
                     modifier = Modifier
-                        .width(130.dp)
+                        .width(168.dp)
                         .fillMaxHeight()
-                        .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(16.dp))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(16.dp))
-                        .padding(horizontal = 8.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "TEMPS",
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White.copy(alpha = 0.4f),
-                        letterSpacing = 1.sp,
-                        modifier = Modifier.padding(bottom = 4.dp)
+                    HumidityCard(
+                        viewModel = viewModel,
+                        sensors = homeStatusCfg?.humiditySensors.orEmpty(),
+                        modifier = Modifier.fillMaxWidth()
                     )
 
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.verticalScroll(rememberScrollState())
-                    ) {
-                        state.roomSensors.forEach { room ->
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.04f)),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        imageVector = when (room.id) {
-                                            "living_room" -> Icons.Default.Weekend
-                                            "bedroom" -> Icons.Default.Bed
-                                            "basement" -> Icons.Default.AcUnit
-                                            else -> Icons.Default.Thermostat
-                                        },
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = Color.White.copy(alpha = 0.5f)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = room.name.uppercase(),
-                                        fontSize = 7.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White.copy(alpha = 0.5f),
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = room.temp?.let { "${it.toInt()}°F" } ?: "--°F",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color.White,
-                                        textAlign = TextAlign.Center
-                                    )
+                    if (secondaryRooms.isNotEmpty()) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+                            border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+                            shape = hvacCardShape(12),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                Text(
+                                    text = "OTHER ROOMS",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color.White.copy(alpha = 0.55f),
+                                    letterSpacing = 1.3.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                secondaryRooms.forEach { room ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = room.name.uppercase(),
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White.copy(alpha = 0.55f),
+                                            letterSpacing = 0.6.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Text(
+                                            text = room.temp?.let { "${it.toInt()}°" } ?: "--°",
+                                            fontSize = 17.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
+
+                    PresenceCard(
+                        viewModel = viewModel,
+                        presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    QuickActionsCard(
+                        viewModel = viewModel,
+                        actions = homeStatusCfg?.quickActions.orEmpty(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }
     } else {
-        // Original Portrait Layout preserved exactly
+        // Portrait / phone layout
         Column(modifier = Modifier.fillMaxSize()) {
-            // Horizontal sensors header strip
-            RoomSensorsStrip(rooms = state.roomSensors)
+            val homeStatusCfg = layoutConfig.homeStatus
+            val hiddenRoomIds = homeStatusCfg?.hideRoomSensorIds.orEmpty().toSet()
+
+            // Status row: the two things the phone had no way to show at all. Rooms that
+            // already appear as zone cards are excluded from the strip below so the same
+            // room can't report two different temperatures on one screen.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                HumidityCard(
+                    viewModel = viewModel,
+                    sensors = homeStatusCfg?.humiditySensors.orEmpty(),
+                    modifier = Modifier.weight(1f)
+                )
+                PresenceCard(
+                    viewModel = viewModel,
+                    presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Horizontal sensors header strip (non-zone rooms only)
+            RoomSensorsStrip(rooms = state.roomSensors.filter { it.id !in hiddenRoomIds })
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -1823,12 +1859,47 @@ fun HvacDashboardContent(
                 Spacer(modifier = Modifier.height(if (isMinimized) 6.dp else 10.dp))
             }
 
-            // Custom compact tab row navigation mimicking the hot water mode option buttons layout
+            UpdateAlertBanner(
+                viewModel = viewModel,
+                activeTabs = activeTabs,
+                onNavigateToUpdates = { selectedTab = it }
+            )
+
+            // Body content swap based on selected tab containing robust details
+            Box(modifier = Modifier.weight(1f)) {
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        slideInHorizontally { width -> if (targetState > initialState) width else -width } + fadeIn() togetherWith
+                                        slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
+                    },
+                    label = "tab_swapper"
+                ) { currentTabIdx ->
+                    val currentTab = activeTabs.getOrNull(currentTabIdx)
+                    if (currentTab != null) {
+                        DynamicTabContent(
+                            tab = currentTab,
+                            state = state,
+                            viewModel = viewModel,
+                            listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)],
+                            lastInteractionTime = lastInteractionTime,
+                            onInteraction = { lastInteractionTime = System.currentTimeMillis() }
+                        )
+                    }
+                }
+            }
+
+            // Bottom navigation. The old top row gave five cards equal weight with
+            // maxLines = 1, so titles like "SYSTEM DISPATCH" ran off the right edge of the
+            // screen. Short titles come from the layout config, and the bar now sits where
+            // a thumb actually reaches.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .background(Color.White.copy(alpha = 0.025f))
+                    .padding(top = 8.dp, bottom = 10.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 activeTabs.forEachIndexed { index, tabConfig ->
                     val isSelected = selectedTab == index
@@ -1838,74 +1909,36 @@ fun HvacDashboardContent(
                         "off" -> Color(0xFF64748B)
                         else -> Color(0xFFF59E0B)
                     }
-                    Card(
+                    Column(
                         modifier = Modifier
                             .weight(1f)
-                            .testTag("nav_tab_$index")
-                            .clickable { selectedTab = index },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (isSelected) activeColor.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
-                        ),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isSelected) activeColor else Color.White.copy(alpha = 0.05f)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
+                            .heightIn(min = 52.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { selectedTab = index }
+                            .padding(vertical = 6.dp, horizontal = 2.dp)
+                            .testTag("nav_tab_$index"),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp, horizontal = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = getIconByName(tabConfig.icon),
-                                contentDescription = null,
-                                tint = if (isSelected) activeColor else Color.White.copy(alpha = 0.5f),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = tabConfig.title,
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.5f),
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        Icon(
+                            imageVector = getIconByName(tabConfig.icon),
+                            contentDescription = tabConfig.title,
+                            tint = if (isSelected) activeColor else Color.White.copy(alpha = 0.45f),
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = tabConfig.shortTitle
+                                ?: tabConfig.title.substringBefore(" &").substringBefore(" ").uppercase(),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.8.sp,
+                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.45f),
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            UpdateAlertBanner(
-                viewModel = viewModel,
-                activeTabs = activeTabs,
-                onNavigateToUpdates = { selectedTab = it }
-            )
-
-            // Body content swap based on selected tab containing robust details
-            AnimatedContent(
-                targetState = selectedTab,
-                transitionSpec = {
-                    slideInHorizontally { width -> if (targetState > initialState) width else -width } + fadeIn() togetherWith
-                                    slideOutHorizontally { width -> if (targetState > initialState) -width else width } + fadeOut()
-                },
-                label = "tab_swapper"
-            ) { currentTabIdx ->
-                val currentTab = activeTabs.getOrNull(currentTabIdx)
-                if (currentTab != null) {
-                    DynamicTabContent(
-                        tab = currentTab,
-                        state = state,
-                        viewModel = viewModel,
-                        listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)],
-                        lastInteractionTime = lastInteractionTime
-                    )
                 }
             }
         }
@@ -2060,21 +2093,19 @@ fun GlobalSettingsQuickControl(
     val configuration = LocalConfiguration.current
     val isTablet = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    // Sizing parameters - scaled down by approx 25% if in tablet mode
-    val cardPadding = if (isTablet) 12.dp else 16.dp
-    val rowSpacerHeight = if (isTablet) 8.dp else 12.dp
-
-    // Day/Night/Away & Heat/Cool/Off control sizes
-    val btnSize = if (isTablet) 30.dp else 40.dp
-    val btnIconSize = if (isTablet) 15.dp else 20.dp
-    val titleFontSize = if (isTablet) 7.5.sp else 9.sp
-    val valueFontSize = if (isTablet) 10.sp else 13.sp
+    // One set of sizes for every screen. Landscape used to shrink these by ~25%, which meant
+    // the wall tablets — the devices read from furthest away — got the smallest controls in
+    // the app, including a whole-house Off button 5dp from Cool.
+    val cardPadding = 16.dp
+    val rowSpacerHeight = 12.dp
+    val titleFontSize = 10.sp
+    val valueFontSize = 14.sp
 
     // Hot Water control sizes
-    val waterBtnPadding = if (isTablet) PaddingValues(horizontal = 2.dp, vertical = 4.dp) else PaddingValues(horizontal = 4.dp, vertical = 6.dp)
-    val waterIconSize = if (isTablet) 14.dp else 18.dp
-    val waterSpacerHeight = if (isTablet) 3.dp else 4.dp
-    val waterLabelFontSize = if (isTablet) 7.sp else 8.5.sp
+    val waterBtnPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+    val waterIconSize = 20.dp
+    val waterSpacerHeight = 5.dp
+    val waterLabelFontSize = 8.5.sp
 
     Card(
         modifier = modifier
@@ -2086,61 +2117,33 @@ fun GlobalSettingsQuickControl(
     ) {
         Column(modifier = Modifier.padding(cardPadding)) {
             // First row: HOUSE SCHEDULE
+            Text(
+                "HOUSE SCHEDULE",
+                fontSize = titleFontSize,
+                fontWeight = FontWeight.Black,
+                color = Color.White.copy(alpha = 0.5f),
+                letterSpacing = 1.3.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "HOUSE SCHEDULE",
-                        fontSize = titleFontSize,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White.copy(alpha = 0.5f),
-                        letterSpacing = if (isTablet) 0.5.sp else 1.sp
+                listOf(
+                    Triple("Day", Icons.Default.WbSunny, Color(0xFFF59E0B)),
+                    Triple("Night", Icons.Default.NightsStay, Color(0xFF2196F3)),
+                    Triple("Away", Icons.Default.ExitToApp, Color(0xFF10B981))
+                ).forEach { (label, icon, color) ->
+                    val isSelected = state.globalSettings.houseSchedule.lowercase() == label.lowercase()
+                    SegmentedControlButton(
+                        label = label,
+                        icon = icon,
+                        color = color,
+                        isSelected = isSelected,
+                        contentDescription = "Set schedule to $label",
+                        testTagId = "main_schedule_btn_${label.lowercase()}",
+                        onClick = { viewModel.selectHouseSchedule(label) }
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = state.globalSettings.houseSchedule.uppercase(),
-                        fontSize = valueFontSize,
-                        fontWeight = FontWeight.Bold,
-                        color = when (state.globalSettings.houseSchedule.lowercase()) {
-                            "day" -> Color(0xFFF59E0B)
-                            "night" -> Color(0xFF2196F3)
-                            else -> Color(0xFF10B981)
-                        }
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 6.dp else 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    listOf(
-                        Triple("Day", Icons.Default.WbSunny, Color(0xFFF59E0B)),
-                        Triple("Night", Icons.Default.NightsStay, Color(0xFF2196F3)),
-                        Triple("Away", Icons.Default.ExitToApp, Color(0xFF10B981))
-                    ).forEach { (label, icon, color) ->
-                        val isSelected = state.globalSettings.houseSchedule.lowercase() == label.lowercase()
-                        Box(
-                            modifier = Modifier
-                                .size(btnSize)
-                                .clip(RoundedCornerShape(if (isTablet) 8.dp else 12.dp))
-                                .background(
-                                    if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
-                                )
-                                .clickable { viewModel.selectHouseSchedule(label) }
-                                .testTag("main_schedule_btn_${label.lowercase()}"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = "Set schedule to $label",
-                                modifier = Modifier.size(btnIconSize),
-                                tint = if (isSelected) color else Color.White.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
                 }
             }
 
@@ -2149,66 +2152,47 @@ fun GlobalSettingsQuickControl(
             Spacer(modifier = Modifier.height(rowSpacerHeight))
 
             // Second row: GLOBAL HVAC MODE
+            Text(
+                "HOUSE MODE",
+                fontSize = titleFontSize,
+                fontWeight = FontWeight.Black,
+                color = Color.White.copy(alpha = 0.5f),
+                letterSpacing = 1.3.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "GLOBAL SEASON",
-                        fontSize = titleFontSize,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White.copy(alpha = 0.5f),
-                        letterSpacing = if (isTablet) 0.5.sp else 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = state.globalSettings.globalHvacMode.uppercase(),
-                        fontSize = valueFontSize,
-                        fontWeight = FontWeight.Bold,
-                        color = when (state.globalSettings.globalHvacMode.lowercase()) {
-                            "heat" -> Color(0xFFF59E0B)
-                            "cool" -> Color(0xFF2196F3)
-                            "dry" -> Color(0xFF8B5CF6)
-                            else -> Color(0xFF64748B) // off
-                        }
+                listOf(
+                    Triple("heat", Icons.Default.Whatshot, Color(0xFFF59E0B)),
+                    Triple("cool", Icons.Default.AcUnit, Color(0xFF2196F3)),
+                    Triple("dry", Icons.Default.Air, Color(0xFF8B5CF6))
+                ).forEach { (label, icon, color) ->
+                    val isSelected = state.globalSettings.globalHvacMode.lowercase() == label.lowercase()
+                    SegmentedControlButton(
+                        label = label,
+                        icon = icon,
+                        color = color,
+                        isSelected = isSelected,
+                        contentDescription = "Set global mode to $label",
+                        testTagId = "main_hvac_mode_btn_${label.lowercase()}",
+                        onClick = { viewModel.requestGlobalHvacMode(label) }
                     )
                 }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 5.dp else 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    listOf(
-                        Triple("heat", Icons.Default.Whatshot, Color(0xFFF59E0B)),
-                        Triple("cool", Icons.Default.AcUnit, Color(0xFF2196F3)),
-                        Triple("dry", Icons.Default.Air, Color(0xFF8B5CF6)),
-                        Triple("off", Icons.Default.PowerSettingsNew, Color(0xFFEF4444))
-                    ).forEach { (label, icon, color) ->
-                        val isSelected = state.globalSettings.globalHvacMode.lowercase() == label.lowercase()
-                        Box(
-                            modifier = Modifier
-                                .size(btnSize)
-                                .clip(RoundedCornerShape(if (isTablet) 8.dp else 12.dp))
-                                .background(
-                                    if (isSelected) color.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.03f)
-                                )
-                                .clickable {
-                                    viewModel.requestGlobalHvacMode(label)
-                                }
-                                .testTag("main_hvac_mode_btn_${label.lowercase()}"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = "Set global mode to $label",
-                                modifier = Modifier.size(btnIconSize),
-                                tint = if (isSelected) color else Color.White.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                }
+                // Whole-house Off is set apart from the running modes so it is never the
+                // button you hit while aiming for Cool.
+                Spacer(modifier = Modifier.width(10.dp))
+                SegmentedControlButton(
+                    label = "off",
+                    icon = Icons.Default.PowerSettingsNew,
+                    color = Color(0xFFEF4444),
+                    isSelected = state.globalSettings.globalHvacMode.lowercase() == "off",
+                    contentDescription = "Turn the whole house off",
+                    testTagId = "main_hvac_mode_btn_off",
+                    weight = 0.85f,
+                    onClick = { viewModel.requestGlobalHvacMode("off") }
+                )
             }
 
             Spacer(modifier = Modifier.height(rowSpacerHeight))
@@ -2217,13 +2201,34 @@ fun GlobalSettingsQuickControl(
 
             // Third row: HOT WATER CONTROL & TANK STORAGE
             Column {
-                Text(
-                    "HOT WATER MODE & TANK",
-                    fontSize = titleFontSize,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White.copy(alpha = 0.5f),
-                    letterSpacing = if (isTablet) 0.5.sp else 1.sp
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "HOT WATER",
+                        fontSize = titleFontSize,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White.copy(alpha = 0.5f),
+                        letterSpacing = 1.3.sp
+                    )
+                    val wsStatesHw by viewModel.wsStates.collectAsStateWithLifecycle()
+                    val runningId = viewModel.getActiveLayoutConfig().waterHeaterRunningEntityId
+                    val isHeatingNow = runningId?.let { wsStatesHw[it]?.state?.equals("on", true) } == true
+                    if (isHeatingNow) {
+                        Spacer(modifier = Modifier.width(9.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(Color(0xFF10B981), CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            "HEATING NOW",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF10B981),
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(waterSpacerHeight))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -2231,7 +2236,7 @@ fun GlobalSettingsQuickControl(
                 ) {
                     listOf(
                         WaterHeaterItem("eco", "ECO", Icons.Default.WaterDrop, Color(0xFF10B981)),
-                        WaterHeaterItem("heat_pump", "HEAT PUMP", Icons.Default.Settings, Color(0xFFF59E0B)),
+                        WaterHeaterItem("heat_pump", "HEAT PUMP", Icons.Default.HeatPump, Color(0xFFF59E0B)),
                         WaterHeaterItem("high_demand", "BOOST", Icons.Default.Bolt, Color(0xFFEF4444))
                     ).forEach { item ->
                         val option = item.option
@@ -2354,83 +2359,6 @@ fun GlobalSettingsQuickControl(
 }
 
 @Composable
-fun ClimateZonesTab(
-    state: HvacUiState.Success,
-    viewModel: HvacViewModel
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var activeZoneDetail by remember { mutableStateOf<ClimateZone?>(null) }
-
-    // If an active zone is selected, show detail configuration popup
-    if (activeZoneDetail != null) {
-        val currentZoneStatus = state.zones.find { it.key == activeZoneDetail?.key } ?: activeZoneDetail!!
-        ZoneDetailPopup(
-            zone = currentZoneStatus,
-            globalHvacMode = state.globalSettings.globalHvacMode,
-            lastNonOffHvacMode = state.globalSettings.lastNonOffHvacMode,
-            activeScheduleState = state.globalSettings.houseSchedule,
-            onDismiss = { activeZoneDetail = null },
-            viewModel = viewModel
-        )
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("climate_zones_tab"),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item {
-            GlobalSettingsQuickControl(state = state, viewModel = viewModel)
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Layers,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.6f),
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "${state.zones.size} ACTIVE ZONE CONTROLLERS",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.White.copy(alpha = 0.7f),
-                    letterSpacing = 1.sp
-                )
-            }
-        }
-
-        val chunkedZones = state.zones.chunked(2)
-        items(chunkedZones, key = { pair -> pair.joinToString("-") { it.key } }) { pair ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                pair.forEach { zone ->
-                    Box(modifier = Modifier.weight(1f)) {
-                        ConsolidatedZoneCard(
-                            zone = zone,
-                            onClick = { activeZoneDetail = zone },
-                            viewModel = viewModel
-                        )
-                    }
-                }
-                if (pair.size < 2) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun ConsolidatedZoneCard(
     zone: ClimateZone,
     onClick: () -> Unit,
@@ -2449,7 +2377,7 @@ fun ConsolidatedZoneCard(
     val infiniteTransition = rememberInfiniteTransition(label = "zone_aura")
     val auraPulse by infiniteTransition.animateFloat(
         initialValue = 0.05f,
-        targetValue = if (zone.currentHvacMode.lowercase() != "off") 0.22f else 0.05f,
+        targetValue = if (zone.isCalling) 0.22f else 0.05f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 3000, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -2466,7 +2394,9 @@ fun ConsolidatedZoneCard(
         label = "aura_scale"
     )
 
-    val activeHvacIsRunning = zone.currentHvacMode.lowercase() in listOf("heat", "cool")
+    // Only animate while the unit is genuinely working. Pulsing on mode alone meant every
+    // non-off card glowed permanently, so the glow carried no information.
+    val activeHvacIsRunning = zone.isCalling
     val iconPulse by infiniteTransition.animateFloat(
         initialValue = 0.92f,
         targetValue = 1.18f,
@@ -2492,7 +2422,7 @@ fun ConsolidatedZoneCard(
             .clickable { onClick() }
             .testTag("zone_card_${zone.key}")
             .drawBehind {
-                if (zone.currentHvacMode.lowercase() != "off") {
+                if (zone.isCalling) {
                     drawCircle(
                         brush = Brush.radialGradient(
                             colors = listOf(
@@ -2527,9 +2457,9 @@ fun ConsolidatedZoneCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .padding(horizontal = 13.dp, vertical = 12.dp)
         ) {
-            // Row 1: Icon + Name & Status Badge
+            // Row 1: Icon + Name & Status Badges
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2548,13 +2478,13 @@ fun ConsolidatedZoneCard(
                         },
                         contentDescription = null,
                         tint = activeColor,
-                        modifier = Modifier.size(14.dp).then(runningModifier)
+                        modifier = Modifier.size(17.dp).then(runningModifier)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(7.dp))
                     Text(
                         text = zone.name,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -2569,14 +2499,14 @@ fun ConsolidatedZoneCard(
                     Box(
                         modifier = Modifier
                             .background(
-                                theme.coolColor.copy(alpha = 0.12f),
-                                RoundedCornerShape(4.dp)
+                                theme.coolColor.copy(alpha = 0.14f),
+                                RoundedCornerShape(5.dp)
                             )
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                            .padding(horizontal = 5.dp, vertical = 3.dp)
                     ) {
                         Text(
                             text = zone.fanMode.uppercase(),
-                            fontSize = 7.sp,
+                            fontSize = 8.sp,
                             fontWeight = FontWeight.Black,
                             color = theme.coolColor,
                             letterSpacing = 0.2.sp
@@ -2587,64 +2517,79 @@ fun ConsolidatedZoneCard(
                     Box(
                         modifier = Modifier
                             .background(
-                                if (zone.autoOn) Color(0xFF10B981).copy(alpha = 0.12f) else Color(0xFFEF4444).copy(alpha = 0.12f),
-                                RoundedCornerShape(4.dp)
+                                if (zone.autoOn) Color(0xFF10B981).copy(alpha = 0.14f) else Color(0xFFEF4444).copy(alpha = 0.14f),
+                                RoundedCornerShape(5.dp)
                             )
-                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                            .padding(horizontal = 5.dp, vertical = 3.dp)
                     ) {
                         Text(
                             text = if (zone.autoOn) "AUTO" else "HOLD",
-                            fontSize = 7.sp,
+                            fontSize = 8.sp,
                             fontWeight = FontWeight.Black,
                             color = if (zone.autoOn) Color(0xFF10B981) else Color(0xFFEF4444),
                             letterSpacing = 0.2.sp
                         )
                     }
+
+                    // Override (protection) marker — kept visible as its own symbol.
+                    if (zone.overrideOn) {
+                        Box(
+                            modifier = Modifier
+                                .background(theme.heatColor.copy(alpha = 0.14f), RoundedCornerShape(5.dp))
+                                .padding(horizontal = 4.dp, vertical = 3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Shield,
+                                contentDescription = "Override active",
+                                tint = theme.heatColor,
+                                modifier = Modifier.size(9.dp)
+                            )
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Row 2: Status Mode + Current & Target Temps side-by-side
+            // Row 2: the room temperature as the dominant value, with what the zone is
+            // actually doing and the target beneath it.
+            Text(
+                text = zone.currentTemp?.let { "${it.toInt()}°" } ?: "--°",
+                fontWeight = FontWeight.Light,
+                fontSize = 38.sp,
+                letterSpacing = (-1.5).sp,
+                lineHeight = 40.sp,
+                color = Color.White,
+                maxLines = 1
+            )
+
+            Spacer(modifier = Modifier.height(5.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = zone.currentHvacMode.uppercase(),
+                    text = if (zone.currentHvacMode.lowercase() == "off") "TAP TO ENABLE"
+                    else "SET ${zone.targetTemp?.toInt() ?: "--"}°",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.5f),
+                    letterSpacing = 1.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = zone.statusLabel,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Black,
-                    color = activeColor,
-                    letterSpacing = 0.5.sp
+                    color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.45f),
+                    letterSpacing = 0.6.sp,
+                    maxLines = 1
                 )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Current Temp
-                    Text(
-                        text = zone.currentTemp?.let { "${it.toInt()}°" } ?: "--°",
-                        fontWeight = FontWeight.Normal,
-                        fontSize = 15.sp,
-                        color = Color.White
-                    )
-                    
-                    Text(
-                        text = " / ",
-                        fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.3f),
-                        modifier = Modifier.padding(horizontal = 2.dp)
-                    )
-
-                    // Target Temp
-                    Text(
-                        text = "${zone.targetTemp?.toInt() ?: "--"}°",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = activeColor
-                    )
-                }
             }
         }
     }
@@ -2658,7 +2603,8 @@ fun LightingControlPopup(
     brightness: Int?,
     isLight: Boolean,
     onDismiss: () -> Unit,
-    viewModel: HvacViewModel
+    viewModel: HvacViewModel,
+    onInteraction: () -> Unit = {}
 ) {
     val theme = LocalHvacTheme.current
     val activeColor = if (isOn) theme.heatColor else Color(0xFF64748B)
@@ -2668,6 +2614,7 @@ fun LightingControlPopup(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 12.dp)
+                .dialogInteractionReporter(onInteraction)
                 .testTag("lighting_control_popup_$entityId"),
             colors = CardDefaults.cardColors(
                 containerColor = Color(0xFF1E293B)
@@ -2839,7 +2786,8 @@ fun ZoneDetailPopup(
     lastNonOffHvacMode: String,
     activeScheduleState: String,
     onDismiss: () -> Unit,
-    viewModel: HvacViewModel
+    viewModel: HvacViewModel,
+    onInteraction: () -> Unit = {}
 ) {
     val activeColor = when (zone.currentHvacMode.lowercase()) {
         "heat" -> Color(0xFFF59E0B)
@@ -2918,6 +2866,7 @@ fun ZoneDetailPopup(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .dialogInteractionReporter(onInteraction)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -3563,358 +3512,7 @@ fun ZoneDetailPopup(
 }
 }
 
-@Composable
-fun PresetTempRow(
-    label: String,
-    value: Double?,
-    tint: Color,
-    onAdjust: (Double) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = label,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            color = tint,
-            modifier = Modifier.weight(1f)
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = Icons.Default.Remove,
-                contentDescription = "decrease config",
-                tint = Color.White.copy(alpha = 0.4f),
-                modifier = Modifier
-                    .size(16.dp)
-                    .clickable { value?.let { onAdjust(it - 1.0) } }
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = value?.let { "${it.toInt()}°" } ?: "--°",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Black,
-                color = tint
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = "increase config",
-                tint = Color.White.copy(alpha = 0.4f),
-                modifier = Modifier
-                    .size(16.dp)
-                    .clickable { value?.let { onAdjust(it + 1.0) } }
-            )
-        }
-    }
-}
-
 // ======================== TAB 2: AUXILIARIES (LIGHTS & POWER) ========================
-
-@Composable
-fun AuxiliariesTab(
-    state: HvacUiState.Success,
-    viewModel: HvacViewModel
-) {
-    var activeLightPopupId by remember { mutableStateOf<String?>(null) }
-    var activeSwitchPopupId by remember { mutableStateOf<String?>(null) }
-    
-    // Popup lookup & display
-    val currentLightPopupState = activeLightPopupId?.let { id -> state.lights.find { it.entityId == id } }
-    if (activeLightPopupId != null && currentLightPopupState != null) {
-        LightingControlPopup(
-            entityId = currentLightPopupState.entityId,
-            name = currentLightPopupState.name,
-            isOn = currentLightPopupState.isOn,
-            brightness = currentLightPopupState.brightness,
-            isLight = true,
-            onDismiss = { activeLightPopupId = null },
-            viewModel = viewModel
-        )
-    }
-
-    val currentSwitchPopupState = activeSwitchPopupId?.let { id -> state.switches.find { it.entityId == id } }
-    if (activeSwitchPopupId != null && currentSwitchPopupState != null) {
-        LightingControlPopup(
-            entityId = currentSwitchPopupState.entityId,
-            name = currentSwitchPopupState.name,
-            isOn = currentSwitchPopupState.isOn,
-            brightness = null,
-            isLight = false,
-            onDismiss = { activeSwitchPopupId = null },
-            viewModel = viewModel
-        )
-    }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("auxiliaries_tab"),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        item {
-            Text(
-                "INTERIOR LIGHTING",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White.copy(alpha = 0.5f),
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-        }
-
-        val interiorLights = state.lights.filter { !it.entityId.contains("exterior") && !it.entityId.contains("porch") }
-        item {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier
-                    .height(150.dp)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(interiorLights, key = { it.entityId }) { light ->
-                    Card(
-                        modifier = Modifier
-                            .testTag("light_card_${light.entityId}")
-                            .clickable { activeLightPopupId = light.entityId },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (light.isOn) Color(0xFFF59E0B).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
-                        ),
-                        border = BorderStroke(1.dp, if (light.isOn) Color(0xFFF59E0B).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lightbulb,
-                                contentDescription = null,
-                                tint = if (light.isOn) Color(0xFFF59E0B) else Color.White.copy(alpha = 0.4f),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(light.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text(
-                                    text = if (light.isOn) "ACTIVE" else "POWER OFF",
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (light.isOn) Color(0xFFF59E0B) else Color.White.copy(alpha = 0.4f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Text(
-                "EXTERIOR PERIMETER & POWER",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White.copy(alpha = 0.5f),
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-        }
-
-        val exteriorItems = state.lights.filter { it.entityId.contains("exterior") || it.entityId.contains("porch") }
-        item {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier
-                    .height(210.dp)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(exteriorItems, key = { it.entityId }) { light ->
-                    Card(
-                        modifier = Modifier
-                            .testTag("exterior_card_${light.entityId}")
-                            .clickable { activeLightPopupId = light.entityId },
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (light.isOn) Color(0xFF2196F3).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
-                        ),
-                        border = BorderStroke(1.dp, if (light.isOn) Color(0xFF2196F3).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.FlashlightOn,
-                                contentDescription = null,
-                                tint = if (light.isOn) Color(0xFF2196F3) else Color.White.copy(alpha = 0.4f),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(light.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text(
-                                    text = if (light.isOn) "ACTIVE" else "POWER OFF",
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (light.isOn) Color(0xFF2196F3) else Color.White.copy(alpha = 0.4f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Text(
-                "AUXILIARY POWER CONTROL",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White.copy(alpha = 0.5f),
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-        }
-
-        item {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                val chunks = state.switches.chunked(2)
-                chunks.forEach { rowSwitches ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        rowSwitches.forEach { switch ->
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("switch_card_${switch.entityId}")
-                                    .clickable { activeSwitchPopupId = switch.entityId },
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (switch.isOn) Color(0xFF10B981).copy(alpha = 0.1f) else Color.White.copy(alpha = 0.03f)
-                                ),
-                                border = BorderStroke(1.dp, if (switch.isOn) Color(0xFF10B981).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.05f))
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PowerSettingsNew,
-                                        contentDescription = null,
-                                        tint = if (switch.isOn) Color(0xFF10B981) else Color.White.copy(alpha = 0.4f),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column {
-                                        Text(switch.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        Text(
-                                            text = if (switch.isOn) "ACTIVE" else "POWER OFF",
-                                            fontSize = 8.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (switch.isOn) Color(0xFF10B981) else Color.White.copy(alpha = 0.4f)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        if (rowSwitches.size == 1) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-
-        item {
-            Text(
-                "GARAGE SECURITY COVERS",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White.copy(alpha = 0.5f),
-                letterSpacing = 1.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-        }
-
-        items(state.covers, key = { it.entityId }) { cover ->
-            val isOpen = cover.state.lowercase() == "open" || cover.state.lowercase() == "opening"
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
-                border = BorderStroke(
-                    1.dp,
-                    if (isOpen) Color(0xFFEF4444).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.05f)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Garage,
-                            contentDescription = null,
-                            tint = if (isOpen) Color(0xFFEF4444) else Color(0xFF10B981),
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(cover.name, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
-                            Text(
-                                text = "State: ${cover.state.uppercase()}",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isOpen) Color(0xFFEF4444) else Color(0xFF10B981)
-                            )
-                        }
-                    }
-                    Button(
-                        onClick = {
-                            viewModel.toggleCover(cover.entityId, cover.state, cover.name)
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isOpen) Color(0xFFEF4444).copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f)
-                        ),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isOpen) Color(0xFFEF4444) else Color.White.copy(alpha = 0.2f)
-                        )
-                    ) {
-                        Text(
-                            text = if (isOpen) "ACTIVATE CLOSE" else "ACTIVATE OPEN",
-                            fontSize = 9.sp,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
 
 // ======================== TAB 4: SYSTEM UPDATES ========================
 

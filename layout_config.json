@@ -1,7 +1,10 @@
 {
-  "version": "1.1.1",
+  "version": "6.1.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
+  "showWeatherCard": true,
+  "weatherLatitude": 44.422164,
+  "weatherLongitude": -69.587659,
   "limits": {
     "minCoolingTemp": 64.0,
     "maxHeatingTemp": 80.0
@@ -66,19 +69,47 @@
       "id": "zones",
       "title": "HOME & CLIMATE",
       "icon": "layers",
-      "sections": ["sensors", "zones"]
+      "sections": [
+        "sensors",
+        "zones"
+      ],
+      "shortTitle": "HOME"
     },
     {
       "id": "aux",
       "title": "POWER CONTROL",
       "icon": "lightbulb",
-      "sections": ["condensed_power"]
+      "sections": [
+        "condensed_power"
+      ],
+      "shortTitle": "POWER"
+    },
+    {
+      "id": "solar",
+      "title": "SOLAR & ENERGY",
+      "icon": "solar_power",
+      "sections": [
+        "solar"
+      ],
+      "shortTitle": "SOLAR"
+    },
+    {
+      "id": "pool",
+      "title": "POOL DATA",
+      "icon": "pool",
+      "sections": [
+        "pool"
+      ],
+      "shortTitle": "POOL"
     },
     {
       "id": "updates",
       "title": "SYSTEM DISPATCH",
       "icon": "cloud_download",
-      "sections": ["updates"]
+      "sections": [
+        "updates"
+      ],
+      "shortTitle": "SYSTEM"
     }
   ],
   "roomSensors": [
@@ -222,7 +253,7 @@
       },
       "presetsCool": {
         "day": "input_number.basement_day_cool",
-        "night": "input_number.basement_away_cool",
+        "night": "input_number.basement_night_cool",
         "away": "input_number.basement_away_cool"
       }
     }
@@ -287,6 +318,84 @@
       "name": "Pool Pump"
     }
   ],
+  "dynamicSections": [
+    {
+      "id": "solar",
+      "title": "Solar Energy Dashboard",
+      "cards": [
+        {
+          "type": "placeholder",
+          "title": "INTEGRATION PENDING",
+          "subtitle": "Solar Array & Inverter Telemetry",
+          "icon": "solar_power",
+          "tintColor": "eco",
+          "statusText": "Awaiting local inverter connection"
+        },
+        {
+          "type": "stats_row",
+          "title": "Current Production & Grid Flow",
+          "stats": [
+            {
+              "label": "CURRENT PRODUCTION",
+              "value": "Pending API Setup",
+              "icon": "wb_sunny",
+              "tintColor": "eco"
+            },
+            {
+              "label": "GRID STATUS",
+              "value": "Monitoring Offline",
+              "icon": "bolt",
+              "tintColor": "cool"
+            }
+          ]
+        },
+        {
+          "type": "chart",
+          "title": "HISTORICAL TRENDS (COMING SOON)",
+          "subtitle": "Daily solar yields and consumption patterns across seasons",
+          "icon": "trending_up"
+        }
+      ]
+    },
+    {
+      "id": "pool",
+      "title": "Pool Automation Dashboard",
+      "cards": [
+        {
+          "type": "placeholder",
+          "title": "INTEGRATION PENDING",
+          "subtitle": "Pool Automation & Chemistry Hub",
+          "icon": "pool",
+          "tintColor": "cool",
+          "statusText": "Connecting to local Automation adapter"
+        },
+        {
+          "type": "stats_row",
+          "title": "Chemistry & Equipment Status",
+          "stats": [
+            {
+              "label": "PH & CHLORINE",
+              "value": "pH: -- / Cl: -- ppm",
+              "icon": "science",
+              "tintColor": "accent"
+            },
+            {
+              "label": "PUMP & HEATER STATUS",
+              "value": "Pump: Off / Heater: Standby",
+              "icon": "settings",
+              "tintColor": "eco"
+            }
+          ]
+        },
+        {
+          "type": "chart",
+          "title": "TEMPERATURE HISTORICAL TRENDS",
+          "subtitle": "Pool temperature patterns and active heater runtime metrics",
+          "icon": "show_chart"
+        }
+      ]
+    }
+  ],
   "covers": [
     {
       "entityId": "cover.konnected_d332ec_garage_door",
@@ -300,5 +409,60 @@
       "entityId": "switch.shellyplus1_b8d61a8a78b0_switch_0",
       "name": "Workshop"
     }
-  ]
+  ],
+  "idleReturnSeconds": 120,
+  "popupTimeoutSeconds": 60,
+  "waterHeaterRunningEntityId": "binary_sensor.heat_pump_water_heater_running",
+  "homeStatus": {
+    "outdoorTempEntityId": "sensor.hp_living_room_outdoor_temperature",
+    "humiditySensors": [
+      {
+        "name": "Dining",
+        "entityId": "sensor.dining_room_humidity"
+      },
+      {
+        "name": "Upstairs",
+        "entityId": "sensor.upstairs_humidity"
+      }
+    ],
+    "presenceEntityIds": [
+      "person.chris",
+      "person.jessy",
+      "person.anthony",
+      "person.autumn",
+      "person.ashley",
+      "person.terri"
+    ],
+    "doorAlerts": [
+      {
+        "name": "Garage South",
+        "stateEntityId": "binary_sensor.konnected_d332ec_wired_sensor",
+        "openStates": [
+          "on",
+          "open",
+          "opening"
+        ]
+      }
+    ],
+    "quickActions": [
+      {
+        "label": "Goodnight",
+        "icon": "bedtime",
+        "domain": "script",
+        "service": "turn_on",
+        "entityId": "script.nightly_shutdown"
+      },
+      {
+        "label": "House off",
+        "icon": "power",
+        "domain": "script",
+        "service": "turn_on",
+        "entityId": "script.global_house_shutdown"
+      }
+    ],
+    "hideRoomSensorIds": [
+      "living_room",
+      "basement"
+    ]
+  }
 }

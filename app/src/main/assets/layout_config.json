@@ -1,10 +1,10 @@
 {
-  "version": "6.0",
+  "version": "6.1.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
-  "weatherLatitude": 37.7749,
-  "weatherLongitude": -122.4194,
+  "weatherLatitude": 44.422164,
+  "weatherLongitude": -69.587659,
   "limits": {
     "minCoolingTemp": 64.0,
     "maxHeatingTemp": 80.0
@@ -69,31 +69,47 @@
       "id": "zones",
       "title": "HOME & CLIMATE",
       "icon": "layers",
-      "sections": ["sensors", "zones"]
+      "sections": [
+        "sensors",
+        "zones"
+      ],
+      "shortTitle": "HOME"
     },
     {
       "id": "aux",
       "title": "POWER CONTROL",
       "icon": "lightbulb",
-      "sections": ["condensed_power"]
+      "sections": [
+        "condensed_power"
+      ],
+      "shortTitle": "POWER"
     },
     {
       "id": "solar",
       "title": "SOLAR & ENERGY",
       "icon": "solar_power",
-      "sections": ["solar"]
+      "sections": [
+        "solar"
+      ],
+      "shortTitle": "SOLAR"
     },
     {
       "id": "pool",
       "title": "POOL DATA",
       "icon": "pool",
-      "sections": ["pool"]
+      "sections": [
+        "pool"
+      ],
+      "shortTitle": "POOL"
     },
     {
       "id": "updates",
       "title": "SYSTEM DISPATCH",
       "icon": "cloud_download",
-      "sections": ["updates"]
+      "sections": [
+        "updates"
+      ],
+      "shortTitle": "SYSTEM"
     }
   ],
   "roomSensors": [
@@ -237,7 +253,7 @@
       },
       "presetsCool": {
         "day": "input_number.basement_day_cool",
-        "night": "input_number.basement_away_cool",
+        "night": "input_number.basement_night_cool",
         "away": "input_number.basement_away_cool"
       }
     }
@@ -393,5 +409,60 @@
       "entityId": "switch.shellyplus1_b8d61a8a78b0_switch_0",
       "name": "Workshop"
     }
-  ]
+  ],
+  "idleReturnSeconds": 120,
+  "popupTimeoutSeconds": 60,
+  "waterHeaterRunningEntityId": "binary_sensor.heat_pump_water_heater_running",
+  "homeStatus": {
+    "outdoorTempEntityId": "sensor.hp_living_room_outdoor_temperature",
+    "humiditySensors": [
+      {
+        "name": "Dining",
+        "entityId": "sensor.dining_room_humidity"
+      },
+      {
+        "name": "Upstairs",
+        "entityId": "sensor.upstairs_humidity"
+      }
+    ],
+    "presenceEntityIds": [
+      "person.chris",
+      "person.jessy",
+      "person.anthony",
+      "person.autumn",
+      "person.ashley",
+      "person.terri"
+    ],
+    "doorAlerts": [
+      {
+        "name": "Garage South",
+        "stateEntityId": "binary_sensor.konnected_d332ec_wired_sensor",
+        "openStates": [
+          "on",
+          "open",
+          "opening"
+        ]
+      }
+    ],
+    "quickActions": [
+      {
+        "label": "Goodnight",
+        "icon": "bedtime",
+        "domain": "script",
+        "service": "turn_on",
+        "entityId": "script.nightly_shutdown"
+      },
+      {
+        "label": "House off",
+        "icon": "power",
+        "domain": "script",
+        "service": "turn_on",
+        "entityId": "script.global_house_shutdown"
+      }
+    ],
+    "hideRoomSensorIds": [
+      "living_room",
+      "basement"
+    ]
+  }
 }

@@ -20,7 +20,10 @@ data class TabConfig(
     val id: String,
     val title: String,
     val icon: String,
-    val sections: List<String>
+    val sections: List<String>,
+    // Short label used where horizontal space is tight (the phone's bottom navigation bar).
+    // Falls back to the first word of `title` when omitted.
+    val shortTitle: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -124,6 +127,52 @@ data class SolarSensorConfig(
 )
 
 @JsonClass(generateAdapter = true)
+data class HumiditySensorConfig(
+    val name: String,
+    val entityId: String,
+    // Optional attribute to read instead of the entity's own state (e.g. "current_humidity"
+    // on a climate entity).
+    val attribute: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DoorAlertConfig(
+    val name: String,
+    // A binary_sensor / cover whose state tells the truth about the door position. This is
+    // deliberately separate from the switch that operates it, because a relay's on/off says
+    // nothing about whether the door is open.
+    val stateEntityId: String,
+    val openStates: List<String>? = listOf("on", "open", "opening")
+)
+
+@JsonClass(generateAdapter = true)
+data class QuickActionConfig(
+    val label: String,
+    val icon: String? = null,
+    val domain: String,
+    val service: String,
+    val entityId: String? = null,
+    val confirm: Boolean? = false
+)
+
+/**
+ * Everything the home screen shows that isn't a zone: the outdoor reading, humidity, who's
+ * home, door alerts and the one-tap scripts. All of it is entity-driven so it stays editable
+ * over the air.
+ */
+@JsonClass(generateAdapter = true)
+data class HomeStatusConfig(
+    val outdoorTempEntityId: String? = null,
+    val humiditySensors: List<HumiditySensorConfig>? = null,
+    val presenceEntityIds: List<String>? = null,
+    val doorAlerts: List<DoorAlertConfig>? = null,
+    val quickActions: List<QuickActionConfig>? = null,
+    // Room sensors that already appear as zone cards; hidden from the secondary room strip so
+    // the same room never shows two different temperatures on one screen.
+    val hideRoomSensorIds: List<String>? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class HvacLayoutConfig(
     val version: String,
     val roomSensors: List<RoomSensorConfig>,
@@ -137,10 +186,18 @@ data class HvacLayoutConfig(
     val limits: SystemLimitsConfig? = SystemLimitsConfig(),
     val waterHeaterEntityId: String? = "input_select.water_heater_mode",
     val waterHeaterFullnessEntityId: String? = "sensor.heat_pump_water_heater_available_hot_water",
+    // Binary sensor that reports whether the tank is actually heating right now, so the card
+    // can explain itself instead of appearing to change mode on its own.
+    val waterHeaterRunningEntityId: String? = "binary_sensor.heat_pump_water_heater_running",
     val poolSensors: PoolSensorConfig? = PoolSensorConfig(),
     val solarSensors: SolarSensorConfig? = SolarSensorConfig(),
+    val homeStatus: HomeStatusConfig? = HomeStatusConfig(),
     val dynamicSections: List<DynamicSectionConfig>? = emptyList(),
     val showWeatherCard: Boolean? = true,
+    // Idle behaviour, in seconds. Both were hardcoded to 30, which was too short to read a
+    // chart and short enough to close a popup while it was being used.
+    val idleReturnSeconds: Int? = 120,
+    val popupTimeoutSeconds: Int? = 60,
     val weatherLatitude: Double? = 37.7749,
     val weatherLongitude: Double? = -122.4194,
     val tabs: List<TabConfig>? = listOf(
@@ -232,13 +289,54 @@ data class ClimateZone(
     val currentTemp: Double? = null,
     val targetTemp: Double? = null,
     val currentHvacMode: String = "off",
+    // Home Assistant's `hvac_action` where the device reports it (the thermostats do; the
+    // Fujitsu heads do not). Null means we have to infer activity from the temperatures.
+    val hvacAction: String? = null,
     val autoOn: Boolean = false,
     val overrideOn: Boolean = false,
     val vaneMode: String = "Auto",
     val fanMode: String = "Auto",
     val vaneOptions: List<String> = listOf("Auto", "Swing", "1", "2", "3", "4", "5"),
     val fanOptions: List<String> = listOf("Auto", "Quiet", "Low", "High")
-)
+) {
+    /** True only while the unit should actually be moving air to reach its target. */
+    val isCalling: Boolean
+        get() {
+            val mode = currentHvacMode.lowercase()
+            if (mode == "off" || mode == "unavailable") return false
+            hvacAction?.lowercase()?.let { action ->
+                return action == "heating" || action == "cooling" || action == "drying"
+            }
+            val current = currentTemp ?: return false
+            val target = targetTemp ?: return false
+            return when (mode) {
+                "heat" -> current < target - 0.5
+                "cool", "dry" -> current > target + 0.5
+                "fan_only" -> true
+                else -> false
+            }
+        }
+
+    /**
+     * Short status for the card: what the zone is doing, not merely which mode it is set to.
+     */
+    val statusLabel: String
+        get() {
+            val mode = currentHvacMode.lowercase()
+            if (mode == "off") return "OFF"
+            if (mode == "unavailable") return "UNAVAILABLE"
+            if (isCalling) {
+                return when (mode) {
+                    "cool" -> "COOLING"
+                    "dry" -> "DRYING"
+                    "fan_only" -> "FAN"
+                    else -> "HEATING"
+                }
+            }
+            if (currentTemp != null && targetTemp != null) return "AT TARGET"
+            return "${mode.uppercase()} · IDLE"
+        }
+}
 
 data class GlobalSettings(
     val houseSchedule: String = "Day", // Day, Night, Away

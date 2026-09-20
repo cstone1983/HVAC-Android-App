@@ -1074,6 +1074,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     currentTemp = climate?.getDoubleAttribute("current_temperature"),
                     targetTemp = resolvedTargetTemp,
                     currentHvacMode = climate?.state ?: "off",
+                    hvacAction = climate?.getStringAttribute("hvac_action"),
                     autoOn = auto?.state?.lowercase() == "on",
                     overrideOn = override?.state?.lowercase() == "on",
                     vaneMode = tilt?.state ?: "Auto",
@@ -2115,7 +2116,14 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         if (b > c) { builtInIsNewer = true; break }
                         else if (c > b) break
                     }
-                    if (!builtInIsNewer) config else builtIn
+                    // A config that was pulled from GitHub is an explicit choice, so it wins
+                    // even if the APK happens to bundle a higher version string. Previously a
+                    // bundled "6.0" silently beat every OTA push at "1.1.1" while the update
+                    // screen still reported success, so layout changes never reached the
+                    // panels. The version comparison now only decides between the bundled
+                    // asset and a config that was never OTA-applied.
+                    val wasAppliedOta = !sharedPrefs.getString("layout_commit_sha", null).isNullOrBlank()
+                    if (wasAppliedOta || !builtInIsNewer) config else builtIn
                 } else {
                     builtIn
                 }
@@ -2291,7 +2299,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _weatherState = MutableStateFlow(com.example.model.WeatherForecastState())
     val weatherState: StateFlow<com.example.model.WeatherForecastState> = _weatherState.asStateFlow()
 
-    private val _weatherCardMinimized = MutableStateFlow(sharedPrefs.getBoolean("weather_card_minimized", false))
+    // Minimized by default: the expanded 3-day card consumed roughly a fifth of a phone
+    // screen above the zones. The live outdoor reading now sits in the header instead.
+    private val _weatherCardMinimized = MutableStateFlow(sharedPrefs.getBoolean("weather_card_minimized", true))
     val weatherCardMinimized: StateFlow<Boolean> = _weatherCardMinimized.asStateFlow()
 
     fun setWeatherCardMinimized(minimized: Boolean) {
