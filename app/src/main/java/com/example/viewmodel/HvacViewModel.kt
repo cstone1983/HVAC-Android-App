@@ -40,6 +40,15 @@ sealed interface HvacUiState {
 class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     companion object {
+        /**
+         * How long a one-shot action message stays on screen before clearing itself.
+         *
+         * A const in the companion rather than an instance field: the init block that uses it
+         * runs during construction, and an instance `val` declared further down the class would
+         * still hold 0 at that point.
+         */
+        private const val FEEDBACK_VISIBLE_MS = 6000L
+
         @Volatile
         private var instance: HvacViewModel? = null
 
@@ -140,6 +149,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
         setSimulatedLatestVersion(newVersion)
     }
+
+    // Declared before its first use below, not next to getActiveLayoutConfig(). Kotlin runs
+    // property initialisers in declaration order, so a field declared further down would have
+    // its `= null` initialiser applied *after* construction has already populated the cache,
+    // silently wiping it.
+    @Volatile
+    private var cachedLayoutConfig: com.example.model.HvacLayoutConfig? = null
 
     private val _layoutConfig = MutableStateFlow(getActiveLayoutConfig())
     val layoutConfig: StateFlow<com.example.model.HvacLayoutConfig> = kotlinx.coroutines.flow.combine(
@@ -847,8 +863,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** How long a one-shot action message stays on screen before clearing itself. */
-    private val FEEDBACK_VISIBLE_MS = 6000L
-
     fun clearFeedback() {
         _actionFeedback.value = null
     }
@@ -2522,9 +2536,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    @Volatile
-    private var cachedLayoutConfig: com.example.model.HvacLayoutConfig? = null
-
     /**
      * The layout config in force, memoised.
      *
@@ -2533,18 +2544,20 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * `state_changed` event in the whole Home Assistant instance — and from inside composition.
      * So it was doing file I/O and two JSON parses on the UI thread, continuously.
      *
+     * Lock-free on purpose. This is called during property initialisation of this class, before
+     * anything declared below it exists, so a lock object held in a field is still null at that
+     * point and `synchronized` on it throws. Resolution is deterministic from the asset and the
+     * stored preference, so two threads racing here both compute the same value and the loser's
+     * write is harmless.
+     *
      * The result only changes when an OTA writes the stored config or the panel resets it, and
      * both of those call [invalidateLayoutConfigCache].
      */
     fun getActiveLayoutConfig(): com.example.model.HvacLayoutConfig =
-        cachedLayoutConfig ?: synchronized(layoutConfigLock) {
-            cachedLayoutConfig ?: resolveActiveLayoutConfig().also { cachedLayoutConfig = it }
-        }
-
-    private val layoutConfigLock = Any()
+        cachedLayoutConfig ?: resolveActiveLayoutConfig().also { cachedLayoutConfig = it }
 
     private fun invalidateLayoutConfigCache() {
-        synchronized(layoutConfigLock) { cachedLayoutConfig = null }
+        cachedLayoutConfig = null
     }
 
     private fun resolveActiveLayoutConfig(): com.example.model.HvacLayoutConfig {
