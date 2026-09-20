@@ -1548,7 +1548,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * matches the current one, which skips those restart artifacts and lands on the real
      * transition. Falls back to `last_changed` when history is unavailable.
      */
-    suspend fun fetchPresenceSince(entityIds: List<String>): Map<String, PresenceSince> =
+    suspend fun fetchPresenceSince(
+        entityIds: List<String>,
+        windowDays: Int = 30
+    ): Map<String, PresenceSince> =
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             if (entityIds.isEmpty()) return@withContext emptyMap()
             val result = mutableMapOf<String, PresenceSince>()
@@ -1558,7 +1561,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
                     .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
                 val now = System.currentTimeMillis()
-                val startIso = sdf.format(java.util.Date(now - 14L * 24 * 60 * 60 * 1000))
+                val startIso = sdf.format(
+                    java.util.Date(now - windowDays.coerceIn(1, 365) * 24L * 60 * 60 * 1000)
+                )
                 val endIso = sdf.format(java.util.Date(now))
                 // Deliberately NOT minimal_response: that form omits entity_id on every record
                 // after the first, and EntityState.entity_id is non-null, so Moshi rejects the

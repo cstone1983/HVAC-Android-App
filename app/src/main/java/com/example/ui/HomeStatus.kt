@@ -300,6 +300,9 @@ fun PresenceCard(
     viewModel: HvacViewModel,
     presenceEntityIds: List<String>,
     modifier: Modifier = Modifier,
+    // Matches Home Assistant's recorder purge_keep_days; looking further back than the
+    // recorder retains just returns "no change recorded" for everyone.
+    historyWindowDays: Int = 30,
     lastInteractionTime: Long = 0L,
     popupTimeoutMillis: Long = 20_000L,
     onInteraction: () -> Unit = {}
@@ -339,7 +342,7 @@ fun PresenceCard(
         }
         var historyLoaded by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) {
-            historySince = viewModel.fetchPresenceSince(presenceEntityIds)
+            historySince = viewModel.fetchPresenceSince(presenceEntityIds, historyWindowDays)
             historyLoaded = true
         }
         PresenceDetailDialog(
@@ -358,6 +361,7 @@ fun PresenceCard(
                 }
             },
             resolved = historyLoaded,
+            historyWindowDays = historyWindowDays,
             onDismiss = { showDetails = false },
             onInteraction = onInteraction
         )
@@ -433,6 +437,7 @@ internal data class PersonPresence(
 private fun PresenceDetailDialog(
     people: List<PersonPresence>,
     resolved: Boolean,
+    historyWindowDays: Int = 30,
     onDismiss: () -> Unit,
     onInteraction: () -> Unit = {}
 ) {
@@ -507,7 +512,7 @@ private fun PresenceDetailDialog(
                         color = if (isHomeGroup) Color(0xFF10B981) else Color.White.copy(alpha = 0.4f)
                     )
                     Spacer(Modifier.height(7.dp))
-                    group.forEach { person -> PresenceRow(person) }
+                    group.forEach { person -> PresenceRow(person, historyWindowDays) }
                     Spacer(Modifier.height(14.dp))
                 }
             }
@@ -516,7 +521,7 @@ private fun PresenceDetailDialog(
 }
 
 @Composable
-private fun PresenceRow(person: PersonPresence) {
+private fun PresenceRow(person: PersonPresence, historyWindowDays: Int = 30) {
     val tint = if (person.isHome) Color(0xFF10B981) else Color.White.copy(alpha = 0.3f)
     Row(
         modifier = Modifier
@@ -569,7 +574,7 @@ private fun PresenceRow(person: PersonPresence) {
             Text(
                 text = when {
                     person.sinceMillis != null -> formatElapsed(person.sinceMillis)
-                    person.unknownDuration -> "2w+"
+                    person.unknownDuration -> "${historyWindowDays}d+"
                     else -> "--"
                 },
                 fontSize = 14.sp,

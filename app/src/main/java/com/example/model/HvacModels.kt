@@ -169,7 +169,11 @@ data class HomeStatusConfig(
     val quickActions: List<QuickActionConfig>? = null,
     // Room sensors that already appear as zone cards; hidden from the secondary room strip so
     // the same room never shows two different temperatures on one screen.
-    val hideRoomSensorIds: List<String>? = null
+    val hideRoomSensorIds: List<String>? = null,
+    // How far back the who's-home popup looks for a real arrival/departure. Should track
+    // Home Assistant's recorder purge_keep_days: querying further back than the recorder
+    // retains just reports "no change recorded" for everyone.
+    val presenceHistoryDays: Int? = 30
 )
 
 @JsonClass(generateAdapter = true)

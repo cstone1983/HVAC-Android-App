@@ -1818,6 +1818,7 @@ fun HvacDashboardContent(
                         viewModel = viewModel,
                         presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),
                         modifier = Modifier.fillMaxWidth(),
+                        historyWindowDays = homeStatusCfg?.presenceHistoryDays ?: 30,
                         lastInteractionTime = lastInteractionTime,
                         popupTimeoutMillis = popupTimeoutMillis,
                         onInteraction = { lastInteractionTime = System.currentTimeMillis() }
@@ -1855,6 +1856,7 @@ fun HvacDashboardContent(
                     viewModel = viewModel,
                     presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),
                     modifier = Modifier.weight(1f),
+                    historyWindowDays = homeStatusCfg?.presenceHistoryDays ?: 30,
                     lastInteractionTime = lastInteractionTime,
                     popupTimeoutMillis = popupTimeoutMillis,
                     onInteraction = { lastInteractionTime = System.currentTimeMillis() }
