@@ -961,9 +961,10 @@ fun DynamicTabContent(
 
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-    // Measured width of the content area, not the screen: on the wall tablets the rail and
+    // Measured size of the content area, not the screen: on the wall tablets the rail and
     // the house panel take ~270dp before any card is drawn.
     val maxContentWidth = this@BoxWithConstraints.maxWidth
+    val maxContentHeight = this@BoxWithConstraints.maxHeight
     LazyColumn(
         state = listState,
         modifier = Modifier
@@ -1002,6 +1003,20 @@ fun DynamicTabContent(
                         else -> 2
                     }
                     val chunkedZones = state.zones.chunked(zoneColumns)
+
+                    // Size the cards to the space that is actually left so every zone fits
+                    // without scrolling. The control card's height is known from the same
+                    // width breakpoints it uses itself.
+                    val controlWidth = maxContentWidth - 32.dp
+                    val controlHeight = when {
+                        controlWidth >= 980.dp -> 120.dp
+                        controlWidth >= 560.dp -> 218.dp
+                        else -> 330.dp
+                    }
+                    val zoneRowCount = chunkedZones.size.coerceAtLeast(1)
+                    val verticalGaps = 8.dp * (zoneRowCount + 1)
+                    val zoneCardHeight = ((maxContentHeight - controlHeight - verticalGaps) / zoneRowCount)
+                        .coerceIn(104.dp, 190.dp)
                     items(chunkedZones, key = { pair -> pair.joinToString("-") { it.key } }) { pair ->
                         Row(
                             modifier = Modifier
@@ -1014,7 +1029,8 @@ fun DynamicTabContent(
                                     ConsolidatedZoneCard(
                                         zone = zone,
                                         onClick = { activeZoneDetail = zone },
-                                        viewModel = viewModel
+                                        viewModel = viewModel,
+                                        cardHeight = zoneCardHeight
                                     )
                                 }
                             }
@@ -2090,22 +2106,12 @@ fun GlobalSettingsQuickControl(
     viewModel: HvacViewModel,
     modifier: Modifier = Modifier
 ) {
-    val configuration = LocalConfiguration.current
-    val isTablet = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
     // One set of sizes for every screen. Landscape used to shrink these by ~25%, which meant
     // the wall tablets — the devices read from furthest away — got the smallest controls in
     // the app, including a whole-house Off button 5dp from Cool.
-    val cardPadding = 16.dp
-    val rowSpacerHeight = 12.dp
+    val cardPadding = 14.dp
+    val rowSpacerHeight = 10.dp
     val titleFontSize = 10.sp
-    val valueFontSize = 14.sp
-
-    // Hot Water control sizes
-    val waterBtnPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
-    val waterIconSize = 20.dp
-    val waterSpacerHeight = 5.dp
-    val waterLabelFontSize = 8.5.sp
 
     Card(
         modifier = modifier
@@ -2115,99 +2121,174 @@ fun GlobalSettingsQuickControl(
         border = BorderStroke(1.dp, hvacBorderAlphaColor()),
         shape = hvacCardShape(14)
     ) {
-        Column(modifier = Modifier.padding(cardPadding)) {
-            // First row: HOUSE SCHEDULE
-            Text(
-                "HOUSE SCHEDULE",
-                fontSize = titleFontSize,
-                fontWeight = FontWeight.Black,
-                color = Color.White.copy(alpha = 0.5f),
-                letterSpacing = 1.3.sp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                listOf(
-                    Triple("Day", Icons.Default.WbSunny, Color(0xFFF59E0B)),
-                    Triple("Night", Icons.Default.NightsStay, Color(0xFF2196F3)),
-                    Triple("Away", Icons.Default.ExitToApp, Color(0xFF10B981))
-                ).forEach { (label, icon, color) ->
-                    val isSelected = state.globalSettings.houseSchedule.lowercase() == label.lowercase()
-                    SegmentedControlButton(
-                        label = label,
-                        icon = icon,
-                        color = color,
-                        isSelected = isSelected,
-                        contentDescription = "Set schedule to $label",
-                        testTagId = "main_schedule_btn_${label.lowercase()}",
-                        onClick = { viewModel.selectHouseSchedule(label) }
-                    )
-                }
+        // Stacking all three groups cost ~470dp of vertical space on the wall tablets and
+        // pushed half the zone cards below the fold. There is plenty of width going spare, so
+        // the groups move side by side as soon as it fits and the whole card collapses to
+        // roughly a third of its height.
+        BoxWithConstraints(modifier = Modifier.padding(cardPadding)) {
+            val availableWidth = this@BoxWithConstraints.maxWidth
+            val threeAcross = availableWidth >= 980.dp
+            val twoAcross = availableWidth >= 560.dp
+
+            val divider: @Composable () -> Unit = {
+                Spacer(modifier = Modifier.height(rowSpacerHeight))
+                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
+                Spacer(modifier = Modifier.height(rowSpacerHeight))
             }
 
-            Spacer(modifier = Modifier.height(rowSpacerHeight))
-            HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-            Spacer(modifier = Modifier.height(rowSpacerHeight))
-
-            // Second row: GLOBAL HVAC MODE
-            Text(
-                "HOUSE MODE",
-                fontSize = titleFontSize,
-                fontWeight = FontWeight.Black,
-                color = Color.White.copy(alpha = 0.5f),
-                letterSpacing = 1.3.sp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                listOf(
-                    Triple("heat", Icons.Default.Whatshot, Color(0xFFF59E0B)),
-                    Triple("cool", Icons.Default.AcUnit, Color(0xFF2196F3)),
-                    Triple("dry", Icons.Default.Air, Color(0xFF8B5CF6))
-                ).forEach { (label, icon, color) ->
-                    val isSelected = state.globalSettings.globalHvacMode.lowercase() == label.lowercase()
-                    SegmentedControlButton(
-                        label = label,
-                        icon = icon,
-                        color = color,
-                        isSelected = isSelected,
-                        contentDescription = "Set global mode to $label",
-                        testTagId = "main_hvac_mode_btn_${label.lowercase()}",
-                        onClick = { viewModel.requestGlobalHvacMode(label) }
-                    )
+            when {
+                threeAcross -> Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    ScheduleGroup(state, viewModel, titleFontSize, Modifier.weight(1f))
+                    HouseModeGroup(state, viewModel, titleFontSize, Modifier.weight(1.4f))
+                    HotWaterGroup(state, viewModel, titleFontSize, Modifier.weight(1.4f))
                 }
-                // Whole-house Off is set apart from the running modes so it is never the
-                // button you hit while aiming for Cool.
-                Spacer(modifier = Modifier.width(10.dp))
+
+                twoAcross -> Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+                        ScheduleGroup(state, viewModel, titleFontSize, Modifier.weight(1f))
+                        HouseModeGroup(state, viewModel, titleFontSize, Modifier.weight(1.4f))
+                    }
+                    divider()
+                    HotWaterGroup(state, viewModel, titleFontSize, Modifier.fillMaxWidth())
+                }
+
+                else -> Column(modifier = Modifier.fillMaxWidth()) {
+                    ScheduleGroup(state, viewModel, titleFontSize, Modifier.fillMaxWidth())
+                    divider()
+                    HouseModeGroup(state, viewModel, titleFontSize, Modifier.fillMaxWidth())
+                    divider()
+                    HotWaterGroup(state, viewModel, titleFontSize, Modifier.fillMaxWidth())
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScheduleGroup(
+    state: HvacUiState.Success,
+    viewModel: HvacViewModel,
+    titleFontSize: androidx.compose.ui.unit.TextUnit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            "HOUSE SCHEDULE",
+            fontSize = titleFontSize,
+            fontWeight = FontWeight.Black,
+            color = Color.White.copy(alpha = 0.5f),
+            letterSpacing = 1.3.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(7.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            listOf(
+                Triple("Day", Icons.Default.WbSunny, Color(0xFFF59E0B)),
+                Triple("Night", Icons.Default.NightsStay, Color(0xFF2196F3)),
+                Triple("Away", Icons.Default.ExitToApp, Color(0xFF10B981))
+            ).forEach { (label, icon, color) ->
+                val isSelected = state.globalSettings.houseSchedule.lowercase() == label.lowercase()
                 SegmentedControlButton(
-                    label = "off",
-                    icon = Icons.Default.PowerSettingsNew,
-                    color = Color(0xFFEF4444),
-                    isSelected = state.globalSettings.globalHvacMode.lowercase() == "off",
-                    contentDescription = "Turn the whole house off",
-                    testTagId = "main_hvac_mode_btn_off",
-                    weight = 0.85f,
-                    onClick = { viewModel.requestGlobalHvacMode("off") }
+                    label = label,
+                    icon = icon,
+                    color = color,
+                    isSelected = isSelected,
+                    contentDescription = "Set schedule to $label",
+                    testTagId = "main_schedule_btn_${label.lowercase()}",
+                    onClick = { viewModel.selectHouseSchedule(label) }
                 )
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(rowSpacerHeight))
-            HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-            Spacer(modifier = Modifier.height(rowSpacerHeight))
+@Composable
+private fun HouseModeGroup(
+    state: HvacUiState.Success,
+    viewModel: HvacViewModel,
+    titleFontSize: androidx.compose.ui.unit.TextUnit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            "HOUSE MODE",
+            fontSize = titleFontSize,
+            fontWeight = FontWeight.Black,
+            color = Color.White.copy(alpha = 0.5f),
+            letterSpacing = 1.3.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(modifier = Modifier.height(7.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            listOf(
+                Triple("heat", Icons.Default.Whatshot, Color(0xFFF59E0B)),
+                Triple("cool", Icons.Default.AcUnit, Color(0xFF2196F3)),
+                Triple("dry", Icons.Default.Air, Color(0xFF8B5CF6))
+            ).forEach { (label, icon, color) ->
+                val isSelected = state.globalSettings.globalHvacMode.lowercase() == label.lowercase()
+                SegmentedControlButton(
+                    label = label,
+                    icon = icon,
+                    color = color,
+                    isSelected = isSelected,
+                    contentDescription = "Set global mode to $label",
+                    testTagId = "main_hvac_mode_btn_${label.lowercase()}",
+                    onClick = { viewModel.requestGlobalHvacMode(label) }
+                )
+            }
+            // Whole-house Off is set apart from the running modes so it is never the
+            // button you hit while aiming for Cool.
+            Spacer(modifier = Modifier.width(9.dp))
+            SegmentedControlButton(
+                label = "off",
+                icon = Icons.Default.PowerSettingsNew,
+                color = Color(0xFFEF4444),
+                isSelected = state.globalSettings.globalHvacMode.lowercase() == "off",
+                contentDescription = "Turn the whole house off",
+                testTagId = "main_hvac_mode_btn_off",
+                weight = 0.85f,
+                onClick = { viewModel.requestGlobalHvacMode("off") }
+            )
+        }
+    }
+}
 
-            // Third row: HOT WATER CONTROL & TANK STORAGE
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+@Composable
+private fun HotWaterGroup(
+    state: HvacUiState.Success,
+    viewModel: HvacViewModel,
+    titleFontSize: androidx.compose.ui.unit.TextUnit,
+    modifier: Modifier = Modifier
+) {
+    val waterBtnPadding = PaddingValues(horizontal = 4.dp, vertical = 7.dp)
+    val waterIconSize = 20.dp
+    val waterSpacerHeight = 4.dp
+    val waterLabelFontSize = 8.5.sp
+
+    Column(modifier = modifier) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "HOT WATER",
                         fontSize = titleFontSize,
                         fontWeight = FontWeight.Black,
                         color = Color.White.copy(alpha = 0.5f),
-                        letterSpacing = 1.3.sp
+                        letterSpacing = 1.3.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     val wsStatesHw by viewModel.entityStates.collectAsStateWithLifecycle()
                     val runningId = viewModel.getActiveLayoutConfig().waterHeaterRunningEntityId
@@ -2225,14 +2306,15 @@ fun GlobalSettingsQuickControl(
                             fontSize = 8.5.sp,
                             fontWeight = FontWeight.Black,
                             color = Color(0xFF10B981),
-                            letterSpacing = 1.sp
+                            letterSpacing = 1.sp,
+                            maxLines = 1
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(waterSpacerHeight))
+                Spacer(modifier = Modifier.height(7.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(if (isTablet) 6.dp else 6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     listOf(
                         WaterHeaterItem("eco", "ECO", Icons.Default.WaterDrop, Color(0xFF10B981)),
@@ -2353,8 +2435,6 @@ fun GlobalSettingsQuickControl(
                         }
                     }
                 }
-            }
-        }
     }
 }
 
@@ -2362,8 +2442,15 @@ fun GlobalSettingsQuickControl(
 fun ConsolidatedZoneCard(
     zone: ClimateZone,
     onClick: () -> Unit,
-    viewModel: HvacViewModel
+    viewModel: HvacViewModel,
+    // When the caller has measured the space available, the card fills exactly that and its
+    // hero numeral scales with it, so every zone fits on screen without scrolling.
+    cardHeight: androidx.compose.ui.unit.Dp? = null
 ) {
+    val heroFontSize = when {
+        cardHeight == null -> 38.sp
+        else -> (cardHeight.value * 0.245f).coerceIn(24f, 40f).sp
+    }
     val theme = LocalHvacTheme.current
     val activeColor = when (zone.currentHvacMode.lowercase()) {
         "heat" -> theme.heatColor
@@ -2419,6 +2506,7 @@ fun ConsolidatedZoneCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (cardHeight != null) Modifier.height(cardHeight) else Modifier)
             .clickable { onClick() }
             .testTag("zone_card_${zone.key}")
             .drawBehind {
@@ -2456,8 +2544,9 @@ fun ConsolidatedZoneCard(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 13.dp, vertical = 12.dp)
+                .fillMaxSize()
+                .padding(horizontal = 13.dp, vertical = 11.dp),
+            verticalArrangement = if (cardHeight != null) Arrangement.SpaceBetween else Arrangement.Top
         ) {
             // Row 1: Icon + Name & Status Badges
             Row(
@@ -2549,21 +2638,21 @@ fun ConsolidatedZoneCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            if (cardHeight == null) Spacer(modifier = Modifier.height(10.dp))
 
             // Row 2: the room temperature as the dominant value, with what the zone is
             // actually doing and the target beneath it.
             Text(
                 text = zone.currentTemp?.let { "${it.toInt()}°" } ?: "--°",
                 fontWeight = FontWeight.Light,
-                fontSize = 38.sp,
+                fontSize = heroFontSize,
                 letterSpacing = (-1.5).sp,
-                lineHeight = 40.sp,
+                lineHeight = heroFontSize * 1.05f,
                 color = Color.White,
                 maxLines = 1
             )
 
-            Spacer(modifier = Modifier.height(5.dp))
+            if (cardHeight == null) Spacer(modifier = Modifier.height(5.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
