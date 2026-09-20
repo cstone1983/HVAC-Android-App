@@ -1757,6 +1757,22 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * Sets one zone's mode directly. Calling this on a zone that is currently off also powers
      * it on, which is what tapping Heat on a sleeping zone should do.
      */
+    /**
+     * The scheduled setpoint a head should sit at for [targetMode], or null if it cannot be
+     * worked out.
+     *
+     * Deliberately mirrors what n8n's sequencer and watchdog do, because the two have to agree or
+     * they will take turns correcting each other: the cool helpers are used only for `cool`, so
+     * `dry` reads the heat number, and the 64.5 floor applies to both cool and dry.
+     */
+    private fun scheduleSetpointFor(climateEntityId: String, targetMode: String): Double? {
+        val state = _uiState.value as? HvacUiState.Success ?: return null
+        val zone = state.zones.firstOrNull { it.climateEntityId == climateEntityId } ?: return null
+        return com.example.model.scheduledSetpoint(
+            zone, state.globalSettings.houseSchedule, targetMode
+        )
+    }
+
     fun setZoneHvacMode(climateEntityId: String, mode: String, name: String) {
         val target = mode.lowercase()
         _actionFeedback.value = "$name mode: ${target.uppercase()}"
@@ -1780,11 +1796,32 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     "climate", "set_hvac_mode",
                     mapOf("entity_id" to climateEntityId, "hvac_mode" to target)
                 )
-                if (ok) {
-                    if (!wsManager.connectionState.value.isConnected) fetchStates()
-                } else {
+                if (!ok) {
                     _actionFeedback.value = "Failed to set $name to ${target.uppercase()}"
+                    return@launch
                 }
+
+                // These heads hold ONE setpoint across modes — verified from recorder history,
+                // where `temperature` stayed put through four mode changes. So the head keeps
+                // whatever it was last set to, which is usually the *other* family's number.
+                // Autumn's heat and cool day targets are ten degrees apart, so turning it on in
+                // heat after it last cooled leaves it chasing 72 against a 62 target, and the
+                // watchdog reads that as a manual adjustment and suspends the zone within a
+                // minute. Send the schedule setpoint so the head lands where automation expects.
+                scheduleSetpointFor(climateEntityId, target)?.let { wanted ->
+                    val now = _entityStates.value[climateEntityId]
+                        ?.attributes?.get("temperature")?.toString()?.toDoubleOrNull()
+                    // Same 0.6 tolerance the watchdog uses, so we only write when it would care.
+                    if (now == null || kotlin.math.abs(now - wanted) > 0.6) {
+                        kotlinx.coroutines.delay(1200)
+                        performServiceCall(
+                            "climate", "set_temperature",
+                            mapOf("entity_id" to climateEntityId, "temperature" to wanted)
+                        )
+                    }
+                }
+
+                if (!wsManager.connectionState.value.isConnected) fetchStates()
             } catch (e: Exception) {
                 _actionFeedback.value = "Failed to sync action: ${e.localizedMessage}"
             }

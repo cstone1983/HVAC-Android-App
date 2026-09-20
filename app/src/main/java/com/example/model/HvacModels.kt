@@ -394,6 +394,36 @@ fun sharesOutdoorUnit(zoneKeyA: String, zoneKeyB: String): Boolean =
     outdoorUnitsFor(zoneKeyA).any { it in outdoorUnitsFor(zoneKeyB) }
 
 /**
+ * Lowest temperature these heads may be asked to cool or dry to. n8n clamps to the same value in
+ * both the sequencer and the watchdog; if the app used a different floor the two would take turns
+ * correcting each other.
+ */
+const val COOL_FLOOR_F = 64.5
+
+/**
+ * The scheduled setpoint a zone should sit at when running [targetMode], or null when there is
+ * no meaningful target.
+ *
+ * Mirrors n8n's suffix rule exactly rather than being tidier than it: the cool helpers are used
+ * only for `cool`, so `dry` reads the heat number, while the cool floor applies to both. The two
+ * systems agreeing matters more here than the rule being elegant — a disagreement shows up as
+ * the head being corrected back and forth.
+ */
+fun scheduledSetpoint(zone: ClimateZone, houseSchedule: String, targetMode: String): Double? {
+    val mode = targetMode.lowercase()
+    if (mode == "off" || mode == "fan_only" || mode == "unavailable") return null
+
+    val presets = if (mode == "cool") zone.presetsCool else zone.presetsHeat
+    val value = when (houseSchedule.lowercase()) {
+        "night" -> presets.nightValue
+        "away" -> presets.awayValue
+        else -> presets.dayValue
+    } ?: return null
+
+    return if (mode == "cool" || mode == "dry") maxOf(value, COOL_FLOOR_F) else value
+}
+
+/**
  * Why a requested mode cannot be applied, and what it would take to apply it anyway.
  */
 data class ModeConflict(
