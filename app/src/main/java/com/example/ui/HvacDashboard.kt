@@ -1031,8 +1031,22 @@ fun DynamicTabContent(
                     // ignoring the bottom content padding that it does.
                     val rowSpacing = if (isLandscape && tab.id == "zones") 8.dp else 16.dp
                     val bottomPadding = if (isLandscape && tab.id == "zones") 10.dp else 24.dp
+                    // The alert strip above is its OWN list item, always emitted. So the section
+                    // lays out `2 + zoneRowCount` items and therefore draws `zoneRowCount + 1`
+                    // gaps, not `zoneRowCount` — and when the strip is visible it is ~42dp tall
+                    // on top of that. The budget accounted for neither, which left about 6dp of
+                    // real slack on the Tab A9: enough while the strip was hidden, and not enough
+                    // the moment a door opened or a command failed, which clipped the bottom row's
+                    // "SET nn° / OFF" line exactly when the panel had something to say.
+                    //
+                    // The allowance is unconditional rather than tracking the strip's visibility.
+                    // Reserving it costs a little slack while no alert is up; not reserving it
+                    // hides information whenever one is. The Tab A8 has ~72dp spare and is
+                    // unaffected either way.
+                    val alertStripReserve = 42.dp
+                    val totalGaps = rowSpacing * (zoneRowCount + 1)
                     val zoneCardHeight =
-                        ((maxContentHeight - controlHeight - (rowSpacing * zoneRowCount) - bottomPadding) / zoneRowCount)
+                        ((maxContentHeight - controlHeight - alertStripReserve - totalGaps - bottomPadding) / zoneRowCount)
                             .coerceIn(92.dp, 190.dp)
                     items(chunkedZones, key = { pair -> pair.joinToString("-") { it.key } }) { pair ->
                         Row(
@@ -2828,7 +2842,7 @@ fun LightingControlPopup(
                             .padding(12.dp)
                     ) {
                         var sliderValue by remember(brightness) {
-                            mutableStateOf(brightness?.toFloat() ?: 255f)
+                            mutableStateOf(brightness?.toFloat() ?: 0f)
                         }
                         val pct = ((sliderValue / 255f) * 100).toInt()
 
@@ -3282,9 +3296,28 @@ fun ZoneDetailPopup(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Schedule Setpoints Section
-                val activeModeForPresets = if (globalHvacMode.lowercase() == "off") lastNonOffHvacMode else globalHvacMode
+                //
+                // Which block this edits follows the ZONE's own mode whenever the head is actually
+                // running, and only falls back to the house mode when it is not. It used to follow
+                // the house mode unconditionally — even though the popup detects and displays the
+                // divergence thirty lines above ("This zone is set to COOL while the house is
+                // HEAT") and then ignored it here. With the house off and a zone manually cooling,
+                // the panel labelled itself "(Heat Mode)", showed the heat numbers as that zone's
+                // live targets, and the stepper below pushed a heat setpoint at a cooling head.
+                val zoneMode = zone.currentHvacMode.lowercase()
+                val zoneIsRunning = !com.example.model.isNotReporting(zoneMode) && zoneMode != "off"
+                val activeModeForPresets = when {
+                    zoneIsRunning -> zoneMode
+                    globalHvacMode.lowercase() == "off" -> lastNonOffHvacMode
+                    else -> globalHvacMode
+                }
                 val blockPresets = if (activeModeForPresets.lowercase() == "cool") zone.presetsCool else zone.presetsHeat
                 val presetLabelType = if (activeModeForPresets.lowercase() == "cool") "Cool" else "Heat"
+                // The stepper writes the helper always, but only pushes the value straight at the
+                // head when that head is awake and running the family this block belongs to.
+                // Writing to a sleeping head is silently dropped today, and would actively power
+                // it on if the Airstage integration's turn-on-before-set-temp option is enabled.
+                val applyNowSafe = zoneIsRunning
 
                 Text(
                     text = "SCHEDULE SETPOINTS ($presetLabelType Mode)",
@@ -3394,7 +3427,7 @@ fun ZoneDetailPopup(
                                                     else -> blockPresets.away
                                                 }
                                                 viewModel.setPresetTemperature(entityId, newVal, "${zone.name} $label $presetLabelType")
-                                                if (isActive) {
+                                                if (isActive && applyNowSafe) {
                                                     viewModel.setTargetTemperature(zone.climateEntityId, newVal, zone.name)
                                                 }
                                             }
@@ -3435,7 +3468,7 @@ fun ZoneDetailPopup(
                                                     else -> blockPresets.away
                                                 }
                                                 viewModel.setPresetTemperature(entityId, newVal, "${zone.name} $label $presetLabelType")
-                                                if (isActive) {
+                                                if (isActive && applyNowSafe) {
                                                     viewModel.setTargetTemperature(zone.climateEntityId, newVal, zone.name)
                                                 }
                                             }
@@ -3731,6 +3764,7 @@ fun UpdatesTab(
     val theme = LocalHvacTheme.current
     val layoutVersion by viewModel.layoutVersion.collectAsStateWithLifecycle()
     val activeVersion by viewModel.activeVersion.collectAsStateWithLifecycle()
+    val appliedLayoutCommit by viewModel.appliedLayoutCommit.collectAsStateWithLifecycle()
     val layoutUpdateError by viewModel.layoutUpdateError.collectAsStateWithLifecycle()
     val githubRepo by viewModel.githubRepo.collectAsStateWithLifecycle()
     val githubBranch by viewModel.githubBranch.collectAsStateWithLifecycle()
@@ -4378,7 +4412,12 @@ fun UpdatesTab(
                             }
                         }
 
-                        val isActive = activeVersion.contains(shortSha)
+                        // Compared against the commit this panel actually applied, not against the
+                        // build name. `activeVersion` is "v13.0" and never contains a sha, so this
+                        // test could never be true: no row ever showed ACTIVE, and every row —
+                        // including the one already applied — offered to pull itself again.
+                        val isActive = appliedLayoutCommit.isNotEmpty() &&
+                            appliedLayoutCommit.startsWith(shortSha)
 
                         Row(
                             modifier = Modifier
@@ -4500,7 +4539,7 @@ fun UpdatesTab(
                 Button(
                     onClick = {
                         viewModel.resetLayoutToDefault()
-                        android.widget.Toast.makeText(context, "Layout has been reset to Default v5.1.0!", android.widget.Toast.LENGTH_LONG).show()
+                        android.widget.Toast.makeText(context, "Layout reset to bundled default v${viewModel.layoutVersion.value}", android.widget.Toast.LENGTH_LONG).show()
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.Transparent,

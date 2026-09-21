@@ -56,8 +56,16 @@ object GithubClient {
             chain.proceed(requestBuilder.build())
         }
 
+        // HEADERS level logs the Authorization header, which here carries the GitHub PAT in clear
+        // text — and the shipped builds are debuggable, so it was readable via adb logcat. Redact
+        // the header and log nothing at all in a release build.
         val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.HEADERS
+            level = if (com.example.BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BASIC
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+            redactHeader("Authorization")
         }
 
         val okHttpClient = OkHttpClient.Builder()

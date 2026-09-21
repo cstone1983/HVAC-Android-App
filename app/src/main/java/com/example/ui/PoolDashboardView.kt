@@ -279,24 +279,30 @@ fun PoolDashboardView(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Water Status Pill
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(theme.ecoColor.copy(alpha = 0.15f))
-                                .border(1.dp, theme.ecoColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 8.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = (poolState.waterStatus ?: "Balanced").uppercase(),
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = theme.ecoColor
-                            )
+                        // Water Status Pill — shown only when the monitor actually reported one.
+                        // It used to fall back to "Balanced" in a green pill, so a pool monitor
+                        // that was offline or removed from Home Assistant read as a healthy pool:
+                        // the most reassuring possible answer from no data at all.
+                        poolState.waterStatus?.let { status ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(theme.ecoColor.copy(alpha = 0.15f))
+                                    .border(1.dp, theme.ecoColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = status.uppercase(),
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = theme.ecoColor
+                                )
+                            }
                         }
 
-                        // Actions Pending Pill
-                        val pendingCount = poolState.actionsPending ?: 1
+                        // Actions Pending Pill. `?: 1` invented a pending action for a monitor
+                        // that had never reported one; unknown is not the same as one.
+                        val pendingCount = poolState.actionsPending ?: 0
                         if (pendingCount > 0) {
                             Box(
                                 modifier = Modifier
@@ -1247,15 +1253,28 @@ fun PoolDashboardView(
             Column(
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                val battVal = poolState.battery ?: 4536.0
-                val isBattIdeal = battVal >= poolBatteryMin && battVal <= poolBatteryMax
-                val batteryColor = if (isBattIdeal) theme.ecoColor else theme.heatColor
-                val batteryText = "${String.format("%.0f", battVal)} mV" + (if (isBattIdeal) " • IDEAL" else " • ADJUST REQ")
+                // Every value here used to have a hardcoded fallback, so a pool monitor that was
+                // offline, out of battery or removed from Home Assistant rendered a full set of
+                // plausible diagnostics — including a green "IDEAL" verdict on an invented battery
+                // reading and a fabricated hardware serial presented as device identity. The hero
+                // metrics were fixed earlier; this block was missed.
+                val battVal = poolState.battery
+                val isBattIdeal = battVal != null && battVal >= poolBatteryMin && battVal <= poolBatteryMax
+                val batteryColor = when {
+                    battVal == null -> Color.White.copy(alpha = 0.35f)
+                    isBattIdeal -> theme.ecoColor
+                    else -> theme.heatColor
+                }
+                val batteryText = when {
+                    battVal == null -> "--"
+                    isBattIdeal -> "${String.format("%.0f", battVal)} mV • IDEAL"
+                    else -> "${String.format("%.0f", battVal)} mV • ADJUST REQ"
+                }
 
                 DiagnosticItem("Battery Volts", batteryText, Icons.Outlined.BatteryFull, theme, valueColor = batteryColor)
-                DiagnosticItem("Monitor Serial", poolState.monitorSerial ?: "020F5F12", Icons.Outlined.Monitor, theme)
-                DiagnosticItem("Sensor Serial", poolState.sensorSerial ?: "2515-0608P", Icons.Outlined.QrCodeScanner, theme)
-                DiagnosticItem("WiFi Signal Link", "${poolState.wifiSignal ?: -57} dBm", Icons.Outlined.CellTower, theme)
+                DiagnosticItem("Monitor Serial", poolState.monitorSerial ?: "--", Icons.Outlined.Monitor, theme)
+                DiagnosticItem("Sensor Serial", poolState.sensorSerial ?: "--", Icons.Outlined.QrCodeScanner, theme)
+                DiagnosticItem("WiFi Signal Link", poolState.wifiSignal?.let { "$it dBm" } ?: "--", Icons.Outlined.CellTower, theme)
                 DiagnosticItem("Last Device Sync", formatFriendlyTime(poolState.lastSynced), Icons.Outlined.CloudSync, theme)
                 DiagnosticItem("Last Updated", formatFriendlyTime(poolState.lastUpdated), Icons.Outlined.History, theme)
             }

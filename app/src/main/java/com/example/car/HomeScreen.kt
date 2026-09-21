@@ -101,8 +101,18 @@ class HomeScreen(
         // Row 2: South Garage Door Row (Status & 1-Tap Toggle)
         // -------------------------------------------------------------
         val southGarage = repository.getSouthGarageState()
-        val southColor = if (southGarage.isOpen) CarColor.RED else CarColor.GREEN
-        val southStatus = if (southGarage.isOpen) "OPEN" else "CLOSED"
+        // Render the status the repository actually computed. This used to be
+        // `if (isOpen) "OPEN" else "CLOSED"` in green, discarding garageStateAt's
+        // careful "UNAVAILABLE" (entity missing) and "UNKNOWN" (relay-backed, says
+        // nothing about the door) -- so a dead sensor read as a confidently closed door
+        // while you drove away from an open one.
+        val southKnown = southGarage.statusText == "OPEN" || southGarage.statusText == "CLOSED"
+        val southColor = when {
+            !southKnown -> CarColor.YELLOW
+            southGarage.isOpen -> CarColor.RED
+            else -> CarColor.GREEN
+        }
+        val southStatus = southGarage.statusText
 
         val southIcon = CarIcon.Builder(
             IconCompat.createWithResource(carContext, R.drawable.ic_garage_door)
@@ -115,7 +125,7 @@ class HomeScreen(
             .setOnClickListener {
                 CarToast.makeText(carContext, "Triggering South Garage...", CarToast.LENGTH_SHORT).show()
                 repository.toggleSouthGarage { success ->
-                    val msg = if (success) "South Garage triggered" else "Command dispatched"
+                    val msg = if (success) "South Garage triggered" else "FAILED - not sent"
                     CarToast.makeText(carContext, msg, CarToast.LENGTH_SHORT).show()
                     invalidate()
                 }
@@ -127,8 +137,18 @@ class HomeScreen(
         // Row 3: Left Garage Door Row (Status & 1-Tap Toggle)
         // -------------------------------------------------------------
         val leftGarage = repository.getLeftGarageState()
-        val leftColor = if (leftGarage.isOpen) CarColor.RED else CarColor.GREEN
-        val leftStatus = if (leftGarage.isOpen) "OPEN" else "CLOSED"
+        // Render the status the repository actually computed. This used to be
+        // `if (isOpen) "OPEN" else "CLOSED"` in green, discarding garageStateAt's
+        // careful "UNAVAILABLE" (entity missing) and "UNKNOWN" (relay-backed, says
+        // nothing about the door) -- so a dead sensor read as a confidently closed door
+        // while you drove away from an open one.
+        val leftKnown = leftGarage.statusText == "OPEN" || leftGarage.statusText == "CLOSED"
+        val leftColor = when {
+            !leftKnown -> CarColor.YELLOW
+            leftGarage.isOpen -> CarColor.RED
+            else -> CarColor.GREEN
+        }
+        val leftStatus = leftGarage.statusText
 
         val leftIcon = CarIcon.Builder(
             IconCompat.createWithResource(carContext, R.drawable.ic_garage_door)
@@ -141,7 +161,7 @@ class HomeScreen(
             .setOnClickListener {
                 CarToast.makeText(carContext, "Triggering Left Garage...", CarToast.LENGTH_SHORT).show()
                 repository.toggleLeftGarage { success ->
-                    val msg = if (success) "Left Garage toggled" else "Command dispatched"
+                    val msg = if (success) "Left Garage toggled" else "FAILED - not sent"
                     CarToast.makeText(carContext, msg, CarToast.LENGTH_SHORT).show()
                     invalidate()
                 }
@@ -172,7 +192,9 @@ class HomeScreen(
             .addText("Tap to cycle mode (Eco / Heat Pump / High Demand)")
             .setOnClickListener {
                 repository.cycleWaterHeaterMode { newMode ->
-                    CarToast.makeText(carContext, "Water Heater: $newMode", CarToast.LENGTH_SHORT).show()
+                    // null means neither the helper nor the water_heater fallback accepted it.
+                    val msg = newMode?.let { "Water Heater: $it" } ?: "Water Heater: FAILED - not changed"
+                    CarToast.makeText(carContext, msg, CarToast.LENGTH_SHORT).show()
                     invalidate()
                 }
             }

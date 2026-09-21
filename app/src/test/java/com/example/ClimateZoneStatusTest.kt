@@ -106,4 +106,63 @@ class ClimateZoneStatusTest {
         // keep telling them apart.
         assertEquals("OFF", zone("off", 71.0, 71.0).statusLabel)
     }
+
+    // ---- main_level's two heads -------------------------------------------------
+    //
+    // The zone is one open space served by two heads on two different outdoor units. The app
+    // only ever modelled the first of them, so a disagreement between them was invisible on the
+    // card -- which is why the 40-minute split on 2026-09-20 showed nothing on the wall.
+
+    private fun pair(primary: String, secondary: String?) = ClimateZone(
+        key = "main_level",
+        name = "Main Level",
+        climateEntityId = "climate.hp_living_room",
+        autoEntityId = "",
+        overrideEntityId = "",
+        tiltEntityId = "",
+        fanEntityId = "",
+        presetsHeat = Presets("", "", ""),
+        presetsCool = Presets("", "", ""),
+        currentTemp = 70.0,
+        targetTemp = 68.0,
+        currentHvacMode = primary,
+        secondaryClimateEntityId = "climate.hp_dining_room",
+        secondaryHvacMode = secondary
+    )
+
+    @Test
+    fun `two heads doing different things reads as SPLIT`() {
+        val split = pair("heat", "cool")
+        assertTrue(split.isSplit)
+        assertEquals("SPLIT", split.statusLabel)
+    }
+
+    @Test
+    fun `one head off while the other runs is still a split`() {
+        // Not a thermal conflict -- off is neutral -- but the mirror has plainly not taken,
+        // and the card previously showed only the primary head's verdict.
+        assertTrue(pair("heat", "off").isSplit)
+        assertTrue(pair("off", "heat").isSplit)
+    }
+
+    @Test
+    fun `heads that agree are not a split`() {
+        assertFalse(pair("heat", "heat").isSplit)
+        assertFalse(pair("off", "off").isSplit)
+        assertEquals("OFF", pair("off", "off").statusLabel)
+    }
+
+    @Test
+    fun `a head we cannot hear from is not reported as a split`() {
+        // An unreachable head says nothing about whether the mirror worked. Calling that a
+        // split would put SPLIT on the card for every wifi dropout.
+        assertFalse(pair("heat", "unavailable").isSplit)
+        assertFalse(pair("unavailable", "heat").isSplit)
+        assertFalse(pair("heat", null).isSplit)
+    }
+
+    @Test
+    fun `a zone with no second head behaves exactly as before`() {
+        assertFalse(zone("heat", 70.0, 68.0).isSplit)
+    }
 }

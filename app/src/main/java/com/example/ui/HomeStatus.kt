@@ -174,21 +174,37 @@ fun HomeAlertStrip(
         value != null && door.openStates.orEmpty().any { it.equals(value, true) }
     }
 
+    // The strip shows one alert, so the order decides what gets hidden — and it used to be wrong
+    // in two ways. `openDoors` came first and is derived from the last-known state map, so a
+    // disconnected panel went on asserting "GARAGE SOUTH OPEN" in red, at full confidence, from
+    // cached data — and that assertion suppressed the OFFLINE banner that would have told you the
+    // data was stale. It also outranked command feedback, so a failed write showed nothing at all
+    // while the control sat lit on a mode that never applied.
+    val feedbackText = feedback
+    val feedbackFailed = !feedbackText.isNullOrBlank() &&
+        (feedbackText.contains("fail", true) || feedbackText.contains("error", true))
+
     val alert: Triple<String, Color, androidx.compose.ui.graphics.vector.ImageVector>? = when {
+        // Offline outranks every entity-derived claim. While the socket is down we cannot know
+        // whether a door is still open, so report it as the last thing seen rather than as fact.
+        isOffline -> Triple(
+            if (openDoors.isEmpty()) "OFFLINE — SHOWING LAST KNOWN VALUES"
+            else "OFFLINE — LAST SEEN " + openDoors.joinToString(" · ") { "${it.name.uppercase()} OPEN" },
+            AlertRed,
+            Icons.Default.CloudOff
+        )
+        // A failure the user just caused outranks a standing condition they can already see.
+        feedbackFailed -> Triple(feedbackText!!.uppercase(), AlertRed, Icons.Default.Info)
         openDoors.isNotEmpty() -> Triple(
             openDoors.joinToString(" · ") { "${it.name.uppercase()} OPEN" },
             AlertRed,
             Icons.Default.Garage
         )
-        isOffline -> Triple("OFFLINE — SHOWING LAST KNOWN VALUES", AlertRed, Icons.Default.CloudOff)
-        !feedback.isNullOrBlank() -> {
-            val failed = feedback!!.contains("fail", true) || feedback!!.contains("error", true)
-            Triple(
-                feedback!!.uppercase(),
-                if (failed) AlertRed else Color(0xFF10B981),
-                if (failed) Icons.Default.Info else Icons.Default.Sync
-            )
-        }
+        !feedbackText.isNullOrBlank() -> Triple(
+            feedbackText.uppercase(),
+            Color(0xFF10B981),
+            Icons.Default.Sync
+        )
         isDebouncing -> Triple("APPLYING CHANGES…", Color(0xFFF59E0B), Icons.Default.Sync)
         else -> null
     }
@@ -341,8 +357,12 @@ fun PresenceCard(
             mutableStateOf<Map<String, HvacViewModel.PresenceSince>>(emptyMap())
         }
         var historyLoaded by remember { mutableStateOf(false) }
+        // Distinct from "loaded but empty": the query itself did not come back.
+        var historyFailed by remember { mutableStateOf(false) }
         LaunchedEffect(Unit) {
-            historySince = viewModel.fetchPresenceSince(presenceEntityIds, historyWindowDays)
+            val fetched = viewModel.fetchPresenceSince(presenceEntityIds, historyWindowDays)
+            historyFailed = fetched == null
+            historySince = fetched.orEmpty()
             historyLoaded = true
         }
         PresenceDetailDialog(
@@ -356,11 +376,15 @@ fun PresenceCard(
                         sinceMillis = fromHistory.millis,
                         unknownDuration = fromHistory.millis == null
                     )
-                    historyLoaded -> person.copy(sinceMillis = null, unknownDuration = true)
+                    // Only claim "nothing changed in the window" when the window was actually
+                    // read. If the query failed we know nothing about duration at all.
+                    historyLoaded && !historyFailed ->
+                        person.copy(sinceMillis = null, unknownDuration = true)
                     else -> person
                 }
             },
             resolved = historyLoaded,
+            historyUnavailable = historyFailed,
             historyWindowDays = historyWindowDays,
             onDismiss = { showDetails = false },
             onInteraction = onInteraction
@@ -437,6 +461,7 @@ internal data class PersonPresence(
 private fun PresenceDetailDialog(
     people: List<PersonPresence>,
     resolved: Boolean,
+    historyUnavailable: Boolean = false,
     historyWindowDays: Int = 30,
     onDismiss: () -> Unit,
     onInteraction: () -> Unit = {}
@@ -493,8 +518,11 @@ private fun PresenceDetailDialog(
 
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = if (resolved) "${home.size} HOME · ${away.size} AWAY"
-                    else "${home.size} HOME · ${away.size} AWAY · CHECKING HISTORY…",
+                    text = when {
+                        historyUnavailable -> "${home.size} HOME · ${away.size} AWAY · HISTORY UNAVAILABLE"
+                        resolved -> "${home.size} HOME · ${away.size} AWAY"
+                        else -> "${home.size} HOME · ${away.size} AWAY · CHECKING HISTORY…"
+                    },
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp,

@@ -62,9 +62,21 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
      * Connect to Home Assistant using configured credentials from preferences
      */
     fun initializeConnection() {
-        val url = prefs.getString("ha_url", "") ?: ""
-        val backupUrl = prefs.getString("backup_ha_url", "") ?: ""
-        val token = prefs.getString("ha_token", "") ?: ""
+        // Same resolution the ViewModel uses. Reading prefs alone returns "" on a panel whose
+        // credentials come from .env rather than the login screen, and the guard below then
+        // skipped the connect entirely — which is why the car logged "No HA credentials found"
+        // and never connected on devices that were working perfectly well otherwise.
+        val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+        val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" }
+        val url = (prefs.getString("ha_url", null)
+            ?: buildUrl.takeIf { it.isNotBlank() && it != "https://localhost/" }).orEmpty()
+        val backupUrl = (prefs.getString("backup_ha_url", null)
+            ?: try { com.example.BuildConfig.HA_BACKUP_URL } catch (e: Exception) { "" }).orEmpty()
+        val token = if (buildToken.isNotBlank() && buildToken != "YOUR_HOME_ASSISTANT_TOKEN") {
+            buildToken
+        } else {
+            prefs.getString("ha_token", null).orEmpty()
+        }
 
         if (url.isNotBlank() && token.isNotBlank()) {
             Log.d(TAG, "Initializing Car Home Assistant connection to $url")
@@ -166,7 +178,7 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
     /**
      * Cycle Water Heater Mode: eco -> heat_pump -> high_demand -> eco
      */
-    fun cycleWaterHeaterMode(onComplete: ((String) -> Unit)? = null) {
+    fun cycleWaterHeaterMode(onComplete: ((String?) -> Unit)? = null) {
         scope.launch {
             val currentStates = states.value
             val currentMode = currentStates["input_select.water_heater_mode"]?.state?.lowercase(Locale.US)
@@ -187,7 +199,13 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
                 serviceData = mapOf("option" to nextMode)
             )
 
-            if (!success) {
+            // Both results used to be discarded and onComplete invoked unconditionally, so the
+            // car toasted "Water Heater: HIGH_DEMAND" whether or not either call landed — the
+            // same defect already fixed in cycleHouseScheduleState. Report null on failure so
+            // the caller can say so.
+            val applied = if (success) {
+                true
+            } else {
                 callService(
                     domain = "water_heater",
                     service = "set_operation_mode",
@@ -195,7 +213,7 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
                     serviceData = mapOf("operation_mode" to nextMode)
                 )
             }
-            onComplete?.invoke(nextMode)
+            onComplete?.invoke(if (applied) nextMode else null)
         }
     }
 
@@ -241,29 +259,12 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
         }
     }
 
-    /**
-     * Cycle Global HVAC Mode: heat -> cool -> off -> heat
-     */
-    fun cycleGlobalHvacMode(onComplete: ((String) -> Unit)? = null) {
-        scope.launch {
-            val currentStates = states.value
-            val currentMode = currentStates["input_select.global_hvac_mode"]?.state?.lowercase(Locale.US) ?: "heat"
-            val nextMode = when (currentMode) {
-                "heat" -> "cool"
-                "cool" -> "off"
-                "off" -> "heat"
-                else -> "heat"
-            }
-
-            callService(
-                domain = "input_select",
-                service = "select_option",
-                entityId = "input_select.global_hvac_mode",
-                serviceData = mapOf("option" to nextMode)
-            )
-            onComplete?.invoke(nextMode)
-        }
-    }
+    // cycleGlobalHvacMode was removed here. It had no callers anywhere in app/src, and it carried
+    // both of the defects that were deliberately fixed in cycleHouseScheduleState and
+    // toggleZoneHvacMode in this same file: it defaulted a missing live reading to "heat", and it
+    // reported success unconditionally by ignoring callService's result. Wired to any car surface
+    // it would have flipped the whole house's thermal family from one tap on a stale screen and
+    // said it worked. Deleted rather than left as a trap for whoever wires up the next row.
 
     /** What a car-surface mode tap actually did, so the driver is told the truth. */
     data class ZoneModeResult(val applied: Boolean, val message: String)
@@ -298,33 +299,60 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
                 "heat" -> "cool"
                 "cool", "dry" -> "off"
                 "off" -> "heat"
-                else -> "heat"
+                // fan_only and auto are real modes these heads support, and the old `else`
+                // jumped straight to HEAT from either. Treat them as "already running" and
+                // continue the cycle rather than committing a compressor from one tap.
+                "fan_only", "auto" -> "off"
+                else -> "off"
             }
 
-            val requested = com.example.model.hvacFamilyOf(nextMode)
-            if (requested != com.example.model.HvacFamily.NEUTRAL) {
-                val unit = com.example.model.headOutdoorUnit[climateEntityId]
-                val blocker = com.example.model.headOutdoorUnit.entries.firstOrNull { (head, u) ->
-                    head != climateEntityId && u == unit &&
-                        com.example.model.hvacFamilyOf(states.value[head]?.state).let {
-                            it != com.example.model.HvacFamily.NEUTRAL && it != requested
-                        }
-                }?.key
-                if (blocker != null) {
-                    val blockerName = states.value[blocker]?.getStringAttribute("friendly_name") ?: blocker
-                    val blockerMode = states.value[blocker]?.state?.uppercase(Locale.US) ?: "?"
+            // The SAME rule the panel applies, not a weaker copy of half of it. This used to
+            // scan only for a sibling head on the same outdoor unit — the second of the two
+            // tiers in findModeConflict — and omitted the first, where a heat/cool house mode
+            // is the blocker outright. So with the house in HEAT and Autumn the only head
+            // running on unit 2, the car would happily send COOL: a change the panel refuses
+            // and explains, and which the watchdog then reverses by shutting the zone down.
+            //
+            // Feeding one snapshot per HEAD also means main level is evaluated as the two heads
+            // it actually is, on both units, rather than through its single configured entity.
+            val zoneKey = com.example.model.headZoneKey[climateEntityId]
+            if (zoneKey != null) {
+                val snapshots = com.example.model.headZoneKey.map { (head, zk) ->
+                    com.example.model.ZoneModeSnapshot(
+                        key = zk,
+                        name = states.value[head]?.getStringAttribute("friendly_name") ?: zk,
+                        mode = states.value[head]?.state ?: "unavailable"
+                    )
+                }
+                val globalMode = states.value["input_select.global_hvac_mode"]?.state ?: "off"
+                val conflict = com.example.model.findModeConflict(
+                    snapshots, globalMode, zoneKey, nextMode
+                )
+                if (conflict != null) {
                     onComplete?.invoke(
-                        ZoneModeResult(false, "Blocked: $blockerName is $blockerMode on the same unit")
+                        ZoneModeResult(
+                            false,
+                            "Blocked: ${conflict.blockedBy} is ${conflict.blockingMode.uppercase(Locale.US)}"
+                        )
                     )
                     return@launch
                 }
             }
 
-            // A powered-down head ignores set_hvac_mode, so power it up first and give it a
-            // moment, the same order n8n's sequencer uses.
+            // A powered-down head ignores set_hvac_mode, so power it up first, the same order
+            // n8n's sequencer uses. The result used to be discarded and the wait was a fixed
+            // 1.2s sleep — shorter than the Airstage integration's ~10s report cadence, so the
+            // mode routinely landed on a head that was still asleep and was dropped, while the
+            // driver was toasted a success.
             if (live == "off" && nextMode != "off") {
-                callService(domain = "climate", service = "turn_on", entityId = climateEntityId)
-                kotlinx.coroutines.delay(1200)
+                val powered = callService(
+                    domain = "climate", service = "turn_on", entityId = climateEntityId
+                )
+                if (!powered) {
+                    onComplete?.invoke(ZoneModeResult(false, "Could not power on"))
+                    return@launch
+                }
+                awaitHeadState(climateEntityId) { it != "off" }
             }
 
             val success = callService(
@@ -333,11 +361,58 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
                 entityId = climateEntityId,
                 serviceData = mapOf("hvac_mode" to nextMode)
             )
-            onComplete?.invoke(
-                if (success) ZoneModeResult(true, nextMode.uppercase(Locale.US))
-                else ZoneModeResult(false, "Change failed")
-            )
+            if (!success) {
+                onComplete?.invoke(ZoneModeResult(false, "Change failed"))
+                return@launch
+            }
+
+            // These heads carry ONE setpoint across modes, so a head brought up in heat after
+            // last cooling holds the cool number — a gap of ten degrees on some zones, which the
+            // watchdog reads as a manual adjustment and suspends the zone for within a minute.
+            // The panel has sent the scheduled setpoint since ae019a5; the car never did, so the
+            // two surfaces left the system in different states for the same user action.
+            if (zoneKey != null && nextMode != "off" && awaitHeadState(climateEntityId) { it == nextMode }) {
+                val sched = states.value["input_select.house_schedule_state"]?.state ?: ""
+                com.example.model.presetHelperId(zoneKey, sched, nextMode)?.let { helperId ->
+                    states.value[helperId]?.state?.toDoubleOrNull()?.let { raw ->
+                        val wanted = com.example.model.clampToHardwareFloor(raw, nextMode)
+                        val current = states.value[climateEntityId]
+                            ?.getDoubleAttribute("temperature")
+                        if (current == null || kotlin.math.abs(current - wanted) > 0.6) {
+                            callService(
+                                domain = "climate",
+                                service = "set_temperature",
+                                entityId = climateEntityId,
+                                serviceData = mapOf("temperature" to wanted)
+                            )
+                        }
+                    }
+                }
+            }
+
+            onComplete?.invoke(ZoneModeResult(true, nextMode.uppercase(Locale.US)))
         }
+    }
+
+    /**
+     * Waits for a head to report a state satisfying [predicate], or gives up.
+     *
+     * The car used a fixed `delay(1200)` here. These heads sit behind the Airstage cloud and
+     * report on roughly a 10s round robin, so that sleep was shorter than a single reporting
+     * interval and the following command routinely landed on a head that had not moved yet.
+     */
+    private suspend fun awaitHeadState(
+        climateEntityId: String,
+        timeoutMs: Long = 15000,
+        predicate: (String) -> Boolean
+    ): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val s = states.value[climateEntityId]?.state?.lowercase(Locale.US)
+            if (s != null && predicate(s)) return true
+            kotlinx.coroutines.delay(250)
+        }
+        return false
     }
 
     // ==========================================

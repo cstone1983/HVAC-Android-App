@@ -21,6 +21,28 @@ object HomeAssistantClient {
         return if (trimmed.endsWith("/")) trimmed else "$trimmed/"
     }
 
+    /**
+     * HTTP logging that cannot leak the long-lived token.
+     *
+     * This was `Level.BODY`, unconditionally — not gated on `BuildConfig.DEBUG` — while
+     * [createService] adds `Authorization: Bearer <token>` to every request. The shipped builds
+     * are debuggable, so `adb logcat` carried the Home Assistant token in clear text, which
+     * quietly undid the masking added to the settings screen.
+     *
+     * It was also drowning the log: roughly 11,800 okhttp lines filled the entire main buffer in
+     * under six minutes on both tablets, so nothing else survived long enough to be read when
+     * something actually went wrong.
+     */
+    private fun buildLoggingInterceptor(): HttpLoggingInterceptor =
+        HttpLoggingInterceptor().apply {
+            level = if (com.example.BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BASIC
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+            redactHeader("Authorization")
+        }
+
     fun createService(baseUrl: String, token: String): HomeAssistantApi {
         val formattedUrl = formatBaseUrl(baseUrl)
 
@@ -32,9 +54,7 @@ object HomeAssistantClient {
             chain.proceed(request)
         }
 
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY // Full payload logging to capture requests & responses
-        }
+        val loggingInterceptor = buildLoggingInterceptor()
 
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
@@ -56,9 +76,7 @@ object HomeAssistantClient {
     fun createAuthService(baseUrl: String): HomeAssistantApi {
         val formattedUrl = formatBaseUrl(baseUrl)
 
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
+        val loggingInterceptor = buildLoggingInterceptor()
 
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(loggingInterceptor)

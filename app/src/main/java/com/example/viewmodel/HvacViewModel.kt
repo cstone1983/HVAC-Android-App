@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileOutputStream
 import android.content.Context
@@ -94,6 +95,19 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     // the panel claimed to be on.
     private val _activeVersion = MutableStateFlow("v" + com.example.BuildConfig.VERSION_NAME)
     val activeVersion: StateFlow<String> = _activeVersion.asStateFlow()
+
+    /**
+     * The commit whose layout this panel has actually applied, for the history list's ACTIVE badge.
+     *
+     * The list used to test `activeVersion.contains(shortSha)`, but activeVersion is the build name
+     * ("v13.0") — deliberately, since the commit-sha decoration was removed when it turned out to
+     * be doing two jobs at once. So the test could never be true: no row ever showed as active and
+     * every row, including the one already applied, offered to pull itself again. The panel had
+     * the right value in `layout_commit_sha` the whole time and simply never showed it.
+     */
+    private val _appliedLayoutCommit =
+        MutableStateFlow(sharedPrefs.getString("layout_commit_sha", "") ?: "")
+    val appliedLayoutCommit: StateFlow<String> = _appliedLayoutCommit.asStateFlow()
 
     private val _selectedThemePreset = MutableStateFlow(sharedPrefs.getString("selected_theme_preset", "dynamic") ?: "dynamic")
     val selectedThemePreset: StateFlow<String> = _selectedThemePreset.asStateFlow()
@@ -344,7 +358,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         } catch (e: Exception) {
                             // Failover target retry
-                            val token = sharedPrefs.getString("ha_token", "") ?: ""
+                            val token = resolveHaToken()
                             val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
                             if (token.isNotEmpty() && alternateUrl.isNotEmpty()) {
                                 HomeAssistantClient.initialize(alternateUrl, token)
@@ -370,6 +384,31 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * The Home Assistant token, from whichever source actually has one.
+     *
+     * Call sites used to inline `sharedPrefs.getString("ha_token", "") ?: BuildConfig.HA_TOKEN`,
+     * which cannot work: `getString` with a non-null default never returns null, so the elvis
+     * never fired and the BuildConfig fallback was dead code. On a panel whose credentials come
+     * from `.env` rather than the login screen — which is both wall tablets — that yielded an
+     * empty string, so every `if (token.isNotEmpty())` guard below failed silently and
+     * `connectWithFailover` was never called. The WebSocket had never once opened in production;
+     * the app ran on REST polling and looked perfectly healthy.
+     *
+     * The knock-on was the expensive part: [awaitHeadState] short-circuits to a fixed 1.5s sleep
+     * when the socket is down, so the turn_on-before-mode-before-temp ordering this app depends
+     * on was never actually in force on the wall.
+     *
+     * Precedence deliberately matches the login path below (a real BuildConfig value wins, then a
+     * saved one) so every path in the app agrees on which token is current. The `.env.example`
+     * placeholder counts as absent.
+     */
+    private fun resolveHaToken(): String {
+        val build = try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" }
+        if (build.isNotEmpty() && build != "YOUR_HOME_ASSISTANT_TOKEN") return build
+        return sharedPrefs.getString("ha_token", null).orEmpty()
+    }
+
     private val _haUrl = MutableStateFlow(sharedPrefs.getString("ha_url", null) ?: (try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }))
     val haUrl: StateFlow<String> = _haUrl.asStateFlow()
 
@@ -388,7 +427,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         _backupHaUrl.value = formattedUrl
         
         if (_usingBackupUrl.value && _isLoggedIn.value) {
-            val token = sharedPrefs.getString("ha_token", "") ?: ""
+            val token = resolveHaToken()
             if (token.isNotEmpty()) {
                 HomeAssistantClient.initialize(formattedUrl, token)
                 wsManager.connect(formattedUrl, token)
@@ -402,7 +441,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         sharedPrefs.edit().putString("ha_url", formattedUrl).apply()
         _haUrl.value = formattedUrl
         
-        val token = sharedPrefs.getString("ha_token", "") ?: ""
+        val token = resolveHaToken()
         if (token.isNotEmpty() && _isLoggedIn.value && !_usingBackupUrl.value) {
             HomeAssistantClient.initialize(formattedUrl, token)
             wsManager.connect(formattedUrl, token)
@@ -416,7 +455,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         sharedPrefs.edit().putString("ha_url", formattedUrl).apply()
         _haUrl.value = formattedUrl
         
-        val token = sharedPrefs.getString("ha_token", "") ?: ""
+        val token = resolveHaToken()
         if (token.isNotEmpty() && _isLoggedIn.value) {
             HomeAssistantClient.initialize(formattedUrl, token)
             wsManager.connect(formattedUrl, token)
@@ -693,7 +732,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             wsManager.usingBackupUrl.collect { usingBackup ->
                 if (_usingBackupUrl.value != usingBackup) {
                     _usingBackupUrl.value = usingBackup
-                    val token = sharedPrefs.getString("ha_token", "") ?: ""
+                    val token = resolveHaToken()
                     val targetUrl = if (usingBackup) _backupHaUrl.value else _haUrl.value
                     if (token.isNotEmpty() && targetUrl.isNotEmpty()) {
                         HomeAssistantClient.initialize(targetUrl, token)
@@ -839,7 +878,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startSync() {
         val targetUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
-        val token = sharedPrefs.getString("ha_token", "") ?: (try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" })
+        val token = resolveHaToken()
         if (token.isNotEmpty() && targetUrl.isNotEmpty() && targetUrl != "https://localhost/") {
             HomeAssistantClient.initialize(targetUrl, token)
             wsManager.connectWithFailover(_haUrl.value, _backupHaUrl.value, token, preferBackup = _usingBackupUrl.value)
@@ -885,7 +924,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
         // If fetch failed, try to flip to the alternative connection address (backup vs primary)
         if (responseList == null && _isLoggedIn.value) {
-            val token = sharedPrefs.getString("ha_token", "") ?: ""
+            val token = resolveHaToken()
             if (token.isNotEmpty()) {
                 val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
                 if (alternateUrl.isNotEmpty() && alternateUrl != "https://localhost/") {
@@ -1002,8 +1041,18 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 ?: waterHeaterNode?.getDoubleAttribute("hot_water")
                 ?: waterHeaterNode?.getDoubleAttribute("percentage")
 
+            // The ONLY writer of lastNonOffHvacMode, deliberately: it is driven by what Home
+            // Assistant actually reports, never by what we asked for. selectGlobalHvacMode used to
+            // commit it to disk before its service call, with nothing to revert it on failure, so
+            // one failed tap pinned the wrong value permanently.
+            //
+            // `dry` belongs here. It is a real option on the global helper and shows up in
+            // recorder history, but this filter used to accept only heat and cool while the writer
+            // accepted dry as well — so a house running dry could never correct a stale value.
+            // That stale value decides which family the power button starts a sleeping head in and
+            // which preset block the zone popup edits, so it is not a cosmetic field.
             val hModeLower = globalHvacMode.lowercase()
-            if (hModeLower == "heat" || hModeLower == "cool") {
+            if (hModeLower == "heat" || hModeLower == "cool" || hModeLower == "dry") {
                 if (lastNonOffHvacMode != hModeLower) {
                     lastNonOffHvacMode = hModeLower
                     sharedPrefs.edit().putString("last_non_off_hvac_mode", hModeLower).apply()
@@ -1122,10 +1171,19 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     hvacAction = climate?.getStringAttribute("hvac_action"),
                     autoOn = auto?.state?.lowercase() == "on",
                     overrideOn = override?.state?.lowercase() == "on",
+                    secondaryClimateEntityId = zone.secondaryClimateEntityId,
+                    secondaryHvacMode = zone.secondaryClimateEntityId?.let { statesMap[it]?.state },
+                    secondaryTargetTemp = zone.secondaryClimateEntityId
+                        ?.let { statesMap[it]?.getDoubleAttribute("temperature") },
                     vaneMode = tilt?.state ?: "Auto",
                     fanMode = fan?.state ?: "Auto",
-                    vaneOptions = if (!vOpts.isNullOrEmpty()) vOpts else listOf("Auto", "Swing", "1", "2", "3", "4", "5"),
-                    fanOptions = if (!fOpts.isNullOrEmpty()) fOpts.filter { !it.equals("Medium-High", ignoreCase = true) && !it.equals("Medium High", ignoreCase = true) } else listOf("Auto", "Quiet", "Low", "High")
+                    // Fallbacks match the helpers' real option lists. The vane list here used to
+                    // be listOf("Auto", "Swing", "1".."5") — not one of which the tilt helper
+                    // accepts — so a missing helper drew seven buttons that every select_option
+                    // would reject while the optimistic UI showed the change as applied.
+                    vaneOptions = if (!vOpts.isNullOrEmpty()) vOpts
+                        else listOf("Highest", "High", "Low", "Lowest", "Vertical Swing"),
+                    fanOptions = if (!fOpts.isNullOrEmpty()) fOpts.filter { !it.equals("Medium-High", ignoreCase = true) && !it.equals("Medium High", ignoreCase = true) } else listOf("Quiet", "Low", "Medium", "High", "Auto")
                 )
             }
 
@@ -1224,9 +1282,19 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     val solarGenL2State = statesMap[solarCfg.solarGenL2EntityId ?: "sensor.daily_solar_generation_l2"]
                     val cmpBankBalanceState = statesMap[solarCfg.cmpBankBalanceEntityId ?: "sensor.cmp_bank_balance"]
 
-                    val liveUsage = usageState?.state?.cleanFloatOrNull() ?: 0f
-                    val aVal = phaseA?.state?.cleanFloatOrNull() ?: 0f
-                    val bVal = phaseB?.state?.cleanFloatOrNull() ?: 0f
+                    // Kept nullable so a missing sensor can be told apart from a real zero. With
+                    // `?: 0f` both live figures read 0, netPower came out as exactly 0, and the
+                    // card's `isExporting = net >= 0` was therefore TRUE — so two dead sensors
+                    // rendered "NET EXPORTING 0 W — your panels are producing excess clean power
+                    // for the grid", with no DEMO badge, from no data at all. One dead phase was
+                    // quieter and worse: production was silently halved and shown as live.
+                    val rawUsage = usageState?.state?.cleanFloatOrNull()
+                    val rawA = phaseA?.state?.cleanFloatOrNull()
+                    val rawB = phaseB?.state?.cleanFloatOrNull()
+                    val liveInputsPresent = rawUsage != null && rawA != null && rawB != null
+                    val liveUsage = rawUsage ?: 0f
+                    val aVal = rawA ?: 0f
+                    val bVal = rawB ?: 0f
                     val diagGenVal = diagGenState?.state?.cleanFloatOrNull()
                     val diagDailyVal = diagDailyState?.state?.cleanFloatOrNull()
                     val diagUsageVal = diagUsageState?.state?.cleanFloatOrNull()
@@ -1267,8 +1335,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                      _solarLiveState.value = SolarLiveState(
                         liveUsageWatts = liveUsage,
                         liveProductionWatts = liveProd,
-                        isFetched = true,
-                        isError = false,
+                        // isFetched drives the card's DEMO badge. It was unconditionally true, so
+                        // a card built from missing sensors presented itself as live.
+                        isFetched = liveInputsPresent,
+                        isError = !liveInputsPresent,
                         lastUpdated = sUpdated,
                         productionLastUpdated = phaseA?.last_updated ?: phaseB?.last_updated ?: sUpdated,
                         usageLastUpdated = usageState?.last_updated ?: sUpdated,
@@ -1391,14 +1461,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectGlobalHvacMode(option: String) {
-        val hModeLower = option.lowercase()
-        if (hModeLower == "heat" || hModeLower == "cool" || hModeLower == "dry") {
-            if (lastNonOffHvacMode != hModeLower) {
-                lastNonOffHvacMode = hModeLower
-                sharedPrefs.edit().putString("last_non_off_hvac_mode", hModeLower).apply()
-            }
-        }
-
+        // lastNonOffHvacMode is deliberately NOT written here. It used to be committed to
+        // SharedPreferences on this line, before the service call below and with nothing to revert
+        // it if that call failed — so a single tap during a wifi blip pinned the wrong value
+        // across restarts. processStatesMap now owns it and updates it only from what Home
+        // Assistant actually reports, which is the one source that cannot lie about it.
         val current = _uiState.value
         if (current is HvacUiState.Success) {
             val updatedSettings = current.globalSettings.copy(
@@ -1600,10 +1667,17 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * matches the current one, which skips those restart artifacts and lands on the real
      * transition. Falls back to `last_changed` when history is unavailable.
      */
+    /**
+     * Returns null when the history query itself failed, as distinct from an empty result.
+     *
+     * It used to return an empty map for both, which the caller cannot tell apart — so a failed
+     * recorder query rendered "No change in recorded history" and "30d+" for every person: a
+     * confident, specific claim about thirty days of history that was never read.
+     */
     suspend fun fetchPresenceSince(
         entityIds: List<String>,
         windowDays: Int = 30
-    ): Map<String, PresenceSince> =
+    ): Map<String, PresenceSince>? =
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             if (entityIds.isEmpty()) return@withContext emptyMap()
             val result = mutableMapOf<String, PresenceSince>()
@@ -1658,10 +1732,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     result.getOrPut(id) { PresenceSince(millis = null, olderThanWindow = true) }
                 }
             } catch (e: Exception) {
-                // An empty map means "could not tell", which the UI renders as no duration
-                // rather than guessing from last_changed.
+                // null, not emptyMap(): the caller has to be able to say "we could not read the
+                // history" rather than asserting that nothing changed in the window.
                 android.util.Log.w("HvacViewModel", "Presence history unavailable: ${e.message}")
-                return@withContext emptyMap()
+                return@withContext null
             }
             result
         }
@@ -1700,8 +1774,18 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun detectModeConflict(targetZoneKey: String, requestedMode: String): com.example.model.ModeConflict? {
         val state = _uiState.value as? HvacUiState.Success ?: return null
         return com.example.model.findModeConflict(
-            zones = state.zones.map {
-                com.example.model.ZoneModeSnapshot(it.key, it.name, it.currentHvacMode)
+            // One snapshot per HEAD, not per zone. Main level spans both outdoor units, and
+            // feeding only its primary head meant that whenever the DINING head was the one
+            // committed to a family the zone read as neutral and the guard returned "no
+            // conflict" — letting a clashing mode through to the other unit, which the watchdog
+            // then resolved by switching equipment off a minute or two later.
+            zones = state.zones.flatMap { zone ->
+                listOfNotNull(
+                    com.example.model.ZoneModeSnapshot(zone.key, zone.name, zone.currentHvacMode),
+                    zone.secondaryHvacMode?.let {
+                        com.example.model.ZoneModeSnapshot(zone.key, zone.name, it)
+                    }
+                )
             },
             globalHvacMode = state.globalSettings.globalHvacMode,
             targetZoneKey = targetZoneKey,
@@ -1802,9 +1886,19 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * Falls through on timeout rather than aborting: a late head is better served by sending the
      * next command anyway than by silently dropping the user's request.
      */
+    /** One command sequence at a time per head. See [setZoneHvacMode]. */
+    private val zoneCommandLocks =
+        java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
+
+    /** The most recent mode asked for per head, so a superseded request can drop itself. */
+    private val latestRequestedMode = java.util.concurrent.ConcurrentHashMap<String, String>()
+
     private suspend fun awaitHeadState(
         climateEntityId: String,
-        timeoutMs: Long = 8000,
+        // The Airstage integration reports on roughly a 10s round robin, so the old 8000 ceiling
+        // expired routinely even when everything was working — and the caller could not tell
+        // "slow to report" from "did not take". n8n uses 15s on the same heads for this reason.
+        timeoutMs: Long = 15000,
         predicate: (String) -> Boolean
     ): Boolean {
         // Without the socket nothing will update the state map while we sit here, so polling it
@@ -1824,58 +1918,107 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setZoneHvacMode(climateEntityId: String, mode: String, name: String) {
         val target = mode.lowercase()
-        _actionFeedback.value = "$name mode: ${target.uppercase()}"
+        // Recorded before queuing so a later tap can supersede this one while it waits.
+        latestRequestedMode[climateEntityId] = target
+        _actionFeedback.value = "$name → ${target.uppercase()}…"
+        val lock = zoneCommandLocks.getOrPut(climateEntityId) { kotlinx.coroutines.sync.Mutex() }
         viewModelScope.launch {
-            try {
-                val current = _entityStates.value[climateEntityId]?.state?.lowercase()
+            lock.withLock {
+                // Two taps used to launch two independent sequences against the same head, each
+                // computing its setpoint from its OWN target mode. Whichever bounded wait expired
+                // last won the final setpoint — decided purely by when the head next reported, so
+                // frequently the loser of the mode race. The head could settle in HEAT holding the
+                // COOL number; on Autumn those are ten degrees apart, which the watchdog then
+                // reads as a manual adjustment and suspends the zone for.
+                //
+                // Serialising per head removes the race. This check then drops a request that a
+                // later tap has already superseded, so a burst of taps cannot build a queue and
+                // the last tap is the one that lands.
+                if (latestRequestedMode[climateEntityId] != target) return@withLock
+                try {
+                    val current = _entityStates.value[climateEntityId]?.state?.lowercase()
 
-                // These heads will not take a mode while they are powered down. The call is
-                // accepted and the head stays off, so tapping Heat on a sleeping zone did
-                // nothing until you pressed power yourself. n8n's sequencer has always sent
-                // turn_on first for this reason; the panel now does the same.
-                if (target != "off" && (current == null || current == "off")) {
-                    performServiceCall("climate", "turn_on", mapOf("entity_id" to climateEntityId))
-                    // Wait for the head to actually report itself on rather than assuming a
-                    // fixed delay is enough. These are cloud-backed heads: a service call is
-                    // acknowledged by HA long before the unit has applied it, so a short sleep
-                    // would send the mode into a head that is still powering up.
-                    awaitHeadState(climateEntityId) { it != "off" }
-                }
-
-                val ok = performServiceCall(
-                    "climate", "set_hvac_mode",
-                    mapOf("entity_id" to climateEntityId, "hvac_mode" to target)
-                )
-                if (!ok) {
-                    _actionFeedback.value = "Failed to set $name to ${target.uppercase()}"
-                    return@launch
-                }
-
-                // These heads hold ONE setpoint across modes — verified from recorder history,
-                // where `temperature` stayed put through four mode changes. So the head keeps
-                // whatever it was last set to, which is usually the *other* family's number.
-                // Autumn's heat and cool day targets are ten degrees apart, so turning it on in
-                // heat after it last cooled leaves it chasing 72 against a 62 target, and the
-                // watchdog reads that as a manual adjustment and suspends the zone within a
-                // minute. Send the schedule setpoint so the head lands where automation expects.
-                scheduleSetpointFor(climateEntityId, target)?.let { wanted ->
-                    // Let the mode land first. A setpoint written while the head is still
-                    // switching modes is the write most likely to be dropped.
-                    awaitHeadState(climateEntityId) { it == target }
-                    val now = _entityStates.value[climateEntityId]
-                        ?.attributes?.get("temperature")?.toString()?.toDoubleOrNull()
-                    // Same 0.6 tolerance the watchdog uses, so we only write when it would care.
-                    if (now == null || kotlin.math.abs(now - wanted) > 0.6) {
-                        performServiceCall(
-                            "climate", "set_temperature",
-                            mapOf("entity_id" to climateEntityId, "temperature" to wanted)
-                        )
+                    // A head we cannot hear from cannot take a command. The power button already
+                    // refused this case; the mode buttons tested only `== "off"`, so an
+                    // unavailable head skipped turn_on and was then sent two commands it could
+                    // not act on, while the banner reported success.
+                    if (com.example.model.isNotReporting(current)) {
+                        _actionFeedback.value = "$name is not reporting — mode unchanged"
+                        return@withLock
                     }
-                }
 
-                if (!wsManager.connectionState.value.isConnected) fetchStates()
-            } catch (e: Exception) {
-                _actionFeedback.value = "Failed to sync action: ${e.localizedMessage}"
+                    // These heads will not take a mode while they are powered down. The call is
+                    // accepted and the head stays off, so tapping Heat on a sleeping zone did
+                    // nothing until you pressed power yourself. n8n's sequencer has always sent
+                    // turn_on first for this reason; the panel now does the same.
+                    if (target != "off" && current == "off") {
+                        // NonCancellable: between turn_on and set_hvac_mode the head is powered up
+                        // but still in its previous mode. Losing the scope in that window (an OTA
+                        // restart, a system reclaim) would strand it there with nothing to report.
+                        val powered = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                            // The result of this call used to be discarded. A rejected turn_on is
+                            // not an exception — callService returns a non-2xx Response rather
+                            // than throwing — so the sequence carried on, sent a mode to a head
+                            // that stayed off, and reported success. That is precisely the failure
+                            // 0c71c98 was written to fix, reintroduced one level up.
+                            performServiceCall("climate", "turn_on", mapOf("entity_id" to climateEntityId))
+                        }
+                        if (!powered) {
+                            _actionFeedback.value = "Could not power $name on"
+                            return@withLock
+                        }
+                        // Wait for the head to actually report itself on rather than assuming a
+                        // fixed delay is enough. These are cloud-backed heads: a service call is
+                        // acknowledged by HA long before the unit has applied it, so a short sleep
+                        // would send the mode into a head that is still powering up.
+                        awaitHeadState(climateEntityId) { it != "off" }
+                    }
+
+                    val ok = performServiceCall(
+                        "climate", "set_hvac_mode",
+                        mapOf("entity_id" to climateEntityId, "hvac_mode" to target)
+                    )
+                    if (!ok) {
+                        _actionFeedback.value = "Failed to set $name to ${target.uppercase()}"
+                        return@withLock
+                    }
+
+                    // These heads hold ONE setpoint across modes — verified from recorder history,
+                    // where `temperature` stayed put through four mode changes. So the head keeps
+                    // whatever it was last set to, which is usually the *other* family's number.
+                    // Autumn's heat and cool day targets are ten degrees apart, so turning it on in
+                    // heat after it last cooled leaves it chasing 72 against a 62 target, and the
+                    // watchdog reads that as a manual adjustment and suspends the zone within a
+                    // minute. Send the schedule setpoint so the head lands where automation expects.
+                    scheduleSetpointFor(climateEntityId, target)?.let { wanted ->
+                        // Let the mode land first. A setpoint written while the head is still
+                        // switching modes is the write most likely to be dropped.
+                        //
+                        // This result used to be discarded, which is worse than dropping a write:
+                        // if the mode never took, it writes the NEW family's number into a head
+                        // still running the OLD family — driving a cooling room toward a heat
+                        // target. Say so instead of guessing.
+                        if (!awaitHeadState(climateEntityId) { it == target }) {
+                            _actionFeedback.value =
+                                "$name did not confirm ${target.uppercase()} — setpoint left alone"
+                            return@withLock
+                        }
+                        val now = _entityStates.value[climateEntityId]
+                            ?.attributes?.get("temperature")?.toString()?.toDoubleOrNull()
+                        // Same 0.6 tolerance the watchdog uses, so we only write when it would care.
+                        if (now == null || kotlin.math.abs(now - wanted) > 0.6) {
+                            performServiceCall(
+                                "climate", "set_temperature",
+                                mapOf("entity_id" to climateEntityId, "temperature" to wanted)
+                            )
+                        }
+                    }
+
+                    _actionFeedback.value = "$name mode: ${target.uppercase()}"
+                    if (!wsManager.connectionState.value.isConnected) fetchStates()
+                } catch (e: Exception) {
+                    _actionFeedback.value = "Failed to sync action: ${e.localizedMessage}"
+                }
             }
         }
     }
@@ -1987,7 +2130,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     } catch (e: Exception) {
                         // Try to failover to primary or backup depending on which is currently configured and inactive
-                        val token = sharedPrefs.getString("ha_token", "") ?: ""
+                        val token = resolveHaToken()
                         val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
                         if (token.isNotEmpty() && alternateUrl.isNotEmpty() && alternateUrl != "https://localhost/") {
                             HomeAssistantClient.initialize(alternateUrl, token)
@@ -2225,6 +2368,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     invalidateLayoutConfigCache()
                     _layoutVersion.value = remoteConfig.version
                     _layoutConfig.value = remoteConfig
+                    _appliedLayoutCommit.value = sha
 
                     _updateState.value = UpdateState.UpToDate(sha.take(7), url, remoteJson.length.toLong())
                     _actionFeedback.value = "System layout updated dynamically to v${remoteConfig.version} (${sha.take(7)})!"

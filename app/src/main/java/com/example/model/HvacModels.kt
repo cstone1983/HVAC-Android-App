@@ -239,6 +239,17 @@ data class ClimateZoneConfig(
     val key: String,
     val name: String,
     val climateEntityId: String,
+    /**
+     * A second head belonging to the same zone, if it has one.
+     *
+     * Main level is one open space served by two heads on two different outdoor units, kept
+     * mirrored by the sequencer. The app knew about only the living-room head, which had two
+     * consequences: the card could not show a split between them (the 40-minute split on
+     * 2026-09-20 was invisible on the wall), and the conflict guard read the zone's mode from
+     * the living-room head alone — so when the DINING head was the one committed to a family,
+     * the guard reported no conflict and let a clashing mode through to the other unit.
+     */
+    val secondaryClimateEntityId: String? = null,
     val autoEntityId: String,
     val overrideEntityId: String,
     val tiltEntityId: String,
@@ -303,10 +314,20 @@ data class ClimateZone(
     val hvacAction: String? = null,
     val autoOn: Boolean = false,
     val overrideOn: Boolean = false,
+    /** The zone's second head, where it has one. See [ClimateZoneConfig.secondaryClimateEntityId]. */
+    val secondaryClimateEntityId: String? = null,
+    val secondaryHvacMode: String? = null,
+    val secondaryTargetTemp: Double? = null,
     val vaneMode: String = "Auto",
     val fanMode: String = "Auto",
-    val vaneOptions: List<String> = listOf("Auto", "Swing", "1", "2", "3", "4", "5"),
-    val fanOptions: List<String> = listOf("Auto", "Quiet", "Low", "High")
+    // Fallbacks for when the helper is missing from the state map. These are the real option
+    // lists the tilt/fan helpers carry, verified against live Home Assistant on 2026-09-21.
+    // The previous vane fallback was listOf("Auto", "Swing", "1".."5"), of which *not one* is a
+    // value the helper accepts — so a missing helper rendered seven buttons that every
+    // select_option call would reject, while the optimistic UI showed the new vane as applied.
+    // The old fan fallback was valid but silently dropped "Medium".
+    val vaneOptions: List<String> = listOf("Highest", "High", "Low", "Lowest", "Vertical Swing"),
+    val fanOptions: List<String> = listOf("Quiet", "Low", "Medium", "High", "Auto")
 ) {
     /** True only while the unit should actually be moving air to reach its target. */
     val isCalling: Boolean
@@ -333,9 +354,28 @@ data class ClimateZone(
      * just said. What colour cannot show is whether the unit is actually working, which is
      * all this reports.
      */
+    /**
+     * True when this zone's two heads disagree about what they are doing.
+     *
+     * Only meaningful for a zone that has a second head. Both heads serve one open space and are
+     * kept mirrored by the sequencer, so a disagreement means the mirror has not taken — which is
+     * worth saying on the card rather than quietly showing one head and hiding the other.
+     */
+    val isSplit: Boolean
+        get() {
+            val other = secondaryHvacMode?.lowercase() ?: return false
+            val mine = currentHvacMode.lowercase()
+            if (mine in notReportingModes || other in notReportingModes) return false
+            return mine != other
+        }
+
     val statusLabel: String
         get() {
             val mode = currentHvacMode.lowercase()
+            // A split outranks everything else this can say: the two heads are doing different
+            // things, so any single verdict about the zone would be picking one and hiding the
+            // other. This is what made the 40-minute main-level split invisible on the wall.
+            if (isSplit) return "SPLIT"
             if (mode == "off") return "OFF"
             // A head we cannot hear from says nothing about the room. This used to fall through
             // to the temperature comparison below and report "AT TARGET" for a head whose state
@@ -348,9 +388,24 @@ data class ClimateZone(
 
     private companion object {
         /** States that mean "no usable reading", as opposed to a head deliberately switched off. */
-        val notReportingModes = setOf("unavailable", "unknown", "")
+        val notReportingModes = NOT_REPORTING_MODES
     }
 }
+
+/** States that mean "no usable reading", as opposed to a head deliberately switched off. */
+val NOT_REPORTING_MODES = setOf("unavailable", "unknown", "")
+
+/**
+ * True when a head is telling us nothing usable about itself.
+ *
+ * Shared deliberately. The render path and the command-dispatch path each used to carry their own
+ * idea of this, and they disagreed: the card correctly showed UNAVAILABLE while `setZoneHvacMode`
+ * tested only `== "off"`, so tapping a mode on an unreachable head skipped `turn_on` entirely and
+ * then fired two commands at an entity that could not take them — while the banner reported
+ * success. A single definition is the fix, not a second copy of the same set.
+ */
+fun isNotReporting(state: String?): Boolean =
+    state == null || state.lowercase() in NOT_REPORTING_MODES
 
 /**
  * The thermal families a head can be in. A multi-split serves one family at a time, and dry is
@@ -473,6 +528,23 @@ fun findModeConflict(
 const val COOL_FLOOR_F = 64.5
 
 /**
+ * Lowest temperature these heads may be asked to heat to.
+ *
+ * The hardware works in 0.5 degree Celsius steps and its heating range starts at 16.0 C. Home
+ * Assistant advertises `min_temp: 60` because it rounds 60.8 F down, but it validates the request
+ * against the unrounded 16.0 C — so anything below 60.8 F is rejected outright with "the service
+ * was not able to process your request", and the head silently keeps whatever setpoint it had.
+ *
+ * That is worse than a wrong number. The head then reads different from what the system intended,
+ * the watchdog scores it as drift, and the zone latches into manual override on every schedule
+ * transition. Two zones were configured at 60 and had been doing exactly this.
+ *
+ * 61 is the first value on the 0.5 C ladder that survives the conversion, landing on `set_tmp 160`
+ * — which is the same rung Fujitsu's own app labels "60". Nothing is lost by clamping here.
+ */
+const val HEAT_FLOOR_F = 61.0
+
+/**
  * The scheduled setpoint a zone should sit at when running [targetMode], or null when there is
  * no meaningful target.
  *
@@ -492,7 +564,51 @@ fun scheduledSetpoint(zone: ClimateZone, houseSchedule: String, targetMode: Stri
         else -> presets.dayValue
     } ?: return null
 
-    return if (mode == "cool" || mode == "dry") maxOf(value, COOL_FLOOR_F) else value
+    return clampToHardwareFloor(value, mode)
+}
+
+/**
+ * Raises a setpoint to the lowest value the equipment will actually accept for that family.
+ *
+ * Shared so the panel, the car and the n8n sequencer cannot drift apart on it. A value below the
+ * floor is not merely wrong — the write is rejected outright and the head keeps its previous
+ * setpoint, which the watchdog then scores as a manual adjustment and suspends the zone for.
+ */
+fun clampToHardwareFloor(value: Double, targetMode: String): Double {
+    val mode = targetMode.lowercase()
+    return if (mode == "cool" || mode == "dry") maxOf(value, COOL_FLOOR_F)
+    else maxOf(value, HEAT_FLOOR_F)
+}
+
+/** Which UI zone each head belongs to. Main level is two heads across both outdoor units. */
+val headZoneKey: Map<String, String> = mapOf(
+    "climate.hp_living_room" to "main_level",
+    "climate.hp_dining_room" to "main_level",
+    "climate.hp_bedroom" to "bedroom_1",
+    "climate.hp_bedroom_2" to "bedroom_2",
+    "climate.hp_basement" to "basement",
+    "climate.hp_anthony" to "anthony",
+    "climate.hp_autumn" to "autumn"
+)
+
+/**
+ * The preset helper holding a zone's target for a schedule slot and mode, or null when there
+ * isn't one.
+ *
+ * Mirrors n8n's suffix rule exactly rather than being tidier than it: the `_cool` helpers are
+ * used only for `cool`, so `dry` reads the heat number in both systems.
+ */
+fun presetHelperId(zoneKey: String, houseSchedule: String, targetMode: String): String? {
+    val mode = targetMode.lowercase()
+    if (mode == "off" || mode == "fan_only" || mode == "unavailable" || mode == "unknown") return null
+    val slot = when (houseSchedule.lowercase()) {
+        "night" -> "night"
+        "away" -> "away"
+        "day" -> "day"
+        else -> return null
+    }
+    val suffix = if (mode == "cool") "cool" else "temp"
+    return "input_number.${zoneKey}_${slot}_$suffix"
 }
 
 /**

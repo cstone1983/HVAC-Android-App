@@ -107,6 +107,20 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
     @Volatile private var currentWsUrl: String = ""
     @Volatile private var isExplicitlyDisconnected = false
 
+    /**
+     * Set when Home Assistant rejects our token, cleared only when fresh credentials arrive.
+     *
+     * Without it, `auth_invalid` set `canRetry = false` and closed with 4001 -- and then
+     * onClosed, which does not special-case that, overwrote the state with Disconnected and
+     * scheduled a reconnect anyway. `canRetry` was written twice and read nowhere. The result
+     * was a new socket and a fresh failed login roughly every 10s forever: ~8,600 rejected
+     * logins per panel per day against HA's auth endpoint, which will trip ip_ban where it is
+     * enabled. Because consecutiveHostFailures increments on each one, it also flapped
+     * primary/backup every two attempts. The panel showed a generic "Network error" and never
+     * said the token was the problem.
+     */
+    @Volatile private var authRejected = false
+
     // Primary/backup host failover (independent of the ViewModel's own REST-level failover)
     @Volatile private var primaryRawUrl: String = ""
     @Volatile private var backupRawUrl: String = ""
@@ -188,6 +202,8 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         currentToken = token.trim()
         currentWsUrl = toWebSocketUrl(rawUrl)
         isExplicitlyDisconnected = false
+        // New credentials deserve a fresh attempt even after a rejection.
+        authRejected = false
         currentBackoffMs = MIN_BACKOFF_MS
         reconnectJob?.cancel()
 
@@ -230,6 +246,8 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         currentRawUrl = startRawUrl
         currentWsUrl = toWebSocketUrl(startRawUrl)
         isExplicitlyDisconnected = false
+        // New credentials deserve a fresh attempt even after a rejection.
+        authRejected = false
         currentBackoffMs = MIN_BACKOFF_MS
         reconnectJob?.cancel()
 
@@ -301,7 +319,9 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 if (myGen != connectionGeneration.get()) return
                 Log.w(TAG, "WebSocket closed (code $code): $reason")
-                if (!isExplicitlyDisconnected) {
+                // authRejected: retrying a token HA has already refused just hammers the
+                // auth endpoint. Keep the Error state so the UI keeps saying why.
+                if (!isExplicitlyDisconnected && !authRejected) {
                     _connectionState.value = HaConnectionState.Disconnected
                     scheduleReconnect("Socket closed ($code: $reason)")
                 }
@@ -310,7 +330,7 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 if (myGen != connectionGeneration.get()) return
                 Log.e(TAG, "WebSocket failure: ${t.localizedMessage}", t)
-                if (!isExplicitlyDisconnected) {
+                if (!isExplicitlyDisconnected && !authRejected) {
                     _connectionState.value = HaConnectionState.Error("Network error: ${t.localizedMessage}")
                     scheduleReconnect("Socket failure: ${t.localizedMessage}")
                 }
@@ -367,7 +387,11 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
                 "auth_invalid" -> {
                     val message = json.optString("message", "Invalid access token")
                     Log.e(TAG, "Authentication FAILED: $message")
-                    _connectionState.value = HaConnectionState.Error("Authentication failed: $message", canRetry = false)
+                    authRejected = true
+                    _connectionState.value = HaConnectionState.Error(
+                        "Home Assistant rejected the access token. Update it in Settings.",
+                        canRetry = false
+                    )
                     webSocket.close(4001, "Auth Invalid")
                 }
 
@@ -648,7 +672,7 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
      * Exponential backoff reconnection with random jitter
      */
     private fun scheduleReconnect(reason: String) {
-        if (isExplicitlyDisconnected) return
+        if (isExplicitlyDisconnected || authRejected) return
         // A reconnect is already pending for this failure (e.g. the socket callback and the heartbeat
         // both report the same dead connection): don't count it twice or reset its delay.
         if (reconnectJob?.isActive == true) return

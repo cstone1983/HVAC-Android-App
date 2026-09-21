@@ -84,12 +84,39 @@ class ScheduledSetpointTest {
     }
 
     @Test
-    fun `the cool floor applies to cool and dry but never to heat`() {
+    fun `each family gets its own floor`() {
         val cold = zone(heat = Triple(60.0, 60.0, 60.0), cool = Triple(60.0, 60.0, 60.0))
         assertEquals(64.5, scheduledSetpoint(cold, "Day", "cool")!!, 0.001)
         assertEquals(64.5, scheduledSetpoint(cold, "Day", "dry")!!, 0.001)
-        // A 60 degree heat target is legitimate and must not be clamped upward.
-        assertEquals(60.0, scheduledSetpoint(cold, "Day", "heat")!!, 0.001)
+        // This assertion used to expect 60.0, on the assumption that a 60 degree heat target was
+        // legitimate and must not be clamped. The hardware disagrees: 60 F converts to 15.56 C,
+        // below the 16.0 C floor of the heating range, and the write is rejected outright. It was
+        // verified against the real heads on 2026-09-21 -- 60 and 60.5 both rejected, 61 accepted.
+        assertEquals(61.0, scheduledSetpoint(cold, "Day", "heat")!!, 0.001)
+    }
+
+    @Test
+    fun `a heat target below the hardware floor is raised, not sent and rejected`() {
+        // The zones that were configured this way did not merely run at the wrong temperature.
+        // The rejected write left the head on its previous setpoint, the watchdog read the
+        // difference as drift, and the zone latched into manual override on every transition.
+        val basement = zone(heat = Triple(65.0, 60.0, 60.0), cool = Triple(70.0, 68.0, 68.0))
+        assertEquals(61.0, scheduledSetpoint(basement, "Night", "heat")!!, 0.001)
+        assertEquals(61.0, scheduledSetpoint(basement, "Away", "heat")!!, 0.001)
+        // Day is above the floor and must pass through untouched.
+        assertEquals(65.0, scheduledSetpoint(basement, "Day", "heat")!!, 0.001)
+    }
+
+    @Test
+    fun `the floor is the first value that survives the conversion to Celsius`() {
+        // 61 F is 16.11 C, which lands on set_tmp 160 -- the same rung Fujitsu's own app calls
+        // "60". 60.8 F is 16.0 C in real arithmetic but 15.999999999999998 in floating point, so
+        // it fails the device's floor check too. 61 is the lowest value that actually works.
+        val atFloor = zone(heat = Triple(61.0, 61.0, 61.0), cool = Triple(70.0, 70.0, 70.0))
+        assertEquals(61.0, scheduledSetpoint(atFloor, "Day", "heat")!!, 0.001)
+
+        val belowFloor = zone(heat = Triple(60.5, 60.5, 60.5), cool = Triple(70.0, 70.0, 70.0))
+        assertEquals(61.0, scheduledSetpoint(belowFloor, "Day", "heat")!!, 0.001)
     }
 
     @Test

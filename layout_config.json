@@ -1,5 +1,5 @@
 {
-  "version": "6.2.0",
+  "version": "6.3.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -149,6 +149,7 @@
       "key": "main_level",
       "name": "Main Level",
       "climateEntityId": "climate.hp_living_room",
+      "secondaryClimateEntityId": "climate.hp_dining_room",
       "autoEntityId": "input_boolean.zone_enable_main_level",
       "overrideEntityId": "input_boolean.override_main_level",
       "tiltEntityId": "input_select.main_level_tilt_mode",
@@ -471,6 +472,7 @@
     ],
     "hideRoomSensorIds": [
       "living_room",
+      "dining_room",
       "basement"
     ],
     "presenceHistoryDays": 30
