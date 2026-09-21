@@ -89,11 +89,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _layoutVersion = MutableStateFlow(sharedPrefs.getString("layout_version", "1.0.0") ?: "1.0.0")
     val layoutVersion: StateFlow<String> = _layoutVersion.asStateFlow()
 
-    private val _activeVersion = MutableStateFlow(
-        "v" + com.example.BuildConfig.VERSION_NAME + (sharedPrefs.getString("software_commit_sha", "")?.let {
-            if (it.isNotEmpty()) "-${it.take(7)}" else ""
-        } ?: "")
-    )
+    // The build the panel is actually running, and nothing else. It used to be decorated with a
+    // stored commit sha that a layout pull would move, so pulling a config changed the version
+    // the panel claimed to be on.
+    private val _activeVersion = MutableStateFlow("v" + com.example.BuildConfig.VERSION_NAME)
     val activeVersion: StateFlow<String> = _activeVersion.asStateFlow()
 
     private val _selectedThemePreset = MutableStateFlow(sharedPrefs.getString("selected_theme_preset", "dynamic") ?: "dynamic")
@@ -2115,21 +2114,27 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                // 2. Retrieve last applied commit SHA to detect changes
-                val currentSoftwareCommit = sharedPrefs.getString("software_commit_sha", "") ?: ""
-                
-                // If it is a brand-new install with no baseline SHA, let's treat it as UpToDate, 
-                // but allow the user to pull/apply layout files from GitHub.
-                val repoHasNewCommit = currentSoftwareCommit.isNotEmpty() && sha != currentSoftwareCommit
+                // 2. The commit whose layout we last actually applied.
+                //
+                // This reads `layout_commit_sha`, which the apply path writes. It used to read
+                // `software_commit_sha`, which served two unrelated jobs: this marker, and a
+                // decoration on the displayed app version. Removing the version decoration also
+                // removed the only write that advanced the marker, so applying an update left it
+                // unchanged and the very same update was offered again on the next check, forever.
+                val appliedLayoutCommit = sharedPrefs.getString("layout_commit_sha", "") ?: ""
 
-                if (repoHasNewCommit || currentSoftwareCommit.isEmpty()) {
+                // A brand-new install has no baseline, so offer the pull rather than claiming to
+                // be up to date with something it has never fetched.
+                val repoHasNewCommit = appliedLayoutCommit.isNotEmpty() && sha != appliedLayoutCommit
+
+                if (repoHasNewCommit || appliedLayoutCommit.isEmpty()) {
                     pendingReleaseId = 99999L
                     pendingAssetSize = 1024L
                     pendingAssetUrl = "https://raw.githubusercontent.com/$repo/$sha/layout_config.json"
                     pendingVersion = sha.take(7)
                     pendingSoftwareCommit = sha
 
-                    val isNewSyncMsg = if (currentSoftwareCommit.isEmpty()) {
+                    val isNewSyncMsg = if (appliedLayoutCommit.isEmpty()) {
                         "Initial over-the-air synchronization is pending.\n\n"
                     } else {
                         "New design push detected on GitHub!\n\n"
@@ -2148,11 +2153,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     pendingVersion = sha.take(7)
                     pendingSoftwareCommit = sha
 
-                    sharedPrefs.edit().putString("software_commit_sha", sha).apply()
-                    val newActiveVersionName = "v" + com.example.BuildConfig.VERSION_NAME + "-${sha.take(7)}"
-                    if (_activeVersion.value != newActiveVersionName) {
-                        _activeVersion.value = newActiveVersionName
-                    }
+                    // Nothing to write here: reaching this branch means the applied commit already
+                    // equals the repo head. This used to stamp the marker and rewrite the app
+                    // version with the layout's commit, which is how a config pull came to change
+                    // the build number the panel reported.
 
                     _updateState.value = UpdateState.UpToDate(
                         version = sha.take(7),
@@ -2291,9 +2295,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                if (pendingSoftwareCommit.isNotEmpty()) {
-                    sharedPrefs.edit().putString("software_commit_sha", pendingSoftwareCommit).apply()
-                }
+                // `software_commit_sha` is no longer written or read anywhere. It used to be both
+                // the applied-commit marker and a decoration on the displayed version, and doing
+                // two jobs is what made it possible to break one by fixing the other.
                 _updateState.value = UpdateState.Success(out.absolutePath)
                 _actionFeedback.value = "Update $version downloaded. Tap Install to apply it."
             } catch (e: Exception) {
