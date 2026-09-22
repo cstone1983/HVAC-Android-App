@@ -1,5 +1,5 @@
 {
-  "version": "6.3.0",
+  "version": "6.4.1",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -103,6 +103,16 @@
         "pool"
       ],
       "shortTitle": "POOL"
+    },
+    {
+      "id": "alarm",
+      "title": "SECURITY",
+      "icon": "shield",
+      "sections": [
+        "alarm"
+      ],
+      "shortTitle": "ALARM",
+      "hidden": false
     },
     {
       "id": "updates",
@@ -476,5 +486,26 @@
       "basement"
     ],
     "presenceHistoryDays": 30
+  },
+  "alarm": {
+    "entityId": "alarm_control_panel.alarmo",
+    "sensors": [
+      {
+        "entityId": "cover.konnected_d332ec_garage_door",
+        "name": "Garage South"
+      },
+      {
+        "entityId": "cover.garage_garage_door_north_garage_door",
+        "name": "Garage North"
+      },
+      {
+        "entityId": "binary_sensor.mudroom_motion_motion_2",
+        "name": "Mudroom Motion"
+      },
+      {
+        "entityId": "binary_sensor.third_reality_inc_3rms16bz_motion",
+        "name": "Motion Sensor"
+      }
+    ]
   }
 }

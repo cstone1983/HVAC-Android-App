@@ -231,6 +231,7 @@ fun getIconByName(name: String?): ImageVector {
         "light", "brightness" -> Icons.Default.Brightness5
         "bolt", "electricity", "switch" -> Icons.Default.PowerSettingsNew
         "garage", "door" -> Icons.Default.Garage
+        "shield", "alarm", "security" -> Icons.Default.Shield
         "menu" -> Icons.Default.Menu
         "warning" -> Icons.Default.Warning
         "refresh" -> Icons.Default.Refresh
@@ -803,6 +804,11 @@ fun HvacDashboard(
                     }
 
                     is HvacUiState.Success -> {
+                        // Sits at the root, outside the tab content, so an entry delay or a
+                        // trigger puts the keypad in front of whatever is on screen rather than
+                        // requiring someone to find the alarm tab while the clock runs down.
+                        AlarmKeypadDialog(viewModel = viewModel)
+
                         val showModeConfirmDialog by viewModel.showModeConfirmDialog.collectAsStateWithLifecycle()
                         val pendingHvacMode by viewModel.pendingHvacMode.collectAsStateWithLifecycle()
 
@@ -1378,7 +1384,13 @@ fun DynamicTabContent(
                     }
                 }
                 else -> {
-                    if (section.lowercase().trim() == "pool") {
+                    if (section.lowercase().trim() == "alarm") {
+                        item {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                AlarmSection(viewModel = viewModel)
+                            }
+                        }
+                    } else if (section.lowercase().trim() == "pool") {
                         item {
                             Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                                 PoolDashboardView(viewModel = viewModel)
@@ -1421,8 +1433,10 @@ fun HvacDashboardContent(
     
     val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
     val activeThemePreset by viewModel.selectedThemePreset.collectAsStateWithLifecycle()
-    val rawTabs = layoutConfig.tabs ?: emptyList()
-    
+    // A tab marked hidden keeps its code in the app but gets no button in the navigation, so a
+    // finished feature can ship dark and be switched on later with a config push alone.
+    val rawTabs = (layoutConfig.tabs ?: emptyList()).filter { !it.hidden }
+
     val activeTabs = if (rawTabs.isNotEmpty()) rawTabs else listOf(
         TabConfig("zones", "ZONES & UNITS", "layers", listOf("sensors", "zones")),
         TabConfig("aux", "AUXILIARY POWER", "lightbulb", listOf("lights", "switches", "covers")),
@@ -1439,7 +1453,16 @@ fun HvacDashboardContent(
     // through onInteraction, and the window is long enough to read a chart on the wall.
     val idleReturnMillis = (layoutConfig.idleReturnSeconds ?: 20).coerceAtLeast(5) * 1000L
     val popupTimeoutMillis = (layoutConfig.popupTimeoutSeconds ?: 20).coerceAtLeast(5) * 1000L
-    LaunchedEffect(lastInteractionTime) {
+
+    // The alarm keypad is a modal in its own window, so it never reaches the root pointerInput
+    // that feeds lastInteractionTime. Without this the idle timer kept running underneath it and
+    // silently switched the page back to Home behind the dialog — so whatever you tapped next was
+    // aimed at a screen that had already changed. That is not merely cosmetic on a keypad: the
+    // buttons underneath include the whole-house mode row.
+    val alarmKeypadVisible by viewModel.showAlarmKeypad.collectAsStateWithLifecycle()
+
+    LaunchedEffect(lastInteractionTime, alarmKeypadVisible) {
+        if (alarmKeypadVisible) return@LaunchedEffect
         kotlinx.coroutines.delay(idleReturnMillis)
         selectedTab = 0
         if (listStates.isNotEmpty()) {
@@ -1448,6 +1471,19 @@ fun HvacDashboardContent(
             } catch (e: Exception) {
                 // Safeguard against scroll interruptions
             }
+        }
+    }
+
+    // Raising the keypad also brings the alarm tab up behind it, so when the keypad closes — by
+    // hand, or on its own one-minute timeout — you are left looking at the alarm screen rather
+    // than at whichever tab happened to be open when it fired. The normal idle countdown then
+    // restarts from that moment and returns to Home as usual.
+    val alarmTabIndex = activeTabs.indexOfFirst { it.id.equals("alarm", ignoreCase = true) }
+    LaunchedEffect(alarmKeypadVisible) {
+        if (alarmKeypadVisible) {
+            if (alarmTabIndex >= 0) selectedTab = alarmTabIndex
+        } else {
+            lastInteractionTime = System.currentTimeMillis()
         }
     }
 

@@ -28,7 +28,17 @@ data class TabConfig(
     val sections: List<String>,
     // Short label used where horizontal space is tight (the phone's bottom navigation bar).
     // Falls back to the first word of `title` when omitted.
-    val shortTitle: String? = null
+    val shortTitle: String? = null,
+    /**
+     * Keeps a finished tab out of the navigation until it is wanted.
+     *
+     * The tab's rendering code still ships in the app; only its button is withheld. That means
+     * revealing it later is a change to `layout_config.json` alone — flip this to false, push, and
+     * the panels pick it up on their next update check. No rebuild, no reinstall, and hiding it
+     * again is the same one-word change. Deleting the entry instead would work identically, but
+     * leaving it here documents the tab and makes turning it on a flag rather than a rewrite.
+     */
+    val hidden: Boolean = false
 )
 
 @JsonClass(generateAdapter = true)
@@ -200,6 +210,7 @@ data class HvacLayoutConfig(
     val waterHeaterRunningEntityId: String? = "binary_sensor.heat_pump_water_heater_running",
     val poolSensors: PoolSensorConfig? = PoolSensorConfig(),
     val solarSensors: SolarSensorConfig? = SolarSensorConfig(),
+    val alarm: AlarmConfig? = AlarmConfig(),
     val homeStatus: HomeStatusConfig? = HomeStatusConfig(),
     val dynamicSections: List<DynamicSectionConfig>? = emptyList(),
     val showWeatherCard: Boolean? = true,
@@ -578,6 +589,214 @@ fun clampToHardwareFloor(value: Double, targetMode: String): Double {
     val mode = targetMode.lowercase()
     return if (mode == "cool" || mode == "dry") maxOf(value, COOL_FLOOR_F)
     else maxOf(value, HEAT_FLOOR_F)
+}
+
+/**
+ * Which alarm panel to drive, and which contact sensors to show beside it.
+ *
+ * `alarm_control_panel.alarmo` is Alarmo's default entity id. It is configurable because Alarmo
+ * also creates one panel per area when areas are used, and because nothing here should be
+ * hardcoded to an entity that did not exist when this was written.
+ *
+ * Note there is deliberately no field for the PIN. The code is typed on the keypad, passed
+ * straight to the service call, and never stored, cached or logged.
+ */
+@JsonClass(generateAdapter = true)
+data class AlarmConfig(
+    val entityId: String? = "alarm_control_panel.alarmo",
+    val sensors: List<AlarmSensorConfig>? = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class AlarmSensorConfig(
+    val entityId: String,
+    val name: String,
+    /**
+     * Optional override for entities that do not set a `device_class`: "motion" or "contact".
+     * Normally left out, because Home Assistant already knows.
+     */
+    val type: String? = null
+)
+
+// ---------------------------------------------------------------------------------------------
+// Alarm (Alarmo integration)
+// ---------------------------------------------------------------------------------------------
+//
+// Written against Alarmo's documented contract rather than against a live entity: the integration
+// was not installed when this was built, so nothing here has been exercised against a real panel.
+// Everything therefore degrades to UNAVAILABLE rather than guessing, and the arm buttons are
+// derived from what the entity actually reports it supports instead of being hardcoded.
+
+/** What the alarm is doing, reduced to the states the UI needs to behave differently for. */
+enum class AlarmPhase {
+    /** Off. Nothing is watching. */
+    DISARMED,
+
+    /** Exit delay: it is going to arm shortly and you are expected to leave. */
+    ARMING,
+
+    /** Entry delay running. This is the state where someone needs the keypad NOW. */
+    PENDING,
+
+    /** Armed in some mode. */
+    ARMED,
+
+    /** Going off. */
+    TRIGGERED,
+
+    /** No panel, or it is not reporting. Never guessed at. */
+    UNAVAILABLE
+}
+
+/**
+ * Maps an alarm_control_panel state string to a [AlarmPhase].
+ *
+ * Alarmo reports `armed_away`, `armed_home`, `armed_night`, `armed_vacation` and
+ * `armed_custom_bypass` as separate states; the UI treats them all as ARMED and shows the specific
+ * mode separately. An unrecognised value is UNAVAILABLE rather than being lumped in with DISARMED,
+ * because "I do not know" and "it is off" must not look the same on an alarm panel.
+ */
+fun alarmPhaseOf(state: String?): AlarmPhase = when (state?.lowercase()) {
+    "disarmed" -> AlarmPhase.DISARMED
+    "arming" -> AlarmPhase.ARMING
+    "pending" -> AlarmPhase.PENDING
+    "triggered" -> AlarmPhase.TRIGGERED
+    "armed_away", "armed_home", "armed_night",
+    "armed_vacation", "armed_custom_bypass" -> AlarmPhase.ARMED
+    else -> AlarmPhase.UNAVAILABLE
+}
+
+/**
+ * True when the keypad should be put in front of the user without being asked for.
+ *
+ * PENDING is the entry delay — the window in which you must disarm — and TRIGGERED is after it
+ * has gone off. Both are cases where hunting for the right tab is the wrong thing to be doing.
+ * ARMING is deliberately excluded: that is the exit delay, when you are walking out, and a modal
+ * keypad would be in the way.
+ */
+fun alarmDemandsKeypad(phase: AlarmPhase): Boolean =
+    phase == AlarmPhase.PENDING || phase == AlarmPhase.TRIGGERED
+
+/** Home Assistant's AlarmControlPanelEntityFeature bit flags. */
+object AlarmFeature {
+    const val ARM_HOME = 1
+    const val ARM_AWAY = 2
+    const val ARM_NIGHT = 4
+    const val TRIGGER = 8
+    const val ARM_CUSTOM_BYPASS = 16
+    const val ARM_VACATION = 32
+}
+
+/** One arming option offered by the panel, with the service that applies it. */
+data class AlarmArmOption(val label: String, val service: String, val feature: Int)
+
+/**
+ * The arm buttons this panel actually supports, in the order they should be shown.
+ *
+ * Read from `supported_features` rather than hardcoded, because which modes exist depends on how
+ * Alarmo has been configured. A panel that only does Away gets one button, not four dead ones.
+ */
+fun alarmArmOptions(supportedFeatures: Int): List<AlarmArmOption> = listOf(
+    AlarmArmOption("AWAY", "alarm_arm_away", AlarmFeature.ARM_AWAY),
+    AlarmArmOption("HOME", "alarm_arm_home", AlarmFeature.ARM_HOME),
+    AlarmArmOption("NIGHT", "alarm_arm_night", AlarmFeature.ARM_NIGHT),
+    AlarmArmOption("VACATION", "alarm_arm_vacation", AlarmFeature.ARM_VACATION)
+).filter { supportedFeatures and it.feature != 0 }
+
+/** What kind of thing a sensor is, which decides the words used to describe it. */
+enum class AlarmSensorKind { CONTACT, MOTION }
+
+/**
+ * Works out whether a sensor is a contact or a motion detector.
+ *
+ * Read from Home Assistant's own `device_class` rather than requiring it to be configured, with
+ * an optional config override for entities that do not set one. It matters because the two read
+ * completely differently: a motion sensor is never "closed", and calling it that on a security
+ * screen invites the reader to think a door is shut when nothing of the sort was measured.
+ */
+fun alarmSensorKind(deviceClass: String?, configuredType: String? = null): AlarmSensorKind {
+    val explicit = configuredType?.lowercase()
+    if (explicit == "motion" || explicit == "occupancy") return AlarmSensorKind.MOTION
+    if (explicit == "contact" || explicit == "door" || explicit == "window") return AlarmSensorKind.CONTACT
+    return when (deviceClass?.lowercase()) {
+        "motion", "occupancy", "moving", "presence", "vibration" -> AlarmSensorKind.MOTION
+        else -> AlarmSensorKind.CONTACT
+    }
+}
+
+/**
+ * The words shown beside a sensor.
+ *
+ * Handles covers (`open`/`closed`) and binary sensors (`on`/`off`) in one place, since the alarm
+ * list mixes both. Anything unrecognised — including a missing entity — reads UNKNOWN and never
+ * falls back to the reassuring answer.
+ */
+fun alarmSensorStatusLabel(kind: AlarmSensorKind, rawState: String?): String {
+    val s = rawState?.lowercase()
+    val active = when (s) {
+        "open", "on", "opening" -> true
+        "closed", "off", "closing" -> false
+        else -> return "UNKNOWN"
+    }
+    return when (kind) {
+        AlarmSensorKind.MOTION -> if (active) "MOTION" else "NONE"
+        AlarmSensorKind.CONTACT -> if (active) "OPEN" else "CLOSED"
+    }
+}
+
+/** Live alarm state, parsed from the entity. */
+data class AlarmState(
+    val entityId: String = "",
+    val phase: AlarmPhase = AlarmPhase.UNAVAILABLE,
+    val rawState: String = "",
+    /** e.g. "armed_away", for showing WHICH armed mode is active. */
+    val armMode: String? = null,
+    /** "number" means digits only, which is what the keypad renders. */
+    val codeFormat: String? = null,
+    val codeArmRequired: Boolean = true,
+    /** Sensors Alarmo reports as open, which is why an arm attempt was refused. */
+    val openSensors: List<String> = emptyList(),
+    val changedBy: String? = null,
+    val supportedFeatures: Int = 0,
+    /** Alarmo reports the configured entry/exit delay in seconds while arming or pending. */
+    val delaySeconds: Int? = null,
+    /** When the panel entered its current state, for counting the delay down. */
+    val phaseSinceEpochMs: Long? = null
+) {
+    val armOptions: List<AlarmArmOption> get() = alarmArmOptions(supportedFeatures)
+    val demandsKeypad: Boolean get() = alarmDemandsKeypad(phase)
+    val isPresent: Boolean get() = entityId.isNotEmpty() && phase != AlarmPhase.UNAVAILABLE
+
+    /**
+     * Seconds left on the entry or exit delay, or null when there isn't one running.
+     *
+     * Returns null rather than zero when the delay is unknown, so the popup can omit the
+     * countdown entirely instead of displaying a confident "0" it has not actually counted.
+     */
+    fun secondsRemaining(nowMs: Long = System.currentTimeMillis()): Int? {
+        if (phase != AlarmPhase.PENDING && phase != AlarmPhase.ARMING) return null
+        val total = delaySeconds ?: return null
+        val since = phaseSinceEpochMs ?: return null
+        val elapsed = ((nowMs - since) / 1000L).toInt()
+        return (total - elapsed).coerceAtLeast(0)
+    }
+
+    /** Headline for the status banner. Never invents a state it does not have. */
+    val headline: String
+        get() = when (phase) {
+            AlarmPhase.DISARMED -> "DISARMED"
+            AlarmPhase.ARMING -> "ARMING — EXIT NOW"
+            AlarmPhase.PENDING -> "ENTRY DELAY — DISARM"
+            AlarmPhase.TRIGGERED -> "ALARM TRIGGERED"
+            AlarmPhase.ARMED -> when (armMode) {
+                "armed_home" -> "ARMED — HOME"
+                "armed_night" -> "ARMED — NIGHT"
+                "armed_vacation" -> "ARMED — VACATION"
+                "armed_custom_bypass" -> "ARMED — CUSTOM"
+                else -> "ARMED — AWAY"
+            }
+            AlarmPhase.UNAVAILABLE -> "ALARM UNAVAILABLE"
+        }
 }
 
 /** Which UI zone each head belongs to. Main level is two heads across both outdoor units. */

@@ -109,6 +109,123 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         MutableStateFlow(sharedPrefs.getString("layout_commit_sha", "") ?: "")
     val appliedLayoutCommit: StateFlow<String> = _appliedLayoutCommit.asStateFlow()
 
+    // ---- Alarm -------------------------------------------------------------------------------
+    // Framework only at time of writing: the Alarmo integration was not installed, so none of
+    // this has run against a real panel. It is built to stay silent when the entity is absent
+    // rather than to assume anything about it.
+
+    private val _alarmState = MutableStateFlow(com.example.model.AlarmState())
+    val alarmState: StateFlow<com.example.model.AlarmState> = _alarmState.asStateFlow()
+
+    /** Whether the keypad popup is on screen, over whatever tab is showing. */
+    private val _showAlarmKeypad = MutableStateFlow(false)
+    val showAlarmKeypad: StateFlow<Boolean> = _showAlarmKeypad.asStateFlow()
+
+    /** Result of the last arm/disarm attempt, for the popup to show. Null once acknowledged. */
+    private val _alarmFeedback = MutableStateFlow<String?>(null)
+    val alarmFeedback: StateFlow<String?> = _alarmFeedback.asStateFlow()
+
+    /**
+     * Remembers which alarm phase last forced the keypad open.
+     *
+     * Without it, dismissing the popup during a long entry delay would simply reopen it on the
+     * next state push a second later, making it impossible to close. The popup is forced once per
+     * transition into a phase that demands it; after that the user is trusted, and the persistent
+     * banner is what brings them back.
+     */
+    private var lastForcedAlarmPhase: com.example.model.AlarmPhase? = null
+
+    fun openAlarmKeypad() { _showAlarmKeypad.value = true }
+
+    fun dismissAlarmKeypad() {
+        _showAlarmKeypad.value = false
+        _alarmFeedback.value = null
+    }
+
+    /**
+     * Parses the alarm panel out of the state map, and raises the keypad when it needs to be seen.
+     *
+     * An absent entity leaves AlarmState at its UNAVAILABLE default rather than producing a
+     * plausible-looking DISARMED, so the tab can say "no panel found" instead of implying the
+     * house is unprotected-but-fine. That matters more here than anywhere else in the app.
+     */
+    private fun updateAlarmState(
+        statesMap: Map<String, com.example.api.EntityState>,
+        activeConfig: com.example.model.HvacLayoutConfig
+    ) {
+        val entityId = activeConfig.alarm?.entityId.orEmpty()
+        if (entityId.isEmpty()) {
+            _alarmState.value = com.example.model.AlarmState()
+            return
+        }
+        val node = statesMap[entityId]
+        val raw = node?.state.orEmpty()
+        val phase = com.example.model.alarmPhaseOf(raw)
+
+        @Suppress("UNCHECKED_CAST")
+        val openSensors = (node?.attributes?.get("open_sensors") as? Map<String, Any?>)
+            ?.keys?.toList()
+            ?: (node?.attributes?.get("open_sensors") as? List<Any?>)?.map { it.toString() }
+            ?: emptyList()
+
+        _alarmState.value = com.example.model.AlarmState(
+            entityId = entityId,
+            phase = phase,
+            rawState = raw,
+            armMode = raw.takeIf { it.startsWith("armed_") },
+            codeFormat = node?.getStringAttribute("code_format"),
+            codeArmRequired = node?.attributes?.get("code_arm_required") as? Boolean ?: true,
+            openSensors = openSensors,
+            changedBy = node?.getStringAttribute("changed_by"),
+            supportedFeatures = node?.getDoubleAttribute("supported_features")?.toInt() ?: 0,
+            delaySeconds = node?.getDoubleAttribute("delay")?.toInt(),
+            phaseSinceEpochMs = parseIsoUtcMillis(node?.last_changed)
+        )
+
+        // Force the keypad up once per transition INTO a phase that needs it, not on every state
+        // push while that phase lasts — otherwise it could never be dismissed during a long
+        // entry delay.
+        if (com.example.model.alarmDemandsKeypad(phase)) {
+            if (lastForcedAlarmPhase != phase) {
+                lastForcedAlarmPhase = phase
+                _showAlarmKeypad.value = true
+            }
+        } else {
+            lastForcedAlarmPhase = null
+            // Disarming (or the alarm clearing on its own) closes the popup rather than leaving
+            // a stale keypad over the dashboard.
+            if (phase == com.example.model.AlarmPhase.DISARMED && _showAlarmKeypad.value) {
+                _showAlarmKeypad.value = false
+                _alarmFeedback.value = null
+            }
+        }
+    }
+
+    /**
+     * Sends an arm or disarm to the panel.
+     *
+     * [code] is passed straight through to the service call and is never stored, cached or
+     * written to a log. The only place it exists is the keypad's own transient state.
+     */
+    fun submitAlarmCommand(service: String, code: String) {
+        val entityId = _alarmState.value.entityId
+        if (entityId.isEmpty()) {
+            _alarmFeedback.value = "No alarm panel configured"
+            return
+        }
+        _alarmFeedback.value = null
+        viewModelScope.launch {
+            val payload = mutableMapOf<String, Any>("entity_id" to entityId)
+            if (code.isNotEmpty()) payload["code"] = code
+            val ok = performServiceCall("alarm_control_panel", service, payload)
+            if (!ok) {
+                // Deliberately vague about WHY. A panel that distinguishes "wrong code" from
+                // "sensor open" to anyone standing at it is a panel that helps you guess.
+                _alarmFeedback.value = "Not accepted — check the code and try again"
+            }
+        }
+    }
+
     private val _selectedThemePreset = MutableStateFlow(sharedPrefs.getString("selected_theme_preset", "dynamic") ?: "dynamic")
     val selectedThemePreset: StateFlow<String> = _selectedThemePreset.asStateFlow()
 
@@ -1066,6 +1183,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 lastNonOffHvacMode = lastNonOffHvacMode,
                 waterHeaterFullness = waterHeaterFullness
             )
+
+            updateAlarmState(statesMap, activeConfig)
 
             // 2. Room sensors mapping parsed from active configuration dynamically
 
