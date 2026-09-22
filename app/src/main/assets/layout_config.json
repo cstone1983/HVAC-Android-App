@@ -1,5 +1,5 @@
 {
-  "version": "6.5.1",
+  "version": "6.5.2",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -112,7 +112,7 @@
         "alarm"
       ],
       "shortTitle": "ALARM",
-      "hidden": true
+      "hidden": false
     },
     {
       "id": "updates",
