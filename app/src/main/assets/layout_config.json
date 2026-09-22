@@ -1,5 +1,5 @@
 {
-  "version": "6.4.1",
+  "version": "6.5.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -504,7 +504,23 @@
       },
       {
         "entityId": "binary_sensor.third_reality_inc_3rms16bz_motion",
-        "name": "Motion Sensor"
+        "name": "Stairway Motion"
+      },
+      {
+        "entityId": "binary_sensor.living_room_occupancy",
+        "name": "Living Room"
+      },
+      {
+        "entityId": "binary_sensor.dining_room_occupancy",
+        "name": "Dining Room"
+      },
+      {
+        "entityId": "binary_sensor.upstairs_occupancy",
+        "name": "Upstairs"
+      },
+      {
+        "entityId": "binary_sensor.bedroom_occupancy",
+        "name": "Bedroom"
       }
     ]
   }

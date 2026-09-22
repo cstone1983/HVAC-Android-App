@@ -90,8 +90,20 @@ class AlarmStateTest {
         // nothing of the sort happened.
         val motion = alarmSensorKind(deviceClass = "motion")
         assertEquals(AlarmSensorKind.MOTION, motion)
-        assertEquals("MOTION", alarmSensorStatusLabel(motion, "on"))
-        assertEquals("NONE", alarmSensorStatusLabel(motion, "off"))
+        assertEquals("DETECTED", alarmSensorStatusLabel(motion, "on"))
+        assertEquals("CLEAR", alarmSensorStatusLabel(motion, "off"))
+    }
+
+    @Test
+    fun `an occupancy sensor is told apart from a motion sensor`() {
+        // The Ecobee room sensors report occupancy. They share wording with motion so the list
+        // reads consistently, but stay a distinct kind so the icon can differ and so an explicit
+        // config type still means something.
+        val occupancy = alarmSensorKind(deviceClass = "occupancy")
+        assertEquals(AlarmSensorKind.OCCUPANCY, occupancy)
+        assertEquals("DETECTED", alarmSensorStatusLabel(occupancy, "on"))
+        assertEquals("CLEAR", alarmSensorStatusLabel(occupancy, "off"))
+        assertEquals(AlarmSensorKind.OCCUPANCY, alarmSensorKind(deviceClass = "presence"))
     }
 
     @Test
@@ -117,12 +129,13 @@ class AlarmStateTest {
         val contact = alarmSensorKind(deviceClass = "garage")
         assertEquals("UNKNOWN", alarmSensorStatusLabel(contact, null))
         assertEquals("UNKNOWN", alarmSensorStatusLabel(contact, "unavailable"))
-        assertEquals("UNKNOWN", alarmSensorStatusLabel(AlarmSensorKind.MOTION, "unknown"))
+        assertEquals("UNKNOWN", alarmSensorStatusLabel(AlarmSensorKind.OCCUPANCY, "unknown"))
     }
 
     @Test
     fun `config can override a missing device class`() {
         assertEquals(AlarmSensorKind.MOTION, alarmSensorKind(deviceClass = null, configuredType = "motion"))
+        assertEquals(AlarmSensorKind.OCCUPANCY, alarmSensorKind(deviceClass = null, configuredType = "occupancy"))
         assertEquals(AlarmSensorKind.CONTACT, alarmSensorKind(deviceClass = null, configuredType = "contact"))
         // An explicit type wins over a device_class that disagrees with it.
         assertEquals(AlarmSensorKind.MOTION, alarmSensorKind(deviceClass = "door", configuredType = "motion"))

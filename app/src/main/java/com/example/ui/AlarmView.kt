@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.DoorFront
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
@@ -118,6 +119,112 @@ private fun rememberSecondsRemaining(alarm: AlarmState): Int? {
 }
 
 // -------------------------------------------------------------------------------------------
+// Header strip
+// -------------------------------------------------------------------------------------------
+
+/**
+ * Replaces the dashboard's usual header (humidity, presence, room temperatures, weather) while
+ * the alarm tab is open.
+ *
+ * None of that says anything about the alarm, and it was pushing the thing you actually came to
+ * this tab for below the fold. This answers the two questions instead: is it armed, and is
+ * anything currently open or detecting.
+ */
+@Composable
+fun AlarmSummaryStrip(viewModel: HvacViewModel, modifier: Modifier = Modifier) {
+    val alarm by viewModel.alarmState.collectAsStateWithLifecycle()
+    val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
+    val entityStates by viewModel.entityStates.collectAsStateWithLifecycle()
+    val accent = phaseColor(alarm.phase)
+
+    var clear = 0
+    var active = 0
+    var unknown = 0
+    layoutConfig.alarm?.sensors.orEmpty().forEach { sensor ->
+        val node = entityStates[sensor.entityId]
+        val kind = com.example.model.alarmSensorKind(
+            deviceClass = node?.getStringAttribute("device_class"),
+            configuredType = sensor.type
+        )
+        when (com.example.model.alarmSensorStatusLabel(kind, node?.state)) {
+            "OPEN", "DETECTED" -> active++
+            "UNKNOWN" -> unknown++
+            else -> clear++
+        }
+    }
+
+    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SummaryCard(
+            label = "ALARM",
+            value = when (alarm.phase) {
+                AlarmPhase.DISARMED -> "DISARMED"
+                AlarmPhase.ARMED -> "ARMED"
+                AlarmPhase.ARMING -> "ARMING"
+                AlarmPhase.PENDING -> "ENTRY"
+                AlarmPhase.TRIGGERED -> "TRIGGERED"
+                AlarmPhase.UNAVAILABLE -> "--"
+            },
+            valueColor = accent,
+            sub = when (alarm.phase) {
+                AlarmPhase.ARMED -> alarm.armMode?.removePrefix("armed_")?.uppercase() ?: ""
+                AlarmPhase.UNAVAILABLE -> "no panel found"
+                else -> ""
+            },
+            modifier = Modifier.weight(1f)
+        )
+        SummaryCard(
+            label = "SENSORS",
+            value = if (active > 0) "$active" else "ALL CLEAR",
+            valueColor = if (active > 0) Color(0xFFF59E0B) else LocalHvacTheme.current.ecoColor,
+            sub = buildString {
+                if (active > 0) append("open or detected · ")
+                append("$clear clear")
+                // Only mentioned when there are any, so the common case stays quiet — but never
+                // folded into "clear", which would overstate what is actually known.
+                if (unknown > 0) append(" · $unknown unknown")
+            },
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun SummaryCard(
+    label: String,
+    value: String,
+    valueColor: Color,
+    sub: String,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+        border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+        shape = hvacCardShape(14)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            SectionHeader(label)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                value,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = valueColor
+            )
+            if (sub.isNotBlank()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    sub,
+                    fontSize = 10.sp,
+                    letterSpacing = 0.6.sp,
+                    color = Color.White.copy(alpha = 0.4f)
+                )
+            }
+        }
+    }
+}
+
+// -------------------------------------------------------------------------------------------
 // Tab content
 // -------------------------------------------------------------------------------------------
 
@@ -165,7 +272,9 @@ fun AlarmSection(viewModel: HvacViewModel, modifier: Modifier = Modifier) {
                             statusText = label,
                             statusColor = when (label) {
                                 "UNKNOWN" -> Color.White.copy(alpha = 0.35f)
-                                "OPEN", "MOTION" -> Color(0xFFF59E0B)
+                                // Amber means "something is happening here", not "something is
+                                // wrong" — an occupied room is perfectly normal while disarmed.
+                                "OPEN", "DETECTED" -> Color(0xFFF59E0B)
                                 else -> LocalHvacTheme.current.ecoColor
                             }
                         )
@@ -276,10 +385,10 @@ private fun AlarmSensorRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            imageVector = if (kind == com.example.model.AlarmSensorKind.MOTION) {
-                Icons.Default.DirectionsRun
-            } else {
-                Icons.Default.DoorFront
+            imageVector = when (kind) {
+                com.example.model.AlarmSensorKind.MOTION -> Icons.Default.DirectionsRun
+                com.example.model.AlarmSensorKind.OCCUPANCY -> Icons.Default.Person
+                com.example.model.AlarmSensorKind.CONTACT -> Icons.Default.DoorFront
             },
             contentDescription = null,
             tint = Color.White.copy(alpha = 0.3f),

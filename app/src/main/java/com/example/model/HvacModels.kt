@@ -703,8 +703,15 @@ fun alarmArmOptions(supportedFeatures: Int): List<AlarmArmOption> = listOf(
     AlarmArmOption("VACATION", "alarm_arm_vacation", AlarmFeature.ARM_VACATION)
 ).filter { supportedFeatures and it.feature != 0 }
 
-/** What kind of thing a sensor is, which decides the words used to describe it. */
-enum class AlarmSensorKind { CONTACT, MOTION }
+/**
+ * What kind of thing a sensor is, which decides the words used to describe it.
+ *
+ * Three kinds rather than two because they genuinely answer different questions. A contact says
+ * whether something is open. A motion detector says whether something just moved. An occupancy
+ * sensor — the Ecobee room sensors are these — says whether a room currently has someone in it,
+ * which is a state rather than an event and reads badly as "MOTION / NONE".
+ */
+enum class AlarmSensorKind { CONTACT, MOTION, OCCUPANCY }
 
 /**
  * Works out whether a sensor is a contact or a motion detector.
@@ -715,11 +722,14 @@ enum class AlarmSensorKind { CONTACT, MOTION }
  * screen invites the reader to think a door is shut when nothing of the sort was measured.
  */
 fun alarmSensorKind(deviceClass: String?, configuredType: String? = null): AlarmSensorKind {
-    val explicit = configuredType?.lowercase()
-    if (explicit == "motion" || explicit == "occupancy") return AlarmSensorKind.MOTION
-    if (explicit == "contact" || explicit == "door" || explicit == "window") return AlarmSensorKind.CONTACT
+    when (configuredType?.lowercase()) {
+        "occupancy", "presence" -> return AlarmSensorKind.OCCUPANCY
+        "motion", "moving" -> return AlarmSensorKind.MOTION
+        "contact", "door", "window", "garage" -> return AlarmSensorKind.CONTACT
+    }
     return when (deviceClass?.lowercase()) {
-        "motion", "occupancy", "moving", "presence", "vibration" -> AlarmSensorKind.MOTION
+        "occupancy", "presence" -> AlarmSensorKind.OCCUPANCY
+        "motion", "moving", "vibration" -> AlarmSensorKind.MOTION
         else -> AlarmSensorKind.CONTACT
     }
 }
@@ -739,7 +749,10 @@ fun alarmSensorStatusLabel(kind: AlarmSensorKind, rawState: String?): String {
         else -> return "UNKNOWN"
     }
     return when (kind) {
-        AlarmSensorKind.MOTION -> if (active) "MOTION" else "NONE"
+        // Motion and occupancy share wording on purpose. Both answer "is anything going on in
+        // there", and one pair of words across the list is easier to read at a glance on a wall
+        // than MOTION/NONE next to OCCUPIED/CLEAR. The icon still distinguishes them.
+        AlarmSensorKind.MOTION, AlarmSensorKind.OCCUPANCY -> if (active) "DETECTED" else "CLEAR"
         AlarmSensorKind.CONTACT -> if (active) "OPEN" else "CLOSED"
     }
 }

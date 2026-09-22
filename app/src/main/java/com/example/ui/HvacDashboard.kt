@@ -1901,6 +1901,19 @@ fun HvacDashboardContent(
             val homeStatusCfg = layoutConfig.homeStatus
             val hiddenRoomIds = homeStatusCfg?.hideRoomSensorIds.orEmpty().toSet()
 
+            // The alarm tab swaps this whole header out. Humidity, presence, room temperatures
+            // and the weather forecast say nothing about the alarm, and together they pushed the
+            // status and keypad below the fold on the phone — so the tab's own summary takes
+            // their place: whether it is armed, and whether anything is open or detecting.
+            val headerTabId = activeTabs.getOrNull(selectedTab)?.id?.lowercase()
+
+            if (headerTabId == "alarm") {
+                AlarmSummaryStrip(
+                    viewModel = viewModel,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            } else {
             // Status row: the two things the phone had no way to show at all. Rooms that
             // already appear as zone cards are excluded from the strip below so the same
             // room can't report two different temperatures on one screen.
@@ -1945,6 +1958,7 @@ fun HvacDashboardContent(
                     modifier = Modifier.testTag("weather_card")
                 )
                 Spacer(modifier = Modifier.height(if (isMinimized) 6.dp else 10.dp))
+            }
             }
 
             UpdateAlertBanner(
