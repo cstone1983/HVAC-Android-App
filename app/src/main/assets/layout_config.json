@@ -1,5 +1,5 @@
 {
-  "version": "6.5.2",
+  "version": "6.6.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -133,8 +133,7 @@
     {
       "id": "dining_room",
       "name": "DINING",
-      "stateId": "climate.hp_dining_room",
-      "attributeName": "current_temperature"
+      "stateId": "sensor.dining_room_temperature"
     },
     {
       "id": "upstairs",
@@ -160,6 +159,7 @@
       "name": "Main Level",
       "climateEntityId": "climate.hp_living_room",
       "secondaryClimateEntityId": "climate.hp_dining_room",
+      "roomTemperatureEntityId": "sensor.living_room_temperature",
       "autoEntityId": "input_boolean.zone_enable_main_level",
       "overrideEntityId": "input_boolean.override_main_level",
       "tiltEntityId": "input_select.main_level_tilt_mode",
@@ -217,6 +217,7 @@
       "key": "bedroom_1",
       "name": "Master 1",
       "climateEntityId": "climate.hp_bedroom",
+      "roomTemperatureEntityId": "sensor.bedroom_temperature",
       "autoEntityId": "input_boolean.zone_enable_bedroom_1",
       "overrideEntityId": "input_boolean.override_bedroom_1",
       "tiltEntityId": "input_select.bedroom_1_tilt_mode",
@@ -236,6 +237,7 @@
       "key": "bedroom_2",
       "name": "Master 2",
       "climateEntityId": "climate.hp_bedroom_2",
+      "roomTemperatureEntityId": "sensor.bedroom_temperature",
       "autoEntityId": "input_boolean.zone_enable_bedroom_2",
       "overrideEntityId": "input_boolean.override_bedroom_2",
       "tiltEntityId": "input_select.bedroom_2_tilt_mode",
@@ -255,6 +257,8 @@
       "key": "basement",
       "name": "Basement",
       "climateEntityId": "climate.hp_basement",
+      "roomTemperatureEntityId": "climate.basement_thermostat",
+      "roomTemperatureAttribute": "current_temperature",
       "autoEntityId": "input_boolean.zone_enable_basement",
       "overrideEntityId": "input_boolean.override_basement",
       "tiltEntityId": "input_select.basement_tilt_mode",
@@ -480,11 +484,7 @@
         "entityId": "script.global_house_shutdown"
       }
     ],
-    "hideRoomSensorIds": [
-      "living_room",
-      "dining_room",
-      "basement"
-    ],
+    "hideRoomSensorIds": [],
     "presenceHistoryDays": 30
   },
   "alarm": {

@@ -261,6 +261,29 @@ data class ClimateZoneConfig(
      * the guard reported no conflict and let a clashing mode through to the other unit.
      */
     val secondaryClimateEntityId: String? = null,
+    /**
+     * A sensor that measures the room, used in preference to the head's own reading.
+     *
+     * The heads measure their own return air, and that thermistor sits inside the casing of a
+     * unit mounted high on the wall. While the fan is off nothing draws room air over it, so it
+     * reads the warm air trapped in its own housing plus whatever the control board gives off,
+     * and it climbs the longer the unit stays idle. Measured 2026-09-23 with the house off for
+     * two days: the living-room head reported 92 °F in a 71.9 °F room, and Master 2 reported
+     * 95 °F. It corrects itself within about two minutes of the fan starting — on 2026-09-21 the
+     * bedroom head fell from 80.2 to 75.7 in the two minutes after it switched to heat — which is
+     * why this has always been present (5–9 °F most days) but only became obvious during a long
+     * shutdown.
+     *
+     * Null leaves the zone on the head's own reading, which is the only option for a room with no
+     * sensor of its own.
+     */
+    val roomTemperatureEntityId: String? = null,
+    /**
+     * Attribute to read from [roomTemperatureEntityId] instead of its state — for a thermostat
+     * such as `climate.basement_thermostat`, where the temperature is `current_temperature` and
+     * the state is the hvac mode.
+     */
+    val roomTemperatureAttribute: String? = null,
     val autoEntityId: String,
     val overrideEntityId: String,
     val tiltEntityId: String,
@@ -405,6 +428,61 @@ data class ClimateZone(
 
 /** States that mean "no usable reading", as opposed to a head deliberately switched off. */
 val NOT_REPORTING_MODES = setOf("unavailable", "unknown", "")
+
+/**
+ * The range a room temperature has to fall in to be believed, in °F.
+ *
+ * Deliberately wide — this is here to reject a sensor that has failed to something absurd, not to
+ * second-guess a real reading. An unheated Maine house in January and an attic in August both sit
+ * comfortably inside it.
+ */
+private val PLAUSIBLE_ROOM_TEMP_F = -40.0..150.0
+
+/**
+ * A room-sensor reading, or null when there isn't a usable one.
+ *
+ * Null for a missing entity, `unavailable`/`unknown`, anything non-numeric, and anything outside
+ * [PLAUSIBLE_ROOM_TEMP_F]. Callers fall back to the head's own reading, so returning null has to
+ * mean "I have nothing", never "here is a guess" — a dead sensor reading 0 would otherwise replace
+ * a working head and show the house at freezing.
+ */
+fun usableRoomTemperature(raw: String?): Double? {
+    if (raw == null) return null
+    val trimmed = raw.trim()
+    if (trimmed.lowercase() in NOT_REPORTING_MODES) return null
+    // Matched strictly rather than handed to toDoubleOrNull, which accepts Java float literals:
+    // "71.9F" parses as 71.9 and "NaN"/"Infinity" parse as themselves, so a sensor reporting a
+    // unit suffix would have been read as a temperature.
+    if (!PLAIN_DECIMAL.matches(trimmed)) return null
+    val value = trimmed.toDoubleOrNull() ?: return null
+    return if (value in PLAUSIBLE_ROOM_TEMP_F) value else null
+}
+
+private val PLAIN_DECIMAL = Regex("""^[-+]?\d+(\.\d+)?$""")
+
+/**
+ * The temperature to show for a zone, given the head's own reading and a room sensor.
+ *
+ * Which one is right depends on whether the head is running:
+ *
+ *  - **Running.** The head's thermistor sits in moving return air and is measuring the room the
+ *    unit is actually conditioning — the most relevant number there is, and it responds faster
+ *    than a battery sensor on a several-minute reporting interval. Use it.
+ *  - **Off or unreachable.** Nothing draws room air over that thermistor, so it reads the air
+ *    trapped in its own casing and climbs the longer it idles. Use the room sensor.
+ *
+ * Either side falls back to the other when it has nothing, so a zone with no room sensor behaves
+ * exactly as it did before and a failed room sensor cannot blank the card.
+ */
+fun zoneDisplayTemperature(
+    headMode: String?,
+    headReading: Double?,
+    roomSensorReading: Double?
+): Double? {
+    val running = !isNotReporting(headMode) && headMode?.lowercase() != "off"
+    return if (running) headReading ?: roomSensorReading
+    else roomSensorReading ?: headReading
+}
 
 /**
  * True when a head is telling us nothing usable about itself.

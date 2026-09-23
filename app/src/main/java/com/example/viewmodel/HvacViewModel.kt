@@ -1302,7 +1302,25 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         nightValue = cNight,
                         awayValue = cAway
                     ),
-                    currentTemp = climate?.getDoubleAttribute("current_temperature"),
+                    // While the head runs, its own thermistor is the better reading. While it is
+                    // off, that thermistor measures the inside of its own casing and climbs away
+                    // from the room. See zoneDisplayTemperature.
+                    currentTemp = com.example.model.zoneDisplayTemperature(
+                        headMode = climate?.state,
+                        headReading = climate?.getDoubleAttribute("current_temperature"),
+                        roomSensorReading = zone.roomTemperatureEntityId
+                            ?.let { statesMap[it] }
+                            ?.let { sensor ->
+                                val attribute = zone.roomTemperatureAttribute
+                                if (attribute.isNullOrBlank()) {
+                                    com.example.model.usableRoomTemperature(sensor.state)
+                                } else {
+                                    com.example.model.usableRoomTemperature(
+                                        sensor.attributes?.get(attribute)?.toString()
+                                    )
+                                }
+                            }
+                    ),
                     targetTemp = resolvedTargetTemp,
                     // A head missing from the state map is not an off head. Defaulting to "off"
                     // made an absent entity look like a zone somebody deliberately switched off,
