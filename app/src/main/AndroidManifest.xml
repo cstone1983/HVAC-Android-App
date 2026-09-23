@@ -78,7 +78,7 @@
 
         <service
             android:name="com.example.service.HvacForegroundService"
-            android:foregroundServiceType="dataSync|connectedDevice"
+            android:foregroundServiceType="connectedDevice"
             android:exported="false" />
     </application>
 

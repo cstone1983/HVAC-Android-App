@@ -9,12 +9,32 @@ import retrofit2.http.Path
 
 @JsonClass(generateAdapter = true)
 data class EntityState(
-    val entity_id: String,
+    /**
+     * Defaulted so a `minimal_response` history payload parses.
+     *
+     * That form sends the first record of each entity's series in full and every record after it
+     * as `{state, last_changed}` only. With no default, Moshi rejects the whole response with
+     * "Required value 'entity_id' missing" — which is why history queries had to be fetched the
+     * expensive way. Callers that need the id per record either query one entity at a time or
+     * fill it in from the series they asked for.
+     */
+    val entity_id: String = "",
     val state: String,
     val attributes: Map<String, Any>? = null,
     val last_changed: String? = null,
     val last_updated: String? = null
 ) {
+    /**
+     * When this reading happened, for plotting.
+     *
+     * `last_updated` alone is wrong for history: `minimal_response` omits it on every record
+     * after the first, so sorting by it silently collapsed every point onto epoch 0.
+     * `last_changed` is also the more accurate field here — it moves when the *value* moves,
+     * whereas `last_updated` also moves for attribute-only writes that plot as a duplicate point.
+     */
+    val historyTimestamp: String?
+        get() = last_changed ?: last_updated
+
     fun getDoubleAttribute(key: String): Double? {
         val value = attributes?.get(key) ?: return null
         return when (value) {

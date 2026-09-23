@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -111,8 +112,35 @@ class HvacForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /**
+     * Android 15 gives some foreground service types a time budget, and kills the app outright if
+     * the service is still running when it expires — `ForegroundServiceDidNotStopInTimeException`,
+     * thrown on the main thread, which is a crash and not something the app can catch.
+     *
+     * That is what was happening: the manifest declared `dataSync`, which is capped at six hours
+     * in any 24, and this service is meant to run indefinitely. It was reached on both the phone
+     * and the tablets. The type is now `connectedDevice`, which is not capped, but this stays as
+     * the backstop: if the system ever does time us out, shut down cleanly and come back in five
+     * minutes rather than being killed.
+     *
+     * Two-argument overload, added in API 35. The one-argument form (API 34) only ever applies to
+     * `shortService`, which this is not.
+     */
+    @androidx.annotation.RequiresApi(35)
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        android.util.Log.w(
+            "HvacForegroundService",
+            "Foreground service timed out (type=$fgsType); stopping cleanly and restarting in 5 min."
+        )
+        scheduleRestartInFiveMinutes()
+        releaseWifiLock()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf(startId)
+    }
+
     override fun onDestroy() {
         pollJob?.cancel()
+        serviceScope.coroutineContext[Job]?.cancelChildren()
         releaseWifiLock()
         super.onDestroy()
     }
@@ -157,10 +185,14 @@ class HvacForegroundService : Service() {
         try {
             val notification = buildHvacNotification()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Must match android:foregroundServiceType in the manifest, or startForeground
+                // throws. Both are `connectedDevice` now: `dataSync` carries a six-hour daily cap
+                // on Android 15 and this service is meant to stay up, which is what was killing
+                // the app. See onTimeout above.
                 startForeground(
                     NOTIFICATION_ID,
                     notification,
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
                 )
             } else {
                 startForeground(NOTIFICATION_ID, notification)
@@ -371,9 +403,24 @@ class HvacForegroundService : Service() {
             val sharedPrefs = getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
             val wsManager = HomeAssistantWebSocketManager.getInstance(applicationContext)
 
-            val url = sharedPrefs.getString("ha_url", "") ?: ""
-            val backupUrl = sharedPrefs.getString("backup_ha_url", "") ?: ""
-            val token = sharedPrefs.getString("ha_token", "") ?: ""
+            // Resolve from BuildConfig first, then the saved preference.
+            //
+            // This was `sharedPrefs.getString("ha_token", "") ?: ""`, the same dead-fallback shape
+            // that stopped the panel's WebSocket ever connecting: getString with a non-null
+            // default never returns null, so nothing fell through to BuildConfig. Neither
+            // `ha_token` nor `ha_url` is written to preferences on a normal install — verified on
+            // all three devices — so both were empty, the `isNotEmpty()` guard below failed, and
+            // this service has never once opened a connection or kept one alive. It still posted
+            // its notification, so it looked like it was working.
+            val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+            val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" }
+            val url = buildUrl.takeIf { it.isNotEmpty() && it != "https://localhost/" }
+                ?: sharedPrefs.getString("ha_url", null).orEmpty()
+            val backupUrl = try { com.example.BuildConfig.HA_BACKUP_URL } catch (e: Exception) { "" }
+                .takeIf { it.isNotEmpty() }
+                ?: sharedPrefs.getString("backup_ha_url", null).orEmpty()
+            val token = buildToken.takeIf { it.isNotEmpty() && it != "YOUR_HOME_ASSISTANT_TOKEN" }
+                ?: sharedPrefs.getString("ha_token", null).orEmpty()
 
             if (url.isNotEmpty() && token.isNotEmpty()) {
                 HomeAssistantClient.initialize(url, token)

@@ -43,52 +43,80 @@ object HomeAssistantClient {
             redactHeader("Authorization")
         }
 
-    fun createService(baseUrl: String, token: String): HomeAssistantApi {
-        val formattedUrl = formatBaseUrl(baseUrl)
+    /**
+     * The token every request is signed with. Read by the shared interceptor at call time, so a
+     * new token does not require a new client.
+     */
+    @Volatile
+    private var activeToken: String = ""
 
+    /**
+     * One OkHttpClient for the whole app, built once.
+     *
+     * Every call to [createService] used to build its own, and each OkHttpClient brings a
+     * ConnectionPool and a Dispatcher with its own thread pool. [initialize] is called on login,
+     * from the foreground service, and — the expensive one — from the failover path in
+     * `fetchStates`, twice per failed poll. During an outage that polls every 8 seconds, so the
+     * app was minting a fresh connection pool and thread pool several times a minute and leaving
+     * the old ones to expire on their own. Sharing one client also means sockets are actually
+     * reused between the state poll, the history fetches and the service.
+     */
+    private val sharedClient: OkHttpClient by lazy {
         val authInterceptor = Interceptor { chain ->
-            val request = chain.request().newBuilder()
-                .header("Authorization", "Bearer $token")
+            val builder = chain.request().newBuilder()
                 .header("Content-Type", "application/json")
-                .build()
-            chain.proceed(request)
+            val token = activeToken
+            if (token.isNotEmpty()) {
+                builder.header("Authorization", "Bearer $token")
+            }
+            chain.proceed(builder.build())
         }
 
-        val loggingInterceptor = buildLoggingInterceptor()
-
-        val okHttpClient = OkHttpClient.Builder()
+        OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
-            .addInterceptor(loggingInterceptor)
+            .addInterceptor(buildLoggingInterceptor())
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            // The 30-day history queries are far slower to arrive than a state read. This used to
+            // be 30s for everything, so a slow history response was cancelled part-way and then
+            // retried, doubling the work at exactly the wrong moment.
+            .readTimeout(90, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
+    }
 
+    fun createService(baseUrl: String, token: String): HomeAssistantApi {
+        val formattedUrl = formatBaseUrl(baseUrl)
+        activeToken = token
+
+        // Retrofit instances are cheap; the client they share is not. Only the base URL differs
+        // between primary and backup, so this is all that needs rebuilding on failover.
         return Retrofit.Builder()
             .baseUrl(formattedUrl)
-            .client(okHttpClient)
+            .client(sharedClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(HomeAssistantApi::class.java)
     }
 
+    /**
+     * Unauthenticated client for the login flow. Shares the connection pool and thread pool of
+     * [sharedClient] rather than standing up a second one, but drops the auth header — logging in
+     * is precisely when there is no token to send.
+     */
+    private val authFlowClient: OkHttpClient by lazy {
+        sharedClient.newBuilder()
+            .also { it.interceptors().clear() }
+            .addInterceptor(buildLoggingInterceptor())
+            .build()
+    }
+
     fun createAuthService(baseUrl: String): HomeAssistantApi {
         val formattedUrl = formatBaseUrl(baseUrl)
 
-        val loggingInterceptor = buildLoggingInterceptor()
-
-        val okHttpClient = OkHttpClient.Builder()
-            .addInterceptor(loggingInterceptor)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .retryOnConnectionFailure(true)
-            .build()
-
         return Retrofit.Builder()
             .baseUrl(formattedUrl)
-            .client(okHttpClient)
+            .client(authFlowClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
             .create(HomeAssistantApi::class.java)

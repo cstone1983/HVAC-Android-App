@@ -716,6 +716,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var lastNonOffHvacMode = sharedPrefs.getString("last_non_off_hvac_mode", "heat") ?: "heat"
 
     private var syncJob: Job? = null
+
+    /**
+     * The WebSocket state collector. Held so a re-login replaces it instead of leaving the old
+     * one collecting alongside the new one — two collectors meant every state batch was parsed
+     * twice, and neither stopped until the ViewModel died.
+     */
+    private var stateProcessingJob: Job? = null
     private var consecutiveFailureCount = 0
     private var lastLayoutCheckTime = 0L
     private var updateSyncJob: Job? = null
@@ -801,7 +808,21 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         HomeAssistantClient.initialize(finalUrl, finalToken)
         _isLoggedIn.value = true
 
-        viewModelScope.launch {
+        // Off the main thread.
+        //
+        // This used to be a plain `viewModelScope.launch`, which is Dispatchers.Main.immediate, so
+        // every WebSocket batch re-parsed ~1200 entities and rebuilt every zone, the pool, solar
+        // and alarm state *on the UI thread*. Home Assistant emits a batch per state change, so a
+        // busy minute in the house ran that repeatedly and the panel visibly stopped responding.
+        //
+        // No conflate() is needed: `states` is a StateFlow, which already drops intermediate
+        // values a slow collector did not keep up with. Moving off the UI thread is the whole fix,
+        // and it is now the processing rather than the frame that falls behind.
+        //
+        // Safe off-main: this writes MutableStateFlows (thread-safe) and SharedPreferences, and
+        // Compose collects on the main thread regardless.
+        stateProcessingJob?.cancel()
+        stateProcessingJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
             wsManager.states.collect { statesMap ->
                 if (statesMap.isNotEmpty()) {
                     processStatesMap(statesMap)
@@ -3305,12 +3326,27 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     private var lastHistoryFetchTime = 0L
 
+    /**
+     * Stops a second pool-history fetch starting while the first is still running.
+     *
+     * The throttle below used to be the only guard, and it was stamped *after* the fetch
+     * finished. A 30-day query takes far longer than the gap between state updates, and every
+     * update that arrived meanwhile saw a stale timestamp and launched its own fetch. Each one
+     * holds the whole decoded response, so they stacked until the heap hit its 512 MB ceiling and
+     * the process died — usually inside Moshi, parsing the next one.
+     */
+    private val poolHistoryInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
+
     private suspend fun fetchPoolHistoryFromHA() {
         val now = System.currentTimeMillis()
         if (now - lastHistoryFetchTime < 60000L) {
             // Fetch once per minute at most to avoid performance/network overhead
             return
         }
+        if (!poolHistoryInFlight.compareAndSet(false, true)) return
+        // Claim the window up front. On success this is refreshed at the end; claiming it here is
+        // what stops a slow fetch being re-entered the moment the next state update lands.
+        lastHistoryFetchTime = now
 
         try {
             val poolCfg = getActiveLayoutConfig().poolSensors ?: PoolSensorConfig()
@@ -3330,10 +3366,16 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
             val entityIds = "$tempEntityId,$phEntityIdCfg,$orpEntityIdCfg"
 
+            // no_attributes: 30 days of three pool sensors is tens of thousands of records, and
+            // every one of them was carrying a full attribute map (friendly_name, unit,
+            // device_class, icon...) that nothing here reads. Dropping them is most of the
+            // payload. minimal_response would be smaller still but omits entity_id on every
+            // record after the first, and the buckets below are keyed on it.
             val rawHistory: List<List<com.example.api.EntityState>> = HomeAssistantClient.service.getHistory(
                 timestamp = startStr,
                 filterEntityId = entityIds,
-                endTime = nowStr
+                endTime = nowStr,
+                noAttributes = "true"
             )
 
             if (rawHistory.isNotEmpty()) {
@@ -3410,11 +3452,15 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
                 if (mergedPoints.isNotEmpty()) {
                     _poolHistory.value = mergedPoints
-                    lastHistoryFetchTime = now
+                    lastHistoryFetchTime = System.currentTimeMillis()
                 }
             }
         } catch (ex: Exception) {
             android.util.Log.e("HvacViewModel", "Error fetching pool history", ex)
+            // Retry sooner than a full minute, but not immediately.
+            lastHistoryFetchTime = System.currentTimeMillis() - 45000L
+        } finally {
+            poolHistoryInFlight.set(false)
         }
     }
 
@@ -3614,11 +3660,26 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var lastSolarHistoryFetchTime = 0L
     private var lastStatesMap: Map<String, com.example.api.EntityState> = emptyMap()
 
+    /**
+     * Stops overlapping solar-history fetches. See [poolHistoryInFlight] — this is the same
+     * failure, and the worse one: the power query covers 180 hours of CT-clamp readings across
+     * three entities, which update every few seconds. One response is large; several alive at
+     * once is what actually exhausted the heap.
+     *
+     * `force` (the manual refresh button) still waits its turn rather than adding another.
+     */
+    private val solarHistoryInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
+
     suspend fun fetchSolarHistoryFromHA(force: Boolean = false) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val now = System.currentTimeMillis()
         if (!force && now - lastSolarHistoryFetchTime < 300000L) { // 5 minutes cooldown to reduce network lag
             return@withContext
         }
+        if (!solarHistoryInFlight.compareAndSet(false, true)) return@withContext
+        // Claim the cooldown window before doing the work, not after it. Stamping it only on
+        // completion meant every state update arriving during a slow fetch saw a stale timestamp
+        // and started another one.
+        lastSolarHistoryFetchTime = now
         _isSolarFetching.value = true
         _solarError.value = null
         val diag = java.lang.StringBuilder()
@@ -3689,7 +3750,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startPowerStr,
                             filterEntityId = solarCfg.usagePowerEntityId ?: "sensor.basement_ct_panel_total_active_power",
-                            endTime = nowStr
+                            endTime = nowStr,
+                            noAttributes = "true",
+                            minimalResponse = "true"
                         )
                     } catch (ex: Exception) {
                         android.util.Log.e("HvacViewModel", "Error fetching usage power history", ex)
@@ -3703,7 +3766,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startPowerStr,
                             filterEntityId = solarCfg.phaseAPowerEntityId ?: "sensor.imeter_2pn_phase_a_power",
-                            endTime = nowStr
+                            endTime = nowStr,
+                            noAttributes = "true",
+                            minimalResponse = "true"
                         )
                     } catch (ex: Exception) {
                         android.util.Log.e("HvacViewModel", "Error fetching phase a power history", ex)
@@ -3717,7 +3782,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startPowerStr,
                             filterEntityId = solarCfg.phaseBPowerEntityId ?: "sensor.imeter_2pn_phase_b_power",
-                            endTime = nowStr
+                            endTime = nowStr,
+                            noAttributes = "true",
+                            minimalResponse = "true"
                         )
                     } catch (ex: Exception) {
                         android.util.Log.e("HvacViewModel", "Error fetching phase b power history", ex)
@@ -3731,7 +3798,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startEnergyStr,
                             filterEntityId = solarCfg.usageEnergyEntityId ?: "sensor.basement_ct_panel_total_forward_active_energy",
-                            endTime = nowStr
+                            endTime = nowStr,
+                            noAttributes = "true",
+                            minimalResponse = "true"
                         )
                     } catch (ex: Exception) {
                         android.util.Log.e("HvacViewModel", "Error fetching usage energy history", ex)
@@ -3745,7 +3814,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         HomeAssistantClient.service.getHistory(
                             timestamp = startEnergyStr,
                             filterEntityId = solarCfg.productionEnergyEntityId ?: "sensor.imeter_2pn_total_production",
-                            endTime = nowStr
+                            endTime = nowStr,
+                            noAttributes = "true",
+                            minimalResponse = "true"
                         )
                     } catch (ex: Exception) {
                         android.util.Log.e("HvacViewModel", "Error fetching production energy history", ex)
@@ -3766,19 +3837,19 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 if (rawUsagePower.isNotEmpty()) {
                     diag.append("Usage Power Sample (first 2):\n")
                     rawUsagePower.take(2).forEach {
-                        diag.append("  * State: '${it.state}', Updated: '${it.last_updated}'\n")
+                        diag.append("  * State: '${it.state}', Updated: '${it.historyTimestamp}'\n")
                     }
                 }
                 if (rawPhaseA.isNotEmpty()) {
                     diag.append("Phase A Power Sample (first 2):\n")
                     rawPhaseA.take(2).forEach {
-                        diag.append("  * State: '${it.state}', Updated: '${it.last_updated}'\n")
+                        diag.append("  * State: '${it.state}', Updated: '${it.historyTimestamp}'\n")
                     }
                 }
                 if (rawPhaseB.isNotEmpty()) {
                     diag.append("Phase B Power Sample (first 2):\n")
                     rawPhaseB.take(2).forEach {
-                        diag.append("  * State: '${it.state}', Updated: '${it.last_updated}'\n")
+                        diag.append("  * State: '${it.state}', Updated: '${it.historyTimestamp}'\n")
                     }
                 }
 
@@ -3798,13 +3869,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 if (rawUsageEnergy.isNotEmpty()) {
                     diag.append("Usage Energy Sample (first 2):\n")
                     rawUsageEnergy.take(2).forEach {
-                        diag.append("  * State: '${it.state}', Updated: '${it.last_updated}'\n")
+                        diag.append("  * State: '${it.state}', Updated: '${it.historyTimestamp}'\n")
                     }
                 }
                 if (rawProdEnergy.isNotEmpty()) {
                     diag.append("Production Energy Sample (first 2):\n")
                     rawProdEnergy.take(2).forEach {
-                        diag.append("  * State: '${it.state}', Updated: '${it.last_updated}'\n")
+                        diag.append("  * State: '${it.state}', Updated: '${it.historyTimestamp}'\n")
                     }
                 }
 
@@ -3834,9 +3905,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             class ParsedState(val stateNode: com.example.api.EntityState, val epochMillis: Long)
 
             // Pre-parse the lists once to achieve O(N) performance instead of O(Buckets * N)
-            val parsedUsagePower = usagePower.map { ParsedState(it, parseTime(it.last_updated)) }
-            val parsedPhaseA = phaseA.map { ParsedState(it, parseTime(it.last_updated)) }
-            val parsedPhaseB = phaseB.map { ParsedState(it, parseTime(it.last_updated)) }
+            val parsedUsagePower = usagePower.map { ParsedState(it, parseTime(it.historyTimestamp)) }
+            val parsedPhaseA = phaseA.map { ParsedState(it, parseTime(it.historyTimestamp)) }
+            val parsedPhaseB = phaseB.map { ParsedState(it, parseTime(it.historyTimestamp)) }
 
             // Process 24-Hour Line Chart Data
             if (powerSuccess) {
@@ -3863,14 +3934,20 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     return lastKnown?.stateNode?.state?.cleanFloatOrNull() ?: 0f
                 }
 
-                fun getMultiplierForStates(states: List<com.example.api.EntityState>): Float {
+                // The unit now comes from the entity's LIVE state rather than from the history
+                // records, because those are fetched with no_attributes and no longer carry one.
+                // It is the better source anyway: one lookup instead of a scan over thousands of
+                // records that all report the same unit.
+                fun getMultiplierForStates(
+                    states: List<com.example.api.EntityState>,
+                    entityId: String?
+                ): Float {
                     if (states.isEmpty()) return 1f
-                    for (s in states) {
-                        val unit = s.attributes?.get("unit_of_measurement")?.toString()?.lowercase()
-                        if (unit != null) {
-                            if (unit.contains("kw")) return 1000f
-                            if (unit == "w" || unit.contains("watt")) return 1f
-                        }
+                    val unit = entityId?.let { lastStatesMap[it] }
+                        ?.attributes?.get("unit_of_measurement")?.toString()?.lowercase()
+                    if (unit != null) {
+                        if (unit.contains("kw")) return 1000f
+                        if (unit == "w" || unit.contains("watt")) return 1f
                     }
                     val maxVal = states.mapNotNull { it.state.cleanFloatOrNull() }
                         .filter { it > 0.01f }
@@ -3878,8 +3955,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     return if (maxVal > 0f && maxVal < 50f) 1000f else 1f
                 }
 
-                val phaseAMultiplier = getMultiplierForStates(phaseA)
-                val phaseBMultiplier = getMultiplierForStates(phaseB)
+                val phaseAMultiplier = getMultiplierForStates(phaseA, solarCfg.phaseAPowerEntityId)
+                val phaseBMultiplier = getMultiplierForStates(phaseB, solarCfg.phaseBPowerEntityId)
                 diag.append("\nComputed Multipliers:\n")
                 diag.append("  - phaseAMultiplier: $phaseAMultiplier\n")
                 diag.append("  - phaseBMultiplier: $phaseBMultiplier\n")
@@ -3999,8 +4076,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // Process Daily & Weekly Bar Chart Data
-            val parsedUsageEnergy = usageEnergy.map { ParsedState(it, parseTime(it.last_updated)) }
-            val parsedProdEnergy = prodEnergy.map { ParsedState(it, parseTime(it.last_updated)) }
+            val parsedUsageEnergy = usageEnergy.map { ParsedState(it, parseTime(it.historyTimestamp)) }
+            val parsedProdEnergy = prodEnergy.map { ParsedState(it, parseTime(it.historyTimestamp)) }
 
             fun getSensorValueAt(states: List<ParsedState>, epochMillis: Long, defaultVal: Float): Float {
                 if (states.isEmpty()) return defaultVal
@@ -4149,12 +4226,16 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         } finally {
             _solarDiagnosticInfo.value = diag.toString()
             _isSolarFetching.value = false
+            solarHistoryInFlight.set(false)
         }
     }
 
     override fun onCleared() {
         weatherSyncJob?.cancel()
         syncJob?.cancel()
+        updateSyncJob?.cancel()
+        stateProcessingJob?.cancel()
+        offlineDebounceJob?.cancel()
         super.onCleared()
     }
 
