@@ -1,5 +1,5 @@
 {
-  "version": "6.6.0",
+  "version": "6.7.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -497,6 +497,22 @@
       {
         "entityId": "cover.garage_garage_door_north_garage_door",
         "name": "Garage North"
+      },
+      {
+        "entityId": "binary_sensor.front_door_sensor",
+        "name": "Front Door"
+      },
+      {
+        "entityId": "binary_sensor.porch_door_sensor",
+        "name": "Porch Door"
+      },
+      {
+        "entityId": "binary_sensor.basement_exterior_door",
+        "name": "Basement Door"
+      },
+      {
+        "entityId": "binary_sensor.garage_interior_door",
+        "name": "Garage Interior"
       },
       {
         "entityId": "binary_sensor.mudroom_motion_motion_2",
