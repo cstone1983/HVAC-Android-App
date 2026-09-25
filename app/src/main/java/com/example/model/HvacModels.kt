@@ -961,7 +961,16 @@ data class CoverControl(
 )
 
 data class PoolHistoryPoint(
+    /** Preformatted for the axis label, e.g. "09/24 21:15". */
     val timestamp: String,
+    /**
+     * The same instant as [timestamp], kept as a number.
+     *
+     * The chart filters ~1500 points by time whenever the 6h/24h/7d selector changes, and it used
+     * to do that by re-parsing the formatted string for every point. Carrying the epoch alongside
+     * makes that a numeric comparison.
+     */
+    val epochMillis: Long,
     val temp: Float,
     val ph: Float,
     val orp: Float

@@ -149,62 +149,32 @@ fun PoolDashboardView(
     val displayHistory = remember(poolHistory, activeTimeFrame, currentTemp, currentPh, currentOrp) {
         if (poolHistory.isNotEmpty()) {
             val nowMs = System.currentTimeMillis()
-            val estTz = java.util.TimeZone.getTimeZone("America/New_York")
-            val parsePointTime: (String) -> Long = { ts ->
-                try {
-                    if (ts.contains("/")) {
-                        val sdf = java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.US).apply {
-                            timeZone = estTz
-                        }
-                        val parsed = sdf.parse(ts)
-                        if (parsed != null) {
-                            val cal = java.util.Calendar.getInstance(estTz)
-                            val parsedCal = java.util.Calendar.getInstance(estTz).apply { time = parsed }
-                            cal.set(java.util.Calendar.MONTH, parsedCal.get(java.util.Calendar.MONTH))
-                            cal.set(java.util.Calendar.DAY_OF_MONTH, parsedCal.get(java.util.Calendar.DAY_OF_MONTH))
-                            cal.set(java.util.Calendar.HOUR_OF_DAY, parsedCal.get(java.util.Calendar.HOUR_OF_DAY))
-                            cal.set(java.util.Calendar.MINUTE, parsedCal.get(java.util.Calendar.MINUTE))
-                            cal.timeInMillis
-                        } else {
-                            0L
-                        }
-                    } else {
-                        val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).apply {
-                            timeZone = estTz
-                        }
-                        val parsed = sdf.parse(ts)
-                        if (parsed != null) {
-                            val cal = java.util.Calendar.getInstance(estTz)
-                            val parsedCal = java.util.Calendar.getInstance(estTz).apply { time = parsed }
-                            cal.set(java.util.Calendar.HOUR_OF_DAY, parsedCal.get(java.util.Calendar.HOUR_OF_DAY))
-                            cal.set(java.util.Calendar.MINUTE, parsedCal.get(java.util.Calendar.MINUTE))
-                            cal.timeInMillis
-                        } else {
-                            0L
-                        }
-                    }
-                } catch (e: Exception) {
-                    0L
-                }
-            }
 
+            // Numeric comparison against the epoch the point already carries.
+            //
+            // This used to re-derive the time from the formatted label: a SimpleDateFormat and two
+            // Calendar instances constructed *per call*, called twice per point across ~1500
+            // points — roughly nine thousand of the most expensive objects in the JDK, built on
+            // the UI thread during composition. Opening this tab stalled for 400 ms because of it.
+            // It was also subtly wrong: "MM/dd HH:mm" carries no year, so it stamped the current
+            // year onto every point and could not survive a year boundary.
             val filteredPoints = when (activeTimeFrame) {
                 0 -> {
-                    // Granular (past 6h): points within last 6h
+                    // Granular (past 6h)
                     val sixHoursAgo = nowMs - 6 * 60 * 60 * 1000L
-                    poolHistory.filter { parsePointTime(it.timestamp) >= sixHoursAgo || parsePointTime(it.timestamp) == 0L }
+                    poolHistory.filter { it.epochMillis >= sixHoursAgo }
                 }
                 1 -> {
-                    // Hourly (past 24h): points within last 24h
+                    // Hourly (past 24h)
                     val oneDayAgo = nowMs - 24 * 60 * 60 * 1000L
-                    poolHistory.filter { parsePointTime(it.timestamp) >= oneDayAgo || parsePointTime(it.timestamp) == 0L }
+                    poolHistory.filter { it.epochMillis >= oneDayAgo }
                 }
                 2 -> {
-                    // Weekly (past 7 days): points within last 7 days
+                    // Weekly (past 7 days), thinned to ~30 points so the path stays cheap to draw.
                     val sevenDaysAgo = nowMs - 7 * 24 * 60 * 60 * 1000L
-                    val points = poolHistory.filter { parsePointTime(it.timestamp) >= sevenDaysAgo || parsePointTime(it.timestamp) == 0L }
+                    val points = poolHistory.filter { it.epochMillis >= sevenDaysAgo }
                     if (points.size > 50) {
-                        val step = points.size / 30
+                        val step = (points.size / 30).coerceAtLeast(1)
                         points.filterIndexed { index, _ -> index % step == 0 }
                     } else {
                         points
