@@ -40,6 +40,15 @@ class HvacForegroundService : Service() {
         const val ACTION_OFF = "com.example.action.OFF"
         const val ACTION_DISMISS = "com.example.action.DISMISS"
 
+        /**
+         * How often the last-known readings are written to disk.
+         *
+         * They are a cold-start cache for the notification, read once at launch. Writing
+         * them on every state snapshot meant a disk write for every batch of Home
+         * Assistant events.
+         */
+        private const val PERSIST_INTERVAL_MS = 60_000L
+
         fun startService(context: Context) {
             val intent = Intent(context, HvacForegroundService::class.java).apply {
                 action = ACTION_START
@@ -427,10 +436,20 @@ class HvacForegroundService : Service() {
                 wsManager.connectWithFailover(url, backupUrl, token)
             }
 
-            // Real-time state collector via WebSocket StateFlow
+            // Real-time state collector via WebSocket StateFlow.
+            //
+            // Throttled. These preferences exist only so the notification and a cold start have
+            // something to show before the first fetch completes, but this collector ran on every
+            // snapshot and ended with editor.apply() — a disk write per batch of Home Assistant
+            // events, all day, for values nothing reads until the next launch. Once a minute is
+            // ample for a cache of last-known readings, and it takes the service off the hot path
+            // entirely.
             launch {
+                var lastPersistMs = 0L
                 wsManager.states.collect { statesMap ->
-                    if (statesMap.isNotEmpty()) {
+                    val nowMs = System.currentTimeMillis()
+                    if (statesMap.isNotEmpty() && nowMs - lastPersistMs >= PERSIST_INTERVAL_MS) {
+                        lastPersistMs = nowMs
                         val editor = sharedPrefs.edit()
 
                         val globalMode = statesMap["input_select.global_hvac_mode"]?.state ?: "heat"

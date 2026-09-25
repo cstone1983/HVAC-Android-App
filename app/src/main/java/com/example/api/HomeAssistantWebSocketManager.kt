@@ -60,6 +60,15 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         private const val HOST_FAILOVER_THRESHOLD = 2
         private const val RECONCILE_INTERVAL_MS = 300_000L
 
+        /**
+         * How often a state snapshot is published to collectors.
+         *
+         * 200 ms caps the downstream rebuild rate at five a second however fast events
+         * arrive, and is well under the ~250 ms poll both awaitHeadState loops use, so it
+         * costs command confirmation nothing.
+         */
+        private const val STATE_PUBLISH_INTERVAL_MS = 200L
+
         @Volatile
         private var instance: HomeAssistantWebSocketManager? = null
 
@@ -149,8 +158,61 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
     // Entities updated by live events since the last state snapshot was requested.
     private val eventTouchedIds: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
+    /**
+     * The authoritative state map, mutated in place.
+     *
+     * [_states] used to BE the store, rebuilt with `HashMap(currentMap)` on every `state_changed`
+     * event. With ~1200 entities that copied the whole map for a single changed value, and every
+     * copy also woke three O(all-entities) consumers: the ViewModel rebuilding every zone, the
+     * pool, solar and alarm state; the foreground service writing SharedPreferences; and the car
+     * screens. Measured on the Tab A9 sitting idle on 15.0: roughly 20 MB of garbage collected
+     * every one to three minutes, heap sawtoothing between 23 and 45 MB, forever.
+     *
+     * Updating this map is now O(1). A snapshot is published on the cadence below instead.
+     */
+    private val liveStates = ConcurrentHashMap<String, EntityState>()
+
+    /** Set when [liveStates] has changed since the last published snapshot. */
+    private val statesDirty = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    private var publishJob: Job? = null
+
     init {
         registerNetworkCallback()
+        startStatePublisher()
+    }
+
+    /**
+     * Publishes a snapshot of [liveStates] at most every [STATE_PUBLISH_INTERVAL_MS], and only
+     * when something actually changed.
+     *
+     * Home Assistant sends one event per changed entity, and this house has power meters that
+     * report every few seconds, so events arrive in bursts. Rebuilding the whole UI model for each
+     * one in turn is wasted work — every snapshot but the last is already stale by the time it is
+     * processed. Coalescing bounds the downstream cost to a handful of rebuilds per second no
+     * matter how chatty the source is.
+     *
+     * The delay this adds is bounded by the interval. Both `awaitHeadState` implementations poll
+     * this map every 250 ms against a 15 s deadline, so a fifth of a second costs them nothing,
+     * and [stateUpdates] still fires per entity the instant an event lands for anything that needs
+     * to react immediately.
+     */
+    private fun startStatePublisher() {
+        publishJob?.cancel()
+        publishJob = scope.launch {
+            while (isActive) {
+                delay(STATE_PUBLISH_INTERVAL_MS)
+                if (statesDirty.compareAndSet(true, false)) {
+                    _states.value = HashMap(liveStates)
+                }
+            }
+        }
+    }
+
+    /** Publishes immediately, for the points where waiting for the next tick would be wrong. */
+    private fun publishStatesNow() {
+        statesDirty.set(false)
+        _states.value = HashMap(liveStates)
     }
 
     /**
@@ -464,22 +526,26 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         val baseline = parseEntityStates(resultArray).associateBy { it.entity_id }
         val touched = HashSet(eventTouchedIds)
 
-        _states.update { current ->
-            val merged = HashMap(baseline)
-            for ((entityId, cur) in current) {
-                val base = baseline[entityId]
-                val keepCurrent = if (base == null) {
-                    // Only in our map: keep it if a live event created it after the snapshot was taken,
-                    // otherwise it is a leftover from an older connection and has since been removed.
-                    entityId in touched
-                } else {
-                    // ISO-8601 UTC timestamps compare correctly as strings; ties keep the existing object.
-                    (cur.last_updated ?: "") >= (base.last_updated ?: "")
-                }
-                if (keepCurrent) merged[entityId] = cur
+        // Merge into the live map rather than replacing it, so events that arrived while the
+        // snapshot was in flight are not rolled back to older values.
+        val merged = HashMap(baseline)
+        for ((entityId, cur) in liveStates) {
+            val base = baseline[entityId]
+            val keepCurrent = if (base == null) {
+                // Only in our map: keep it if a live event created it after the snapshot was taken,
+                // otherwise it is a leftover from an older connection and has since been removed.
+                entityId in touched
+            } else {
+                // ISO-8601 UTC timestamps compare correctly as strings; ties keep the existing object.
+                (cur.last_updated ?: "") >= (base.last_updated ?: "")
             }
-            merged
+            if (keepCurrent) merged[entityId] = cur
         }
+        liveStates.keys.retainAll(merged.keys)
+        liveStates.putAll(merged)
+        // A fresh snapshot is why the socket reconnected or reconciled; publish it rather than
+        // leaving the UI a tick behind after a reconnect.
+        publishStatesNow()
         Log.i(TAG, "State snapshot merged: ${baseline.size} entities")
         return true
     }
@@ -560,11 +626,12 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
                 val newState = entityStateAdapter.fromJson(newStateObj.toString())
                 if (newState != null) {
                     eventTouchedIds.add(entityId)
-                    _states.update { currentMap ->
-                        val updated = HashMap(currentMap)
-                        updated[entityId] = newState
-                        updated
-                    }
+                    // O(1). The snapshot everyone downstream reads is published on a timer by
+                    // startStatePublisher; this used to copy the entire map here instead.
+                    liveStates[entityId] = newState
+                    statesDirty.set(true)
+                    // Per-entity, still immediate: anything waiting on one specific entity gets it
+                    // without waiting for the next snapshot.
                     _stateUpdates.tryEmit(newState)
                 }
             } catch (e: Exception) {
@@ -572,10 +639,8 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
             }
         } else {
             // Entity removed
-            _states.update { currentMap ->
-                val updated = HashMap(currentMap)
-                updated.remove(entityId)
-                updated
+            if (liveStates.remove(entityId) != null) {
+                statesDirty.set(true)
             }
         }
     }

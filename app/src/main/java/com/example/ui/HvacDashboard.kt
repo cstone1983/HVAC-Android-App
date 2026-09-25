@@ -293,7 +293,6 @@ fun HvacDashboard(
     val backgroundDesign by viewModel.backgroundDesign.collectAsStateWithLifecycle()
     val activeThemePreset by viewModel.selectedThemePreset.collectAsStateWithLifecycle()
 
-    val rawGlowColor = parseHexColor(themeConfig.glowColorHex, Color(0xFF2196F3))
     val glowColorFactor = themeConfig.glowAlpha ?: 0.12f
 
     val scheduleState = when (val state = uiState) {
@@ -301,44 +300,70 @@ fun HvacDashboard(
         else -> "Day"
     }
 
-    val glowColor = when (scheduleState) {
-        "Day" -> rawGlowColor.copy(alpha = glowColorFactor)
-        "Night" -> parseHexColor(themeConfig.accentColorHex, Color(0xFFF59E0B)).copy(alpha = 0.08f)
-        else -> Color(0xFF10B981).copy(alpha = 0.1f)
+    // All of this is remembered on the few things it actually depends on — the theme config and
+    // the schedule slot — rather than recomputed on every recomposition.
+    //
+    // It is not just the cost of re-parsing ten hex strings. LocalHvacTheme is a
+    // staticCompositionLocalOf, which does not track individual reads: when the value it is given
+    // changes, Compose recomposes the WHOLE content lambda below the provider. Building a fresh
+    // HvacThemeColors each pass handed it a new instance every time, so any recomposition of this
+    // composable — and it reads the entity map, which changes constantly — tore down and rebuilt
+    // the entire dashboard rather than the one card whose number had moved. That is the largest
+    // single cause of the panel feeling slow.
+    val bgStartColor = remember(themeConfig.bgStartColorHex, scheduleState) {
+        when (scheduleState) {
+            "Day" -> parseHexColor(themeConfig.bgStartColorHex, Color(0xFF0F172A))
+            "Night" -> parseHexColor(themeConfig.bgStartColorHex, Color(0xFF020617))
+            else -> parseHexColor(themeConfig.bgStartColorHex, Color(0xFF050505))
+        }
+    }
+    val bgEndColor = remember(themeConfig.bgEndColorHex, scheduleState) {
+        when (scheduleState) {
+            "Day" -> parseHexColor(themeConfig.bgEndColorHex, Color(0xFF1E293B))
+            "Night" -> parseHexColor(themeConfig.bgEndColorHex, Color(0xFF0F172A))
+            else -> parseHexColor(themeConfig.bgEndColorHex, Color(0xFF111827))
+        }
+    }
+    val glowColor = remember(
+        themeConfig.glowColorHex, themeConfig.accentColorHex, glowColorFactor, scheduleState
+    ) {
+        when (scheduleState) {
+            "Day" -> parseHexColor(themeConfig.glowColorHex, Color(0xFF2196F3))
+                .copy(alpha = glowColorFactor)
+            "Night" -> parseHexColor(themeConfig.accentColorHex, Color(0xFFF59E0B))
+                .copy(alpha = 0.08f)
+            else -> Color(0xFF10B981).copy(alpha = 0.1f)
+        }
+    }
+    val bgGradient = remember(bgStartColor, bgEndColor) {
+        Brush.verticalGradient(listOf(bgStartColor, bgEndColor))
     }
 
-    val bgStartColor = when (scheduleState) {
-        "Day" -> parseHexColor(themeConfig.bgStartColorHex, Color(0xFF0F172A))
-        "Night" -> parseHexColor(themeConfig.bgStartColorHex, Color(0xFF020617))
-        else -> parseHexColor(themeConfig.bgStartColorHex, Color(0xFF050505))
+    val hvacThemeColors = remember(
+        themeConfig, bgStartColor, bgEndColor, glowColor, glowColorFactor,
+        cardCornerStyle, cardOpacity
+    ) {
+        HvacThemeColors(
+            // Falls back to the accent only when no explicit heat colour is configured, so the
+            // built-in presets keep their identity while a config that sets heatColorHex gets a
+            // heat colour independent of its accent.
+            heatColor = parseHexColor(
+                themeConfig.heatColorHex ?: themeConfig.accentColorHex,
+                Color(0xFFF59E0B)
+            ),
+            coolColor = parseHexColor(themeConfig.coolColorHex, Color(0xFF2196F3)),
+            dryColor = parseHexColor(themeConfig.dryColorHex, Color(0xFF8B5CF6)),
+            offColor = parseHexColor(themeConfig.offColorHex, Color(0xFF64748B)),
+            bgStart = bgStartColor,
+            bgEnd = bgEndColor,
+            glowColor = glowColor,
+            glowAlpha = glowColorFactor,
+            cardCornerStyle = cardCornerStyle,
+            cardOpacity = cardOpacity,
+            chartShadingAlpha = themeConfig.chartShadingAlpha ?: 0.05f,
+            showChartShading = themeConfig.showChartShading ?: true
+        )
     }
-    val bgEndColor = when (scheduleState) {
-        "Day" -> parseHexColor(themeConfig.bgEndColorHex, Color(0xFF1E293B))
-        "Night" -> parseHexColor(themeConfig.bgEndColorHex, Color(0xFF0F172A))
-        else -> parseHexColor(themeConfig.bgEndColorHex, Color(0xFF111827))
-    }
-    val bgGradient = Brush.verticalGradient(listOf(bgStartColor, bgEndColor))
-
-    val hvacThemeColors = HvacThemeColors(
-        // Falls back to the accent only when no explicit heat colour is configured, so the
-        // built-in presets keep their identity while a config that sets heatColorHex gets a
-        // heat colour independent of its accent.
-        heatColor = parseHexColor(
-            themeConfig.heatColorHex ?: themeConfig.accentColorHex,
-            Color(0xFFF59E0B)
-        ),
-        coolColor = parseHexColor(themeConfig.coolColorHex, Color(0xFF2196F3)),
-        dryColor = parseHexColor(themeConfig.dryColorHex, Color(0xFF8B5CF6)),
-        offColor = parseHexColor(themeConfig.offColorHex, Color(0xFF64748B)),
-        bgStart = bgStartColor,
-        bgEnd = bgEndColor,
-        glowColor = glowColor,
-        glowAlpha = glowColorFactor,
-        cardCornerStyle = cardCornerStyle,
-        cardOpacity = cardOpacity,
-        chartShadingAlpha = themeConfig.chartShadingAlpha ?: 0.05f,
-        showChartShading = themeConfig.showChartShading ?: true
-    )
 
     CompositionLocalProvider(LocalHvacTheme provides hvacThemeColors) {
         if (showSettingsDialog) {
