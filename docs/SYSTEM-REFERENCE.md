@@ -1,6 +1,6 @@
 # System reference — the whole HVAC controller project
 
-**Written 2026-09-22.** This is the rebuild document. If something in Home Assistant, n8n or the
+**Written 2026-09-22. Updated 2026-10-09.** This is the rebuild document. If something in Home Assistant, n8n or the
 app gets broken, deleted or overwritten by other work, this is what you read to put it back.
 
 It describes what exists, why each piece is shaped the way it is, and which values in one system
@@ -24,9 +24,9 @@ Companion documents in this folder:
 1. [What the system is](#1-what-the-system-is)
 2. [System map](#2-system-map)
 3. [The physical plant](#3-the-physical-plant)
-4. [Home Assistant](#4-home-assistant)
+4. [Home Assistant](#4-home-assistant) — incl. [4.5 Alarmo](#45-alarmo--live-since-2026-10-06)
 5. [n8n](#5-n8n)
-6. [The Android app](#6-the-android-app)
+6. [The Android app](#6-the-android-app) — incl. [6.10 The alarm tab](#610-the-alarm-tab)
 7. [How a single action flows end to end](#7-how-a-single-action-flows-end-to-end)
 8. [Things that must agree](#8-things-that-must-agree)
 9. [Rebuild procedures](#9-rebuild-procedures)
@@ -309,11 +309,63 @@ showed both doors permanently open.
 list is in `layout_config.json`, which is the authoritative inventory. All of it is OTA-editable,
 so that file is the source of truth rather than any Kotlin default.
 
-**Alarm (planned, not yet built in HA):** `alarm_control_panel.alarmo` plus 8 sensors — the two
-garage covers, `binary_sensor.mudroom_motion_motion_2`,
-`binary_sensor.third_reality_inc_3rms16bz_motion`, and four Ecobee occupancy sensors
-(`binary_sensor.living_room_occupancy`, `.dining_room_occupancy`, `.upstairs_occupancy`,
-`.bedroom_occupancy`). Alarmo is not installed yet.
+### 4.5 Alarmo — live since 2026-10-06
+
+`alarm_control_panel.alarmo`. Its own config lives in Alarmo, not on the entity; read it with the
+websocket commands `alarmo/config`, `alarmo/areas` and `alarmo/sensors` (via `ha_call_service`
+with `ws_command`), because none of it is visible as attributes.
+
+**Codes are asymmetric, and this is the thing that trips people up:**
+
+```
+code_arm_required:    false     ← arm with one tap
+code_disarm_required: true      ← disarm needs the numeric code
+code_format:          "number"
+```
+
+**`code_format` on the entity is dynamic.** It reports `null` while disarmed — the next available
+action is arming, which needs no code — and `"number"` once armed or arming. Reading it as "no
+code is configured" is wrong and was a real bug: the app decided from it and would have offered a
+one-tap disarm the panel rejects. Decide from `code_arm_required`, which is stable.
+
+**`supported_features: 14`** = ARM_AWAY + ARM_NIGHT + TRIGGER. No HOME, no VACATION. The app
+derives its buttons from this, so nothing needs changing if Alarmo's modes change.
+
+**Delays, per mode** (from `alarmo/areas`):
+
+| Mode | exit | entry | trigger |
+|---|---|---|---|
+| armed_away | 60 s | 60 s | 1800 s |
+| armed_night | 0 | **0** | 0 |
+| armed_home | disabled | | |
+
+Night has **no entry delay** — it goes straight to triggered with no countdown and no chance to
+disarm. Only away gives you the 60 seconds.
+
+**The `delay` attribute is populated only while a delay is running**, and carries the whole
+duration (60), not a ticking value — the countdown is the app's to render. Verified end to end on
+2026-10-09: `arming delay=60` → `armed_away delay=None` → `pending delay=60
+open={stairway motion}` → `triggered`, 59 s between pending and triggered.
+
+**Sensors Alarmo actually arms on** (6 enabled, from `alarmo/sensors`):
+
+| Sensor | type | modes |
+|---|---|---|
+| `binary_sensor.front_door_sensor` | door | away, home, night |
+| `binary_sensor.porch_door_sensor` | door | away, home, night |
+| `binary_sensor.basement_exterior_door` | door | away, home, night |
+| `binary_sensor.garage_interior_door` | door | away, home, night |
+| `binary_sensor.mudroom_motion_motion_2` | motion | away, night |
+| `binary_sensor.third_reality_inc_3rms16bz_motion` | motion | away |
+
+Also configured but **disabled**: the four Ecobee occupancy sensors. **Not watched at all**: both
+garage door covers. The app's list mirrors the six enabled ones; see §6.10.
+
+Two HA automations arm it: `automation.security_auto_arm_away` and `..._auto_arm_night`.
+
+**Nothing keeps the app's sensor list in step with Alarmo's.** It is mirrored by hand in
+`layout_config.json`. Enabling one of the occupancy sensors in Alarmo will not make it appear in
+the app. Reading `alarmo/sensors` at runtime would fix that and has not been done.
 
 ---
 
@@ -717,7 +769,7 @@ minute**. A helper written at `:31` is the recurring schedule, not something don
 applicationId  com.aistudio.hvac_controller.krnyzs
 MainActivity   com.example.MainActivity
 namespace      com.example
-versionCode 13   versionName "13.0"
+versionCode 21   versionName "21.0"
 minSdk 24        targetSdk 36     compileSdk 36.1
 repo           cstone1983/HVAC-Android-App  (branch main)
 ```
@@ -931,6 +983,53 @@ adb quirks that cost real time (full detail in `HANDOVER-2026-09-21.md`):
 - **Never tap coordinates without taking a fresh screenshot first.** Doing so once set the whole
   house to HEAT: the idle timer had returned the panel to Home, so a tap aimed at a keypad landed
   on the house-mode row. Seven heads came on and all six zones latched into override.
+- **The mDNS cache goes stale constantly.** `adb mdns services` will happily list a port that is
+  refused; wireless debugging rotates ports whenever it restarts. If every target refuses, the
+  setting needs re-enabling on the device — it is not a network problem.
+
+---
+
+### 6.10 The alarm tab
+
+Built against Alarmo's documented contract before Alarmo existed, then matched to the real panel
+on 2026-10-09. See §4.5 for what the panel reports.
+
+**Arming vs disarming are handled separately**, because this panel treats them separately. The
+status card offers one tap per supported arm mode; disarming always routes to the keypad, which is
+the only place a code can be typed. Driven by `AlarmState.requiresCodeToArm`, which reads
+`code_arm_required` — **not** `code_format`, which is dynamic (§4.5). It defaults to `true` so an
+unfamiliar panel fails closed.
+
+**The keypad raises itself** on `pending` and `triggered` — entry delay and going off — and not on
+`arming`, which is the exit delay when you are walking out and a modal keypad is in the way.
+
+**When disarmed there is no PIN pad.** Nothing can be typed, so the twelve keys are replaced by
+full-width arm buttons. `needsPin` in `AlarmKeypadDialog`.
+
+**Opening the app while a PIN is wanted lands on the keypad.** The automatic raise only fires on
+the *transition* into a phase that needs it, which does nothing for a phone that was in a pocket
+when it happened; `onResume` calls `openAlarmKeypadIfPinNeeded()` to re-assert it.
+
+**The screen wakes for an alarm** — `setShowWhenLocked` + `setTurnScreenOn`, the window flags, and
+a 2-minute `ACQUIRE_CAUSES_WAKEUP` lock. Raising a dialog on a dark panel shows nobody anything,
+and entry delay is exactly when that matters. Additive; it does not disturb the long-lived
+keep-screen-on lock.
+
+**The siren is per device, by model.** `AlarmSiren.WALL_PANEL_MODELS` = the two Tabs. It sounds
+only on `triggered`, never on the entry delay — a siren over the top of someone trying to type is
+noise. `USAGE_ALARM`, because that is the only stream that survives silent mode and Do Not
+Disturb; alarm volume forced to max and **restored on stop**; looped, because the stock tone is a
+few seconds.
+
+> Do **not** switch the model list back to a screen-width test. 600dp is Android's tablet
+> threshold and it is wrong here: the Z Fold 7 reports ~411dp closed and ~750dp open, so the
+> phone would start sounding whenever it was unfolded. The list only sets the default — the
+> setting is per device and overridable in settings.
+
+A keypad bug worth not reintroducing: the dismiss condition was `phase == DISARMED && showing`,
+meant as "disarming closes it". It fires on **every state push while disarmed**, and the panel
+pushes constantly, so a hand-opened keypad closed itself within a second or two and looked like a
+crash. It now only auto-closes the keypad it raised itself.
 
 ---
 
