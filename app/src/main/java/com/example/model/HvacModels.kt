@@ -682,7 +682,20 @@ fun clampToHardwareFloor(value: Double, targetMode: String): Double {
 @JsonClass(generateAdapter = true)
 data class AlarmConfig(
     val entityId: String? = "alarm_control_panel.alarmo",
-    val sensors: List<AlarmSensorConfig>? = emptyList()
+    val sensors: List<AlarmSensorConfig>? = emptyList(),
+    /**
+     * Entry delay in seconds, used only when the panel does not report one itself.
+     *
+     * Alarmo keeps the delays in its own area config rather than on the entity — this house has
+     * `entry_time: 60` for away and `0` for night — and only surfaces a `delay` attribute while a
+     * delay is actually running. If that attribute is there it wins, because it is the panel's
+     * own number. This is the fallback for the case where someone walks in, the keypad is thrown
+     * up, and there is no figure to count down from: a countdown that silently fails to appear is
+     * worse than one that is a second or two out.
+     *
+     * Null disables the fallback and shows no countdown unless the panel supplies one.
+     */
+    val entryDelaySeconds: Int? = null
 )
 
 @JsonClass(generateAdapter = true)

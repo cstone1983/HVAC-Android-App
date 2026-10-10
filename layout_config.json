@@ -1,5 +1,5 @@
 {
-  "version": "6.8.0",
+  "version": "6.9.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -489,6 +489,7 @@
   },
   "alarm": {
     "entityId": "alarm_control_panel.alarmo",
+    "entryDelaySeconds": 60,
     "sensors": [
       {
         "entityId": "binary_sensor.front_door_sensor",

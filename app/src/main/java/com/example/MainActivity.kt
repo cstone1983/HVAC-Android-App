@@ -90,6 +90,46 @@ class MainActivity : ComponentActivity() {
                 applyKeepScreenOn(forceScreenOn)
             }
 
+            // Wake the panel when the alarm wants the keypad in front of someone.
+            //
+            // The keypad already raises itself on entry delay and on trigger, but raising a
+            // dialog on a screen that has dimmed, blanked or locked shows nobody anything — and
+            // entry delay is exactly the moment where a dark panel is useless. Sixty seconds is
+            // the whole budget, and the panels sit in rooms somebody has just walked into.
+            //
+            // This does not depend on the force-screen-on setting: that keeps a lit screen lit,
+            // which is a different thing from lighting a dark one.
+            val alarmWantsAttention by viewModel.showAlarmKeypad.collectAsState()
+            LaunchedEffect(alarmWantsAttention) {
+                if (alarmWantsAttention) wakeForAlarm()
+            }
+
+            // Sound the panel when the alarm is actually going off.
+            //
+            // Only on TRIGGERED, never on the entry delay: those sixty seconds are for the person
+            // who just walked in to disarm, and a siren over the top of that is noise while they
+            // type rather than information. The keypad and the screen wake already cover entry.
+            //
+            // Gated on a per-device preference that defaults on for the wall panels and off for
+            // the phone. Stopping is unconditional — whatever the preference says now, anything
+            // still sounding gets shut off when the phase leaves TRIGGERED, so turning the
+            // setting off mid-siren cannot strand it.
+            val alarmPhase by viewModel.alarmState.collectAsState()
+            val sirenEnabled by viewModel.alarmSirenEnabled.collectAsState()
+            LaunchedEffect(alarmPhase.phase, sirenEnabled) {
+                val goingOff = alarmPhase.phase == com.example.model.AlarmPhase.TRIGGERED
+                if (goingOff && sirenEnabled) {
+                    com.example.service.AlarmSiren.start(applicationContext)
+                } else {
+                    com.example.service.AlarmSiren.stop(applicationContext)
+                }
+            }
+
+            DisposableEffect(Unit) {
+                // A siren that outlives the screen it belongs to is a tablet nobody can silence.
+                onDispose { com.example.service.AlarmSiren.stop(applicationContext) }
+            }
+
             DisposableEffect(forceScreenOn, view) {
                 try {
                     view.keepScreenOn = forceScreenOn
@@ -118,6 +158,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        // If the panel is mid entry-delay or going off, that is what the app was opened
+        // for. Re-assert the keypad rather than landing on the dashboard.
+        HvacViewModel.getInstance()?.openAlarmKeypadIfPinNeeded()
         val sharedPrefs = getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
         val shouldKeepScreenOn = sharedPrefs.getBoolean("force_screen_on", true)
         applyKeepScreenOn(shouldKeepScreenOn)
@@ -147,6 +190,45 @@ class MainActivity : ComponentActivity() {
             HvacForegroundService.startService(this)
         } catch (e: Exception) {
             android.util.Log.e("MainActivity", "Failed to start FGS", e)
+        }
+    }
+
+    /**
+     * Brings the screen up for an alarm, over the lock screen if need be.
+     *
+     * Three mechanisms because no single one covers every case on these panels:
+     *  - `setShowWhenLocked` / `setTurnScreenOn` are the supported route on API 27+, but only act
+     *    on an activity that is already resumed.
+     *  - `FLAG_TURN_SCREEN_ON` with `FLAG_DISMISS_KEYGUARD` covers the window as it comes forward.
+     *  - A short `ACQUIRE_CAUSES_WAKEUP` lock actually turns a blanked display back on. It is
+     *    given a 2-minute timeout rather than being held: this is a nudge, not a mode, and the
+     *    longest thing it has to outlast is a 60-second entry delay.
+     *
+     * Deliberately additive — none of it clears the long-lived keep-screen-on lock, so the normal
+     * wall-panel behaviour is unchanged once the alarm is dealt with.
+     */
+    private fun wakeForAlarm() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                setShowWhenLocked(true)
+                setTurnScreenOn(true)
+            }
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
+            val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+            @Suppress("DEPRECATION")
+            powerManager?.newWakeLock(
+                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "HvacDeck:AlarmWake"
+            )?.apply {
+                setReferenceCounted(false)
+                acquire(2 * 60 * 1000L)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to wake the screen for the alarm", e)
         }
     }
 

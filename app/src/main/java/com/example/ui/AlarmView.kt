@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -531,42 +533,52 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
 
                 Spacer(Modifier.height(12.dp))
 
-                // Masked. The digits are never echoed back, on a screen that hangs on a wall.
-                Text(
-                    text = if (code.isEmpty()) "• • • •" else "•".repeat(code.length),
-                    fontSize = 24.sp,
-                    letterSpacing = 6.sp,
-                    color = if (code.isEmpty()) Color.White.copy(alpha = 0.2f) else Color.White,
-                    modifier = Modifier.testTag("alarm_code_display")
-                )
+                // The digits only appear when there is actually a code to type.
+                //
+                // Disarming needs the PIN; arming, on this panel, does not. Showing a dead keypad
+                // on a disarmed house puts twelve keys between you and the only two things you
+                // came here to do, so in that state the arm buttons below become the whole dialog
+                // and get the room to be pressed without looking.
+                val needsPin = alarm.phase != AlarmPhase.DISARMED || alarm.requiresCodeToArm
 
-                Spacer(Modifier.height(14.dp))
+                if (needsPin) {
+                    // Masked. The digits are never echoed back, on a screen that hangs on a wall.
+                    Text(
+                        text = if (code.isEmpty()) "• • • •" else "•".repeat(code.length),
+                        fontSize = 24.sp,
+                        letterSpacing = 6.sp,
+                        color = if (code.isEmpty()) Color.White.copy(alpha = 0.2f) else Color.White,
+                        modifier = Modifier.testTag("alarm_code_display")
+                    )
 
-                listOf(
-                    listOf("1", "2", "3"),
-                    listOf("4", "5", "6"),
-                    listOf("7", "8", "9"),
-                    listOf("clear", "0", "back")
-                ).forEach { rowKeys ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        rowKeys.forEach { key ->
-                            KeypadKey(
-                                key = key,
-                                modifier = Modifier.weight(1f),
-                                onPress = {
-                                    lastKeyAt = System.currentTimeMillis()
-                                    when (key) {
-                                        "clear" -> code = ""
-                                        "back" -> code = code.dropLast(1)
-                                        // A sane upper bound so a stuck key cannot build a
-                                        // megabyte-long string.
-                                        else -> if (code.length < 12) code += key
+                    Spacer(Modifier.height(14.dp))
+
+                    listOf(
+                        listOf("1", "2", "3"),
+                        listOf("4", "5", "6"),
+                        listOf("7", "8", "9"),
+                        listOf("clear", "0", "back")
+                    ).forEach { rowKeys ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            rowKeys.forEach { key ->
+                                KeypadKey(
+                                    key = key,
+                                    modifier = Modifier.weight(1f),
+                                    onPress = {
+                                        lastKeyAt = System.currentTimeMillis()
+                                        when (key) {
+                                            "clear" -> code = ""
+                                            "back" -> code = code.dropLast(1)
+                                            // A sane upper bound so a stuck key cannot build a
+                                            // megabyte-long string.
+                                            else -> if (code.length < 12) code += key
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                 }
@@ -594,6 +606,52 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                             fontSize = 11.sp,
                             color = Color.White.copy(alpha = 0.4f)
                         )
+                    } else if (!needsPin) {
+                        // No keypad above, so these are the dialog. Full width and tall enough to
+                        // hit without aiming.
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            options.forEach { option ->
+                                Button(
+                                    onClick = {
+                                        lastKeyAt = System.currentTimeMillis()
+                                        viewModel.submitAlarmCommand(option.service, code)
+                                        code = ""
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(64.dp)
+                                        .testTag("alarm_arm_${option.label.lowercase()}"),
+                                    shape = hvacCardShape(14),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = LocalHvacTheme.current.coolColor
+                                            .copy(alpha = 0.18f),
+                                        contentColor = Color.White
+                                    ),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        LocalHvacTheme.current.coolColor.copy(alpha = 0.5f)
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = if (option.label == "NIGHT")
+                                            Icons.Default.NightsStay else Icons.Default.Shield,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(24.dp),
+                                        tint = LocalHvacTheme.current.coolColor
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        "ARM ${option.label}",
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 1.sp
+                                    )
+                                }
+                            }
+                        }
                     } else {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -610,7 +668,7 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                                     testTagId = "alarm_arm_${option.label.lowercase()}",
                                     onClick = {
                                         lastKeyAt = System.currentTimeMillis()
-                                    viewModel.submitAlarmCommand(option.service, code)
+                                        viewModel.submitAlarmCommand(option.service, code)
                                         code = ""
                                     }
                                 )

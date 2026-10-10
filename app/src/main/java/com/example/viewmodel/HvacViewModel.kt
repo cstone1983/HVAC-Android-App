@@ -137,6 +137,24 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openAlarmKeypad() { _showAlarmKeypad.value = true }
 
+    /**
+     * Puts the keypad up on app open when the panel is waiting for a PIN.
+     *
+     * The automatic raise only fires on the transition INTO a phase that needs the keypad, which
+     * is right for a wall panel that is already awake and watching. It does nothing for a phone
+     * that was in a pocket while all this happened: you unlock it, open the app, and land on the
+     * dashboard with an alarm counting down somewhere behind it.
+     *
+     * Called from onResume, so coming back to a foregrounded app re-asserts it too — including
+     * after the keypad was dismissed by hand, because if it is still asking for a PIN then it is
+     * still the thing you opened the app for.
+     */
+    fun openAlarmKeypadIfPinNeeded() {
+        if (com.example.model.alarmDemandsKeypad(_alarmState.value.phase)) {
+            _showAlarmKeypad.value = true
+        }
+    }
+
     fun dismissAlarmKeypad() {
         _showAlarmKeypad.value = false
         _alarmFeedback.value = null
@@ -178,7 +196,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             openSensors = openSensors,
             changedBy = node?.getStringAttribute("changed_by"),
             supportedFeatures = node?.getDoubleAttribute("supported_features")?.toInt() ?: 0,
-            delaySeconds = node?.getDoubleAttribute("delay")?.toInt(),
+            // The panel's own figure wins. The configured fallback applies only on entry, and
+            // only when the panel reports nothing — see AlarmConfig.entryDelaySeconds. It is not
+            // used for the exit delay, which is a different duration and which nobody is standing
+            // at the panel watching.
+            delaySeconds = node?.getDoubleAttribute("delay")?.toInt()
+                ?: activeConfig.alarm?.entryDelaySeconds
+                    ?.takeIf { phase == com.example.model.AlarmPhase.PENDING },
             phaseSinceEpochMs = parseIsoUtcMillis(node?.last_changed)
         )
 
@@ -191,10 +215,18 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 _showAlarmKeypad.value = true
             }
         } else {
+            // Only close a keypad THIS raised. The condition used to be "disarmed and showing",
+            // which read as "disarming closes the popup" but actually fired on every state push
+            // while disarmed — and the panel pushes constantly. Opening the keypad by hand on a
+            // disarmed house therefore slammed it shut again within a second or two, which looked
+            // like the keypad crashing. It now only auto-closes the one it forced up, so a
+            // deliberate press of KEYPAD stays open until it is dismissed or times out.
+            val closingAForcedKeypad = lastForcedAlarmPhase != null
             lastForcedAlarmPhase = null
-            // Disarming (or the alarm clearing on its own) closes the popup rather than leaving
-            // a stale keypad over the dashboard.
-            if (phase == com.example.model.AlarmPhase.DISARMED && _showAlarmKeypad.value) {
+            if (closingAForcedKeypad &&
+                phase == com.example.model.AlarmPhase.DISARMED &&
+                _showAlarmKeypad.value
+            ) {
                 _showAlarmKeypad.value = false
                 _alarmFeedback.value = null
             }
@@ -374,6 +406,27 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _forceScreenOn = MutableStateFlow(sharedPrefs.getBoolean("force_screen_on", true))
     val forceScreenOn: StateFlow<Boolean> = _forceScreenOn.asStateFlow()
+
+    /**
+     * Whether this device sounds a siren when the alarm goes off.
+     *
+     * A per-device preference rather than anything in layout_config.json, because that file is
+     * shared by every device and this must differ between them: the wall panels should wake the
+     * house, the phone in a pocket should not. Defaults on for a tablet and off for a phone, and
+     * is overridable per device in settings.
+     */
+    private val _alarmSirenEnabled = MutableStateFlow(
+        sharedPrefs.getBoolean(
+            "alarm_siren_enabled",
+            com.example.service.AlarmSiren.isWallPanel(application)
+        )
+    )
+    val alarmSirenEnabled: StateFlow<Boolean> = _alarmSirenEnabled.asStateFlow()
+
+    fun setAlarmSirenEnabled(enabled: Boolean) {
+        sharedPrefs.edit().putBoolean("alarm_siren_enabled", enabled).apply()
+        _alarmSirenEnabled.value = enabled
+    }
 
     private val _forceFullScreen = MutableStateFlow(sharedPrefs.getBoolean("force_full_screen", false))
     val forceFullScreen: StateFlow<Boolean> = _forceFullScreen.asStateFlow()

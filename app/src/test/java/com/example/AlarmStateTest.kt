@@ -161,6 +161,24 @@ class AlarmStateTest {
     }
 
     @Test
+    fun `the entry countdown runs for the full configured delay`() {
+        // Alarmo gives away mode a 60 second entry_time. Someone has walked in and the keypad has
+        // put itself in front of them; the number has to be the one they are actually racing.
+        val start = 1_000_000L
+        val entry = AlarmState(
+            phase = AlarmPhase.PENDING,
+            delaySeconds = 60,
+            phaseSinceEpochMs = start
+        )
+        assertEquals(60, entry.secondsRemaining(start))
+        assertEquals(45, entry.secondsRemaining(start + 15_000))
+        assertEquals(1, entry.secondsRemaining(start + 59_000))
+        assertEquals(0, entry.secondsRemaining(start + 60_000))
+        // Still zero rather than negative once the alarm has gone off.
+        assertEquals(0, entry.secondsRemaining(start + 90_000))
+    }
+
+    @Test
     fun `no countdown is shown when there is nothing to count`() {
         val start = 1_000_000L
         // Armed and disarmed have no delay running.

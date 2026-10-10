@@ -5013,6 +5013,7 @@ fun HvacSettingsDialog(
     onDismiss: () -> Unit
 ) {
     val forceScreenOn by viewModel.forceScreenOn.collectAsState()
+    val alarmSirenEnabled by viewModel.alarmSirenEnabled.collectAsState()
     val forceFullScreen by viewModel.forceFullScreen.collectAsState()
     val darkModeEnabled by viewModel.darkModeEnabled.collectAsState()
     val weatherLatFlow by viewModel.weatherLatitude.collectAsStateWithLifecycle()
@@ -5284,6 +5285,41 @@ fun HvacSettingsDialog(
                         Switch(
                             checked = forceScreenOn,
                             onCheckedChange = { viewModel.setForceScreenOn(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF10B981),
+                                checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.3f),
+                                uncheckedThumbColor = Color(0xFF64748B),
+                                uncheckedTrackColor = Color(0xFF1E293B)
+                             )
+                        )
+                    }
+
+                    // Toggle 1.2: Alarm siren. Per device on purpose — the wall panels should
+                    // wake the house, the phone in a pocket should not.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(hvacCardBgColor(), hvacCardShape(16))
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Alarm Siren",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "Sound this device at full volume when the alarm triggers",
+                                fontSize = 10.sp,
+                                color = Color.White.copy(alpha = 0.5f)
+                            )
+                        }
+                        Switch(
+                            checked = alarmSirenEnabled,
+                            onCheckedChange = { viewModel.setAlarmSirenEnabled(it) },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color(0xFF10B981),
                                 checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.3f),
