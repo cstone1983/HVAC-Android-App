@@ -37,14 +37,22 @@ object AlarmSiren {
     private var volumeBeforeSiren: Int? = null
 
     /**
-     * True on the two Galaxy Tabs, false on the phone.
+     * The devices that may sound by default: the two wall-mounted Galaxy Tabs.
      *
-     * Decided by smallest screen width rather than a model allow-list: 600dp is Android's own
-     * tablet threshold, it needs no maintenance when a panel is replaced, and getting it wrong
-     * fails in the safe direction — an unrecognised device simply does not become a siren.
+     * An explicit model list, and deliberately so. The obvious approach — Android's own 600dp
+     * tablet threshold — is wrong on a foldable: the Z Fold 7 reports about 411dp closed and
+     * about 750dp open, so the phone in Chris's pocket would classify as a wall panel and start
+     * sounding the moment it was unfolded. That is precisely the behaviour this is meant to
+     * avoid, and it would have been intermittent, which is worse.
+     *
+     * This only sets the default. The setting is per device and overridable either way, so a new
+     * panel is one toggle rather than a release — and an unlisted device stays silent until
+     * somebody asks for it, which is the right direction to fail in.
      */
+    private val WALL_PANEL_MODELS = setOf("SM-X200", "SM-X110")
+
     fun isWallPanel(context: Context): Boolean =
-        context.resources.configuration.smallestScreenWidthDp >= 600
+        Build.MODEL?.trim()?.uppercase() in WALL_PANEL_MODELS
 
     /** Already sounding? Used to avoid restarting the tone on every state push. */
     val isSounding: Boolean
