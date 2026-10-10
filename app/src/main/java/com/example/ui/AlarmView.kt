@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -479,6 +482,15 @@ private fun AlarmSensorRow(
  * openable by hand from the tab for testing. The code typed here is passed straight to the
  * service call and is never stored, cached or logged anywhere.
  */
+/**
+ * Room left below the keypad for a dock that does not declare itself.
+ *
+ * Sized against the One UI taskbar, which is the one actually in the way here. Only the
+ * shortfall is added: where the system reports a real inset of its own, this tops it up to
+ * this figure rather than stacking on top of it.
+ */
+private val TASKBAR_CLEARANCE = 72.dp
+
 @Composable
 fun AlarmKeypadDialog(viewModel: HvacViewModel) {
     val visible by viewModel.showAlarmKeypad.collectAsStateWithLifecycle()
@@ -505,22 +517,36 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
         onDismissRequest = { viewModel.dismissAlarmKeypad() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        // Kept clear of the system bars, and scrollable if it still does not fit.
+        // Kept clear of the system bars — and of Samsung’s taskbar, which is not one.
         //
-        // The keys growing to 65dp pushed the bottom of this dialog under Samsung’s taskbar,
-        // which covered part of the disarm key. A keypad you cannot finish using is worse
-        // than a small one, and the failure is invisible until someone is standing in front
-        // of it with a countdown running.
+        // The keys growing to 65dp pushed the bottom of this dialog under the taskbar, where
+        // it covered part of the disarm key. safeDrawingPadding alone did not fix it: the
+        // One UI taskbar is a separate overlay window and does not always report itself as a
+        // navigation-bar inset, so as far as the dialog was concerned that space was free.
         //
-        // safeDrawingPadding keeps it inside the status bar, the navigation bar, the taskbar
-        // and any cutout. The scroll underneath is the backstop: insets vary by device and
-        // by how the taskbar is configured, so the layout must survive being given less room
-        // than it wants rather than quietly putting a key out of reach.
+        // Hence the floor. Whatever the system admits to, at least a taskbar’s worth of room
+        // is left at the bottom; where the insets are honest and larger, they win. Costing a
+        // little space on devices that did not need it is the right way round, because the
+        // other failure is invisible until someone is standing at the panel with a countdown
+        // running and the one key they need is behind the dock.
+        //
+        // The scroll underneath is the backstop for whatever is left: the layout has to
+        // survive being given less room than it wants, rather than putting a key out of
+        // reach.
+        val density = LocalDensity.current
+        val systemBottom = with(density) {
+            WindowInsets.safeDrawing.getBottom(density).toDp()
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .safeDrawingPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 12.dp,
+                    bottom = (TASKBAR_CLEARANCE - systemBottom).coerceAtLeast(12.dp)
+                ),
             contentAlignment = Alignment.Center
         ) {
             Card(
