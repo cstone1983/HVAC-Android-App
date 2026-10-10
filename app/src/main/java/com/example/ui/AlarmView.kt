@@ -712,15 +712,28 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
 }
 
 @Composable
+/**
+ * One key.
+ *
+ * Sized for a wall panel rather than a phone. 65dp against the 48dp minimum touch target,
+ * because this gets used in the dark, in a hurry, by someone who has sixty seconds and is
+ * still holding the shopping — and a mistyped digit on a keypad costs an entry delay, not a
+ * backspace.
+ *
+ * The border carries most of that. It was 1dp at 7% white, which on a dark panel at arm’s
+ * length is close to invisible: the keys read as a vague grid rather than as distinct
+ * targets. At 2dp and 32% each key has an actual edge, which is what lets you aim without
+ * looking carefully.
+ */
 private fun KeypadKey(key: String, modifier: Modifier = Modifier, onPress: () -> Unit) {
     val isDigit = key.length == 1 && key[0].isDigit()
     Box(
         modifier = modifier
-            .heightIn(min = 52.dp)
+            .heightIn(min = 65.dp)
             .clip(CircleShapeIfDigit(isDigit))
             .background(Color.White.copy(alpha = if (isDigit) 0.05f else 0.02f))
             .border(
-                BorderStroke(1.dp, Color.White.copy(alpha = 0.07f)),
+                BorderStroke(2.dp, Color.White.copy(alpha = if (isDigit) 0.32f else 0.20f)),
                 CircleShapeIfDigit(isDigit)
             )
             .clickable(onClick = onPress)
@@ -732,18 +745,18 @@ private fun KeypadKey(key: String, modifier: Modifier = Modifier, onPress: () ->
                 Icons.Default.Backspace,
                 contentDescription = "Delete last digit",
                 tint = Color.White.copy(alpha = 0.55f),
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(22.dp)
             )
             "clear" -> Text(
                 "CLR",
-                fontSize = 11.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp,
                 color = Color.White.copy(alpha = 0.55f)
             )
             else -> Text(
                 key,
-                fontSize = 21.sp,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Medium,
                 color = Color.White.copy(alpha = 0.9f)
             )

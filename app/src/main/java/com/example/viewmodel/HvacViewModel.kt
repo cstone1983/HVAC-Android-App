@@ -408,24 +408,27 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     val forceScreenOn: StateFlow<Boolean> = _forceScreenOn.asStateFlow()
 
     /**
-     * Whether this device sounds a siren when the alarm goes off.
+     * Whether this install is a wall panel or a phone, and so how it behaves on an alarm.
      *
-     * A per-device preference rather than anything in layout_config.json, because that file is
-     * shared by every device and this must differ between them: the wall panels should wake the
-     * house, the phone in a pocket should not. Defaults on for a tablet and off for a phone, and
-     * is overridable per device in settings.
+     * A per-device preference rather than anything in layout_config.json, because that file
+     * is shared by every device and this is precisely what differs between them.
+     *
+     * It replaced a single siren switch. See [com.example.model.DeviceMode] for why one
+     * decision beat four flags that were all really asking the same question.
      */
-    private val _alarmSirenEnabled = MutableStateFlow(
-        sharedPrefs.getBoolean(
-            "alarm_siren_enabled",
-            com.example.service.AlarmSiren.isWallPanel(application)
+    private val _deviceMode = MutableStateFlow(
+        com.example.model.DeviceMode.resolve(
+            stored = sharedPrefs.getString("device_mode", null),
+            legacySirenEnabled = if (sharedPrefs.contains("alarm_siren_enabled"))
+                sharedPrefs.getBoolean("alarm_siren_enabled", false) else null,
+            isWallPanel = com.example.service.AlarmSiren.isWallPanel(application)
         )
     )
-    val alarmSirenEnabled: StateFlow<Boolean> = _alarmSirenEnabled.asStateFlow()
+    val deviceMode: StateFlow<com.example.model.DeviceMode> = _deviceMode.asStateFlow()
 
-    fun setAlarmSirenEnabled(enabled: Boolean) {
-        sharedPrefs.edit().putBoolean("alarm_siren_enabled", enabled).apply()
-        _alarmSirenEnabled.value = enabled
+    fun setDeviceMode(mode: com.example.model.DeviceMode) {
+        sharedPrefs.edit().putString("device_mode", mode.name).apply()
+        _deviceMode.value = mode
     }
 
     private val _forceFullScreen = MutableStateFlow(sharedPrefs.getBoolean("force_full_screen", false))

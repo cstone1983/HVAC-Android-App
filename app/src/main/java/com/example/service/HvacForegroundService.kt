@@ -477,11 +477,15 @@ class HvacForegroundService : Service() {
                 wsManager.states.collect { statesMap ->
                     val alarmCfg = HvacViewModel.getInstance()?.getActiveLayoutConfig()?.alarm
                     val alarmId = alarmCfg?.entityId ?: "alarm_control_panel.alarmo"
-                    val allowed = sharedPrefs.getBoolean(
-                        "alarm_siren_enabled",
-                        AlarmSiren.isWallPanel(this@HvacForegroundService)
+                    // One decision, read once: wall panel or phone. Everything below follows from it
+                    // rather than from its own separate flag.
+                    val mode = com.example.model.DeviceMode.resolve(
+                        stored = sharedPrefs.getString("device_mode", null),
+                        legacySirenEnabled = if (sharedPrefs.contains("alarm_siren_enabled"))
+                            sharedPrefs.getBoolean("alarm_siren_enabled", false) else null,
+                        isWallPanel = AlarmSiren.isWallPanel(this@HvacForegroundService)
                     )
-                    val notifyEnabled = alarmCfg?.notifyOnTrigger != false
+                    val notifyEnabled = alarmCfg?.notifyOnTrigger != false && mode.notifiesOnTrigger
                     
                     val node = statesMap[alarmId]
                     val state = node?.state
@@ -491,19 +495,19 @@ class HvacForegroundService : Service() {
                     // The siren is gated per device; the notification is not. A phone kept
                     // deliberately silent should still light up and buzz.
                     if (state == "triggered") {
-                        if (allowed) AlarmSiren.start(this@HvacForegroundService)
+                        if (mode.soundsSiren) AlarmSiren.start(this@HvacForegroundService)
                         if (notifyEnabled) postAlarmTriggeredNotification()
                     } else {
                         AlarmSiren.stop(this@HvacForegroundService)
                         cancelAlarmTriggeredNotification()
                     }
                     
-                    // The countdown tick, on panels only.
+                    // The countdown tick. Both modes do this — see DeviceMode.beepsCountdown.
                     //
-                    // Entry by default, exit on request: a panel that beeps every time the
-                    // house is armed from the sofa wears thin quickly, whereas the tick on
-                    // the way in is the one that stops a false alarm.
-                    val beepNow = allowed && when (state) {
+                    // Entry by default, exit on request: beeping every time the house is armed
+                    // from the sofa wears thin quickly, whereas the tick on the way in is the
+                    // one that stops a false alarm.
+                    val beepNow = mode.beepsCountdown && when (state) {
                         "pending" -> alarmCfg?.entryBeep != false
                         "arming" -> alarmCfg?.exitBeep == true
                         else -> false
@@ -841,8 +845,16 @@ class HvacForegroundService : Service() {
                 val elapsed = ((System.currentTimeMillis() - startMs) / 1000L).toInt()
                 val remaining = totalSeconds?.let { (it - elapsed).coerceAtLeast(0) }
                 if (remaining != null && remaining <= 0) break
+                // Wait for the shared beat, then pip — rather than pipping immediately and
+                // waiting afterwards, which would put the first beep wherever this device
+                // happened to start and leave the panels out of step from the opening tick.
+                delay(
+                    AlarmBeeper.millisUntilNextSlot(
+                        System.currentTimeMillis(),
+                        AlarmBeeper.intervalMsFor(remaining)
+                    )
+                )
                 AlarmBeeper.beep(this)
-                delay(AlarmBeeper.intervalMsFor(remaining))
             }
         } finally {
             AlarmBeeper.release()

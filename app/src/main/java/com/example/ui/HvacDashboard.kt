@@ -5063,7 +5063,7 @@ fun HvacSettingsDialog(
     onDismiss: () -> Unit
 ) {
     val forceScreenOn by viewModel.forceScreenOn.collectAsState()
-    val alarmSirenEnabled by viewModel.alarmSirenEnabled.collectAsState()
+    val deviceMode by viewModel.deviceMode.collectAsState()
     val forceFullScreen by viewModel.forceFullScreen.collectAsState()
     val darkModeEnabled by viewModel.darkModeEnabled.collectAsState()
     val weatherLatFlow by viewModel.weatherLatitude.collectAsStateWithLifecycle()
@@ -5354,29 +5354,57 @@ fun HvacSettingsDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                text = "Alarm Siren",
+                                text = "Device Mode",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                             Text(
-                                text = "Sound this device at full volume when the alarm triggers",
+                                text = deviceMode.summary,
                                 fontSize = 10.sp,
                                 color = Color.White.copy(alpha = 0.5f)
                             )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                com.example.model.DeviceMode.values().forEach { mode ->
+                                    val selected = deviceMode == mode
+                                    val tint = if (selected) Color(0xFF10B981)
+                                        else Color.White.copy(alpha = 0.55f)
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(40.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(
+                                                if (selected) Color(0xFF10B981).copy(alpha = 0.16f)
+                                                else Color.White.copy(alpha = 0.04f)
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (selected) Color(0xFF10B981).copy(alpha = 0.60f)
+                                                else Color.White.copy(alpha = 0.10f),
+                                                RoundedCornerShape(10.dp)
+                                            )
+                                            .clickable { viewModel.setDeviceMode(mode) }
+                                            .testTag("device_mode_" + mode.name.lowercase()),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = mode.label,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 0.6.sp,
+                                            color = tint
+                                        )
+                                    }
+                                }
+                            }
                         }
-                        Switch(
-                            checked = alarmSirenEnabled,
-                            onCheckedChange = { viewModel.setAlarmSirenEnabled(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color(0xFF10B981),
-                                checkedTrackColor = Color(0xFF10B981).copy(alpha = 0.3f),
-                                uncheckedThumbColor = Color(0xFF64748B),
-                                uncheckedTrackColor = Color(0xFF1E293B)
-                             )
-                        )
                     }
 
                     // Toggle 1.5: Force Full Screen Mode

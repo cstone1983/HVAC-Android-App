@@ -9,7 +9,7 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 /**
- * The entry/exit countdown beep on the wall panels.
+ * The entry/exit countdown beep, on the panels and on the phone alike.
  *
  * What a real alarm panel does when you walk in the door: a tick while it waits for a code, and
  * the tick gets faster as the time runs out. That acceleration is the whole point — it tells you
@@ -120,20 +120,48 @@ object AlarmBeeper {
     }
 
     /**
-     * How long to wait before the next pip, given the seconds left on the countdown.
+     * How long between pips, given the seconds left on the countdown.
      *
-     * Tiers rather than a smooth curve, because a gradual change is not perceptible as a change —
-     * you only hear that it is getting faster when it steps. Each step is roughly a halving.
+     * Tiers rather than a smooth curve, because a gradual change is not perceptible as a
+     * change — you only hear that it is getting faster when it steps. Each step halves.
      *
-     * A null countdown means the panel did not report a delay. Falling back to the slow rate is
-     * the right failure: a steady tick that says "it is waiting for you" is still useful, and it
-     * never implies more urgency than is actually known.
+     * The exact values matter for more than taste: every interval divides evenly into a
+     * second, and each one divides into the one above it. That makes the grids nest, so a
+     * panel stepping from the slow tier to the fast one stays on the same beat instead of
+     * jumping half a pip sideways — and two panels that happen to disagree about which tier
+     * they are in still land together. See [millisUntilNextSlot].
+     *
+     * A null countdown means the panel did not report a delay. Falling back to the slow rate
+     * is the right failure: a steady tick that says "it is waiting for you" is still useful,
+     * and it never implies more urgency than is actually known.
      */
     fun intervalMsFor(secondsRemaining: Int?): Long = when {
-        secondsRemaining == null -> 1_200L
-        secondsRemaining <= 5 -> 250L
-        secondsRemaining <= 10 -> 450L
-        secondsRemaining <= 20 -> 800L
-        else -> 1_200L
+        secondsRemaining == null -> 1_000L
+        secondsRemaining <= 10 -> 250L
+        secondsRemaining <= 20 -> 500L
+        else -> 1_000L
+    }
+
+    /**
+     * Milliseconds until the next beat on the shared grid.
+     *
+     * This is what keeps the two panels together. The obvious loop — beep, wait an interval,
+     * beep again — times itself from the moment each device noticed the countdown, and those
+     * moments differ by however much the two WebSocket deliveries differed. The panels then
+     * hold that offset for the whole minute, which is exactly what was heard: two tablets
+     * ticking out of step with each other.
+     *
+     * Beats are pinned to absolute wall-clock time instead, on multiples of the interval
+     * since the epoch. Nobody has to agree on when the countdown began, or talk to anyone:
+     * two devices whose clocks agree land on the same instant whatever they were doing
+     * before, and a device joining late falls straight into step on its first pip.
+     *
+     * It leans on the clocks being right, which on Android means network time — normally
+     * tens of milliseconds apart, far below anything audible as two separate beeps. A panel
+     * with automatic date and time switched off is the one way to drift back out of step.
+     */
+    fun millisUntilNextSlot(nowMs: Long, intervalMs: Long): Long {
+        val next = (nowMs / intervalMs + 1) * intervalMs
+        return (next - nowMs).coerceAtLeast(1L)
     }
 }

@@ -100,8 +100,12 @@ class MainActivity : ComponentActivity() {
             // This does not depend on the force-screen-on setting: that keeps a lit screen lit,
             // which is a different thing from lighting a dark one.
             val alarmWantsAttention by viewModel.showAlarmKeypad.collectAsState()
-            LaunchedEffect(alarmWantsAttention) {
-                if (alarmWantsAttention) wakeForAlarm()
+            val deviceMode by viewModel.deviceMode.collectAsState()
+            LaunchedEffect(alarmWantsAttention, deviceMode) {
+                // Panels only. A phone that lights itself up in a pocket is burning battery
+                // and pressing things by accident; its triggered notification carries a
+                // full-screen intent, which puts the keypad up properly when it is picked up.
+                if (alarmWantsAttention && deviceMode.wakesScreenForAlarm) wakeForAlarm()
             }
 
             // The siren is deliberately NOT started here any more.
