@@ -104,31 +104,17 @@ class MainActivity : ComponentActivity() {
                 if (alarmWantsAttention) wakeForAlarm()
             }
 
-            // Sound the panel when the alarm is actually going off.
+            // The siren is deliberately NOT started here any more.
             //
-            // Only on TRIGGERED, never on the entry delay: those sixty seconds are for the person
-            // who just walked in to disarm, and a siren over the top of that is noise while they
-            // type rather than information. The keypad and the screen wake already cover entry.
+            // It used to be, and that was a hole. A LaunchedEffect only runs while this activity is
+            // composed, so a panel whose screen had been torn down — backgrounded, or reclaimed
+            // under memory pressure — stayed silent through a break-in and logged nothing at all,
+            // which is exactly how it presented: one tablet sounded, the other did not, with no
+            // error on either. The DisposableEffect that went with it was worse, because it stopped
+            // the siren when the activity was destroyed: losing the screen mid-alarm lost the noise.
             //
-            // Gated on a per-device preference that defaults on for the wall panels and off for
-            // the phone. Stopping is unconditional — whatever the preference says now, anything
-            // still sounding gets shut off when the phase leaves TRIGGERED, so turning the
-            // setting off mid-siren cannot strand it.
-            val alarmPhase by viewModel.alarmState.collectAsState()
-            val sirenEnabled by viewModel.alarmSirenEnabled.collectAsState()
-            LaunchedEffect(alarmPhase.phase, sirenEnabled) {
-                val goingOff = alarmPhase.phase == com.example.model.AlarmPhase.TRIGGERED
-                if (goingOff && sirenEnabled) {
-                    com.example.service.AlarmSiren.start(applicationContext)
-                } else {
-                    com.example.service.AlarmSiren.stop(applicationContext)
-                }
-            }
-
-            DisposableEffect(Unit) {
-                // A siren that outlives the screen it belongs to is a tablet nobody can silence.
-                onDispose { com.example.service.AlarmSiren.stop(applicationContext) }
-            }
+            // HvacForegroundService owns it now. That service is already running, already holds the
+            // Home Assistant connection, and does not care whether anyone is looking at the screen.
 
             DisposableEffect(forceScreenOn, view) {
                 try {

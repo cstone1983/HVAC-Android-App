@@ -151,6 +151,10 @@ class HvacForegroundService : Service() {
         pollJob?.cancel()
         serviceScope.coroutineContext[Job]?.cancelChildren()
         releaseWifiLock()
+        // Nothing else can stop it once this service is gone, and a siren with no owner is
+        // worse than one that ends early. START_STICKY brings the service back, and it will
+        // start sounding again if the panel is still triggered.
+        AlarmSiren.stop(this)
         super.onDestroy()
     }
 
@@ -434,6 +438,39 @@ class HvacForegroundService : Service() {
             if (url.isNotEmpty() && token.isNotEmpty()) {
                 HomeAssistantClient.initialize(url, token)
                 wsManager.connectWithFailover(url, backupUrl, token)
+            }
+
+            // Sound the siren when the panel goes off.
+            //
+            // This belongs here rather than in the UI, and it used to be in the UI. A Compose effect
+            // only runs while the activity is composed, so a panel whose screen had been torn down
+            // never sounded and never logged a reason. The service has no such dependency: it is
+            // already running, already holds this WebSocket, and survives the screen going away.
+            //
+            // Only on TRIGGERED, never on the entry delay — those sixty seconds belong to whoever
+            // just walked in to disarm, and a siren over the top of that is noise while they type.
+            //
+            // Edge-triggered. states emits on every batch of Home Assistant events, and reacting to
+            // the level rather than the change would re-issue stop() hundreds of times an hour,
+            // cancelling the vibrator on each one. The preference is re-read inside the loop rather
+            // than captured, so turning the siren off in settings takes effect mid-alarm instead of
+            // at the next service restart.
+            launch {
+                var sounding = false
+                wsManager.states.collect { statesMap ->
+                    val alarmId = HvacViewModel.getInstance()
+                        ?.getActiveLayoutConfig()?.alarm?.entityId
+                        ?: "alarm_control_panel.alarmo"
+                    val allowed = sharedPrefs.getBoolean(
+                        "alarm_siren_enabled",
+                        AlarmSiren.isWallPanel(this@HvacForegroundService)
+                    )
+                    val shouldSound = allowed && statesMap[alarmId]?.state == "triggered"
+                    if (shouldSound == sounding) return@collect
+                    sounding = shouldSound
+                    if (shouldSound) AlarmSiren.start(this@HvacForegroundService)
+                    else AlarmSiren.stop(this@HvacForegroundService)
+                }
             }
 
             // Real-time state collector via WebSocket StateFlow.
