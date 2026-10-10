@@ -9,7 +9,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.media.RingtoneManager
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -43,7 +43,7 @@ class HvacForegroundService : Service() {
          * the importance means bumping the suffix, otherwise the existing channel quietly
          * keeps its old behaviour and the change appears to do nothing at all.
          */
-        const val ALARM_CHANNEL_ID = "hvac_alarm_triggered_v1"
+        const val ALARM_CHANNEL_ID = "hvac_alarm_triggered_v2"
         const val ALARM_NOTIFICATION_ID = 54322
 
         const val ACTION_START = "com.example.action.START"
@@ -695,6 +695,11 @@ class HvacForegroundService : Service() {
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(serviceChannel)
+            // 25.0 shipped a v1 of the alarm channel carrying the device default alarm sound.
+            // A channel is frozen at creation, so correcting the sound required a new id, and
+            // leaving the old one behind would list two identical-looking Alarm triggered
+            // entries in notification settings, one of which does nothing.
+            manager.deleteNotificationChannel("hvac_alarm_triggered_v1")
             manager.createNotificationChannel(buildAlarmChannel())
         }
     }
@@ -723,8 +728,21 @@ class HvacForegroundService : Service() {
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Sounds when the house alarm goes off, including through Do Not Disturb."
+            // An alert, deliberately not the siren.
+            //
+            // This channel fires on every device, so on a wall panel it plays over the top
+            // of the real siren — two wails at once is mud. Short hard two-tone beeps cut
+            // through the siren instead of fighting it, and on the phone, where there is no
+            // siren, they still read immediately as something wrong rather than as a
+            // message arriving.
+            //
+            // Not the device default alarm either: on this phone that resolves to "Morning
+            // Xylophone", the gentle wake-up tone that made the panels sound comical.
+            //
+            // Rendered by tools/make_alert_wav.py. A channel sound has to be a Uri to a
+            // real file, so it cannot share the generated AudioTrack the panels use.
             setSound(
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                Uri.parse("android.resource://" + packageName + "/" + com.example.R.raw.alarm_alert),
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_ALARM)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
