@@ -859,6 +859,20 @@ data class AlarmState(
     val isPresent: Boolean get() = entityId.isNotEmpty() && phase != AlarmPhase.UNAVAILABLE
 
     /**
+     * True when arming needs a code typed first.
+     *
+     * Arming and disarming are configured separately, and this house uses both settings: Alarmo
+     * reports `code_arm_required: false` with `code_disarm_required: true` and a numeric code, so
+     * you can arm with one tap but must type the code to disarm.
+     *
+     * Deliberately NOT derived from `code_format`. That attribute is dynamic — Alarmo reports it
+     * as null while disarmed, because the next action available is arming and arming needs no
+     * code, then reports "number" once armed. Reading it as "no code exists" would be wrong, and
+     * would silently become wrong again the moment the arm/disarm settings differed.
+     */
+    val requiresCodeToArm: Boolean get() = codeArmRequired
+
+    /**
      * Seconds left on the entry or exit delay, or null when there isn't one running.
      *
      * Returns null rather than zero when the delay is unknown, so the popup can omit the

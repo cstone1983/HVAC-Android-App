@@ -1,5 +1,5 @@
 {
-  "version": "6.7.0",
+  "version": "6.8.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -491,14 +491,6 @@
     "entityId": "alarm_control_panel.alarmo",
     "sensors": [
       {
-        "entityId": "cover.konnected_d332ec_garage_door",
-        "name": "Garage South"
-      },
-      {
-        "entityId": "cover.garage_garage_door_north_garage_door",
-        "name": "Garage North"
-      },
-      {
         "entityId": "binary_sensor.front_door_sensor",
         "name": "Front Door"
       },
@@ -516,27 +508,13 @@
       },
       {
         "entityId": "binary_sensor.mudroom_motion_motion_2",
-        "name": "Mudroom Motion"
+        "name": "Mudroom Motion",
+        "type": "motion"
       },
       {
         "entityId": "binary_sensor.third_reality_inc_3rms16bz_motion",
-        "name": "Stairway Motion"
-      },
-      {
-        "entityId": "binary_sensor.living_room_occupancy",
-        "name": "Living Room"
-      },
-      {
-        "entityId": "binary_sensor.dining_room_occupancy",
-        "name": "Dining Room"
-      },
-      {
-        "entityId": "binary_sensor.upstairs_occupancy",
-        "name": "Upstairs"
-      },
-      {
-        "entityId": "binary_sensor.bedroom_occupancy",
-        "name": "Bedroom"
+        "name": "Stairway Motion",
+        "type": "motion"
       }
     ]
   }

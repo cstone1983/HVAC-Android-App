@@ -181,6 +181,35 @@ class AlarmStateTest {
     }
 
     @Test
+    fun `arming follows the arm setting, not the code format`() {
+        // This house arms without a code and disarms with one. Alarmo therefore reports
+        // code_format as null while disarmed — the next action is arming — and "number" once
+        // armed. Deciding from code_format would read the first as "no code exists" and offer a
+        // one-tap disarm that the panel then rejects.
+        assertFalse(AlarmState(codeArmRequired = false, codeFormat = null).requiresCodeToArm)
+        assertFalse(AlarmState(codeArmRequired = false, codeFormat = "number").requiresCodeToArm)
+        assertTrue(AlarmState(codeArmRequired = true, codeFormat = null).requiresCodeToArm)
+        assertTrue(AlarmState(codeArmRequired = true, codeFormat = "number").requiresCodeToArm)
+    }
+
+    @Test
+    fun `a panel defaults to demanding a code when it says nothing`() {
+        // Failing closed: an unknown panel is assumed to want a code rather than offering a
+        // one-tap arm that may not be wanted.
+        assertTrue(AlarmState().requiresCodeToArm)
+    }
+
+    @Test
+    fun `the live panel's supported features yield away and night only`() {
+        // supported_features 14 = ARM_AWAY(2) + ARM_NIGHT(4) + TRIGGER(8), read from the real
+        // Alarmo panel. No HOME, no VACATION — so the tab must not offer them.
+        val options = alarmArmOptions(14)
+        assertEquals(listOf("AWAY", "NIGHT"), options.map { it.label })
+        assertEquals("alarm_arm_away", options.first { it.label == "AWAY" }.service)
+        assertEquals("alarm_arm_night", options.first { it.label == "NIGHT" }.service)
+    }
+
+    @Test
     fun `an absent panel is not reported as present`() {
         assertFalse(AlarmState().isPresent)
         assertFalse(AlarmState(entityId = "alarm_control_panel.alarmo").isPresent)

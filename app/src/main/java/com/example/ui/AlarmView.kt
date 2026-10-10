@@ -236,7 +236,14 @@ fun AlarmSection(viewModel: HvacViewModel, modifier: Modifier = Modifier) {
     val accent = phaseColor(alarm.phase)
 
     Column(modifier = modifier.fillMaxWidth()) {
-        AlarmStatusCard(alarm = alarm, accent = accent, onShowKeypad = { viewModel.openAlarmKeypad() })
+        AlarmStatusCard(
+            alarm = alarm,
+            accent = accent,
+            onShowKeypad = { viewModel.openAlarmKeypad() },
+            // Only reachable when the panel wants no code; submitAlarmCommand omits the code
+            // field entirely when it is blank, which is what Alarmo expects.
+            onDirectCommand = { service -> viewModel.submitAlarmCommand(service, "") }
+        )
 
         Spacer(Modifier.height(14.dp))
 
@@ -295,7 +302,12 @@ fun AlarmSection(viewModel: HvacViewModel, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun AlarmStatusCard(alarm: AlarmState, accent: Color, onShowKeypad: () -> Unit) {
+private fun AlarmStatusCard(
+    alarm: AlarmState,
+    accent: Color,
+    onShowKeypad: () -> Unit,
+    onDirectCommand: (String) -> Unit
+) {
     val remaining = rememberSecondsRemaining(alarm)
 
     Card(
@@ -353,18 +365,42 @@ private fun AlarmStatusCard(alarm: AlarmState, accent: Color, onShowKeypad: () -
 
             Spacer(Modifier.height(14.dp))
 
-            // The keypad is the only place a code is ever entered, so every action here simply
-            // opens it rather than arming directly. That also keeps one code path to test.
+            // Arming and disarming are treated separately, because this panel treats them
+            // separately: arming needs no code, disarming needs the numeric one.
+            //
+            // So arming is offered here as one tap per supported mode, and disarming always goes
+            // to the keypad — there is nowhere else to type a code, and routing it here would
+            // only produce a call the panel rejects. If the panel is ever reconfigured to demand
+            // a code for arming too, requiresCodeToArm flips and arming joins it on the keypad.
+            val canArmDirectly = alarm.isPresent &&
+                alarm.phase == AlarmPhase.DISARMED &&
+                !alarm.requiresCodeToArm
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (canArmDirectly) {
+                    // Exactly the modes the panel reports it supports — Alarmo reports
+                    // supported_features 14 here, which is away and night only.
+                    alarm.armOptions.forEach { option ->
+                        SegmentedControlButton(
+                            label = option.label,
+                            icon = Icons.Default.Lock,
+                            color = accent,
+                            isSelected = false,
+                            contentDescription = "Arm ${option.label.lowercase()}",
+                            testTagId = "alarm_arm_${option.label.lowercase()}_btn",
+                            onClick = { onDirectCommand(option.service) }
+                        )
+                    }
+                }
                 SegmentedControlButton(
-                    label = "KEYPAD",
-                    icon = Icons.Default.Lock,
+                    label = if (canArmDirectly) "KEYPAD" else "DISARM",
+                    icon = if (canArmDirectly) Icons.Default.Lock else Icons.Default.LockOpen,
                     color = accent,
-                    isSelected = true,
-                    contentDescription = "Open the alarm keypad",
+                    isSelected = !canArmDirectly,
+                    contentDescription = if (canArmDirectly) "Open the alarm keypad"
+                        else "Open the keypad to disarm",
                     testTagId = "alarm_show_keypad_btn",
                     onClick = onShowKeypad
                 )
