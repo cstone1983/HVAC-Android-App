@@ -692,6 +692,17 @@ data class AlarmConfig(
     // every device, phone included: the siren is a wall-panel thing, but a phone in a pocket is
     // the device most likely to be with whoever needs to know.
     val notifyOnTrigger: Boolean? = true,
+    /**
+     * Which alarm state changes raise a quiet status notification.
+     *
+     * A list rather than a flag per event, so the set can grow by editing layout_config.json
+     * instead of shipping a build. Recognised keys are the panel’s own states: "armed" (any
+     * armed mode), "disarmed", "arming" and "pending". "triggered" is deliberately not one of
+     * them — it has its own loud notification and does not want a second, quieter copy.
+     *
+     * Phones only, whatever is listed here. See DeviceMode.showsStatusNotifications.
+     */
+    val notifyEvents: List<String>? = listOf("armed"),
     // The countdown tick on the wall panels, as a real alarm panel does it. Entry is on by
     // default because that tick is what stops a false alarm; exit is off, because a panel
     // that beeps every time the house is armed from the sofa wears thin quickly.

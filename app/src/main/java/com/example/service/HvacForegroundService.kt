@@ -47,6 +47,10 @@ class HvacForegroundService : Service() {
         const val ALARM_CHANNEL_ID = "hvac_alarm_triggered_v2"
         const val ALARM_NOTIFICATION_ID = 54322
 
+        /** The quiet channel: armed, disarmed, and whatever gets added after. */
+        const val ALARM_STATUS_CHANNEL_ID = "hvac_alarm_status_v1"
+        const val ALARM_STATUS_NOTIFICATION_ID = 54323
+
         const val ACTION_START = "com.example.action.START"
         const val ACTION_STOP = "com.example.action.STOP"
         const val ACTION_HEAT = "com.example.action.HEAT"
@@ -494,6 +498,7 @@ class HvacForegroundService : Service() {
                     val node = statesMap[alarmId]
                     val state = node?.state
                     if (state == lastState) return@collect
+                    val previousState = lastState
                     lastState = state
                     
                     // The siren is gated per device; the notification is not. A phone kept
@@ -504,6 +509,19 @@ class HvacForegroundService : Service() {
                     } else {
                         AlarmSiren.stop(this@HvacForegroundService)
                         cancelAlarmTriggeredNotification()
+                    }
+
+                    // The quiet ones. Skipped on the first state seen after a restart: that is this
+                    // device catching up rather than the house changing, and announcing "alarm armed"
+                    // every time the app reconnects would teach you to ignore it.
+                    if (mode.showsStatusNotifications && previousState != null) {
+                        val event = alarmEventKey(state)
+                        val wanted = alarmCfg?.notifyEvents ?: listOf("armed")
+                        if (event != null && event != "triggered" &&
+                            wanted.any { it.equals(event, ignoreCase = true) }
+                        ) {
+                            postAlarmStatusNotification(event, state, node)
+                        }
                     }
                     
                     // The countdown tick. Both modes do this — see DeviceMode.beepsCountdown.
@@ -742,6 +760,7 @@ class HvacForegroundService : Service() {
             // entries in notification settings, one of which does nothing.
             manager.deleteNotificationChannel("hvac_alarm_triggered_v1")
             manager.createNotificationChannel(buildAlarmChannel())
+            manager.createNotificationChannel(buildAlarmStatusChannel())
         }
     }
 
@@ -883,6 +902,99 @@ class HvacForegroundService : Service() {
             AlarmBeeper.release()
         }
     }
+
+    /**
+     * The panel’s state, reduced to the key used in configuration.
+     *
+     * Every armed mode collapses to "armed". Someone asking to be told when the house arms
+     * means exactly that, and would not thank you for having to list armed_away, armed_home,
+     * armed_night and armed_vacation separately — nor for silence when a mode they had not
+     * thought of turns up.
+     */
+    private fun alarmEventKey(rawState: String?): String? = when {
+        rawState.isNullOrBlank() -> null
+        rawState.startsWith("armed_") -> "armed"
+        else -> rawState
+    }
+
+    /**
+     * Nothing like the triggered notification: quiet, dismissable, and replaced rather than
+     * stacked.
+     *
+     * One id for all of them, so arming and then disarming leaves one current line rather
+     * than a history of the day sitting in the shade. The state of the alarm is a single
+     * fact, and the notification should read as that fact rather than as a log.
+     */
+    private fun postAlarmStatusNotification(
+        event: String,
+        rawState: String?,
+        node: com.example.api.EntityState?
+    ) {
+        try {
+            val title = when (event) {
+                "armed" -> "Alarm armed"
+                "disarmed" -> "Alarm disarmed"
+                "arming" -> "Alarm arming"
+                "pending" -> "Entry delay running"
+                else -> "Alarm " + event
+            }
+            val armedMode = rawState?.takeIf { event == "armed" }
+                ?.removePrefix("armed_")
+                ?.replace('_', ' ')
+                ?.replaceFirstChar { it.uppercase() }
+            val who = node?.getStringAttribute("changed_by")?.takeIf { it.isNotBlank() }
+            val detail = listOfNotNull(armedMode, who?.let { "by " + it })
+                .joinToString(" · ")
+
+            val open = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pending = PendingIntent.getActivity(
+                this,
+                2,
+                open,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val notification = NotificationCompat.Builder(this, ALARM_STATUS_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .setContentTitle(title)
+                .setContentText(detail.ifBlank { "Alarm state changed" })
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setAutoCancel(true)
+                .setContentIntent(pending)
+                .build()
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(ALARM_STATUS_NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            android.util.Log.w(
+                "HvacForegroundService",
+                "Could not post the alarm status notification",
+                e
+            )
+        }
+    }
+
+    /**
+     * Ordinary importance and the device’s own notification sound.
+     *
+     * Pointedly not the alarm channel’s treatment: no USAGE_ALARM, no Do Not Disturb bypass,
+     * no full-screen intent. Knowing the house armed itself is worth a glance, not worth
+     * overriding a silenced phone for — and a status line that shouts is one that gets the
+     * whole app muted, which would take the notification that does matter down with it.
+     */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
+    private fun buildAlarmStatusChannel(): NotificationChannel =
+        NotificationChannel(
+            ALARM_STATUS_CHANNEL_ID,
+            "Alarm activity",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Armed, disarmed and other alarm status changes."
+            enableVibration(true)
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+        }
 
     private fun cancelAlarmTriggeredNotification() {
         try {

@@ -53,12 +53,26 @@ enum class DeviceMode {
     val beepsCountdown: Boolean get() = true
 
     /**
-     * Post the high-priority notification when the alarm actually triggers.
+     * Post notifications at all — the triggered alert, and the quieter status ones.
      *
-     * Both, and on the phone it is the entire alert. A phone in a pocket is the device most
-     * likely to be *with* whoever needs to know.
+     * Phones only, and the reasoning is the same for both kinds. A notification is for
+     * someone who is not looking at the thing it concerns. A wall panel is the thing it
+     * concerns: it is already showing the state in large type, and during an alarm it is
+     * also sirening and holding the keypad up. Telling it about itself adds nothing and
+     * costs a buzz in a room nobody is in.
+     *
+     * The phone is the opposite case, and is usually the only device actually *with*
+     * whoever needs to know.
      */
-    val notifiesOnTrigger: Boolean get() = true
+    val notifiesOnTrigger: Boolean get() = this == PHONE
+
+    /**
+     * Post the quiet status notifications — armed, disarmed, and whatever gets added next.
+     *
+     * Same rule, same reason. Which events these cover is configuration rather than code,
+     * so the list can grow without a release: see `AlarmConfig.notifyEvents`.
+     */
+    val showsStatusNotifications: Boolean get() = this == PHONE
 
     val label: String
         get() = when (this) {
@@ -68,9 +82,10 @@ enum class DeviceMode {
 
     val summary: String
         get() = when (this) {
-            PANEL -> "Sirens at full volume until disarmed, wakes its own screen, " +
-                "and beeps the countdown."
-            PHONE -> "Beeps the countdown and alerts through Do Not Disturb. Never sirens."
+            PANEL -> "Sirens at full volume until disarmed, wakes its own screen, and beeps " +
+                "the countdown. Sends no notifications."
+            PHONE -> "Beeps the countdown and sends notifications, including through Do Not " +
+                "Disturb. Never sirens."
         }
 
     companion object {

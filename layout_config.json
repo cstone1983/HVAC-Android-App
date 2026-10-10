@@ -1,5 +1,5 @@
 {
-  "version": "6.12.0",
+  "version": "6.13.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -492,6 +492,7 @@
   "alarm": {
     "entityId": "alarm_control_panel.alarmo",
     "notifyOnTrigger": true,
+    "notifyEvents": ["armed"],
     "entryBeep": true,
     "exitBeep": false,
     "entryDelaySeconds": 60,
