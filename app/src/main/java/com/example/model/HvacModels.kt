@@ -688,6 +688,10 @@ fun clampToHardwareFloor(value: Double, targetMode: String): Double {
 @JsonClass(generateAdapter = true)
 data class AlarmConfig(
     val entityId: String? = "alarm_control_panel.alarmo",
+    // Whether a triggered alarm posts its own high-priority notification. On by default and on
+    // every device, phone included: the siren is a wall-panel thing, but a phone in a pocket is
+    // the device most likely to be with whoever needs to know.
+    val notifyOnTrigger: Boolean? = true,
     val sensors: List<AlarmSensorConfig>? = emptyList(),
     /**
      * Entry delay in seconds, used only when the panel does not report one itself.

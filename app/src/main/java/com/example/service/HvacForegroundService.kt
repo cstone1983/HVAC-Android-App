@@ -8,6 +8,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -32,6 +34,17 @@ class HvacForegroundService : Service() {
     companion object {
         const val CHANNEL_ID = "hvac_foreground_connection"
         const val NOTIFICATION_ID = 54321
+
+        /**
+         * The channel a triggered alarm shouts through.
+         *
+         * A channel’s settings are fixed when it is first created, and Android will not
+         * revise them on an app update — so the id carries a version. Changing the sound or
+         * the importance means bumping the suffix, otherwise the existing channel quietly
+         * keeps its old behaviour and the change appears to do nothing at all.
+         */
+        const val ALARM_CHANNEL_ID = "hvac_alarm_triggered_v1"
+        const val ALARM_NOTIFICATION_ID = 54322
 
         const val ACTION_START = "com.example.action.START"
         const val ACTION_STOP = "com.example.action.STOP"
@@ -155,6 +168,7 @@ class HvacForegroundService : Service() {
         // worse than one that ends early. START_STICKY brings the service back, and it will
         // start sounding again if the panel is still triggered.
         AlarmSiren.stop(this)
+        cancelAlarmTriggeredNotification()
         super.onDestroy()
     }
 
@@ -456,7 +470,7 @@ class HvacForegroundService : Service() {
             // than captured, so turning the siren off in settings takes effect mid-alarm instead of
             // at the next service restart.
             launch {
-                var sounding = false
+                var triggered = false
                 wsManager.states.collect { statesMap ->
                     val alarmId = HvacViewModel.getInstance()
                         ?.getActiveLayoutConfig()?.alarm?.entityId
@@ -465,11 +479,20 @@ class HvacForegroundService : Service() {
                         "alarm_siren_enabled",
                         AlarmSiren.isWallPanel(this@HvacForegroundService)
                     )
-                    val shouldSound = allowed && statesMap[alarmId]?.state == "triggered"
-                    if (shouldSound == sounding) return@collect
-                    sounding = shouldSound
-                    if (shouldSound) AlarmSiren.start(this@HvacForegroundService)
-                    else AlarmSiren.stop(this@HvacForegroundService)
+                    val notifyEnabled = HvacViewModel.getInstance()
+                        ?.getActiveLayoutConfig()?.alarm?.notifyOnTrigger != false
+                    val goingOff = statesMap[alarmId]?.state == "triggered"
+                    if (goingOff == triggered) return@collect
+                    triggered = goingOff
+                    // The siren is gated per device; the notification is not. A phone kept
+                    // deliberately silent should still light up and buzz.
+                    if (goingOff) {
+                        if (allowed) AlarmSiren.start(this@HvacForegroundService)
+                        if (notifyEnabled) postAlarmTriggeredNotification()
+                    } else {
+                        AlarmSiren.stop(this@HvacForegroundService)
+                        cancelAlarmTriggeredNotification()
+                    }
                 }
             }
 
@@ -672,6 +695,96 @@ class HvacForegroundService : Service() {
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(serviceChannel)
+            manager.createNotificationChannel(buildAlarmChannel())
+        }
+    }
+
+    /**
+     * Nothing like the HVAC channel, deliberately.
+     *
+     * That one is IMPORTANCE_LOW and silent by design — a status line that sits in the shade
+     * all day. This one has to reach a phone that is face-down in another room, on silent,
+     * inside Do Not Disturb. Three things get it there:
+     *
+     *  - **An alarm-usage sound.** USAGE_ALARM is the one stream Do Not Disturb lets through
+     *    by default, which is why the wall panels sound on a tablet that has DND on. The same
+     *    sound with ordinary notification usage would simply be swallowed.
+     *  - **setBypassDnd**, for the case where alarms have been excluded from DND as well.
+     *    This needs Notification Policy Access, which only the user can grant in system
+     *    settings. It does not throw without it — it is silently ignored — so it cannot be
+     *    relied on alone, and the alarm-usage sound is what does the work in the normal case.
+     *  - **IMPORTANCE_HIGH**, so it arrives as a heads-up rather than a line found later.
+     */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.O)
+    private fun buildAlarmChannel(): NotificationChannel =
+        NotificationChannel(
+            ALARM_CHANNEL_ID,
+            "Alarm triggered",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Sounds when the house alarm goes off, including through Do Not Disturb."
+            setSound(
+                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 600, 300, 600, 300)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setBypassDnd(true)
+        }
+
+    /**
+     * Posted on every device, phone included, whether or not this one sounds a siren.
+     *
+     * The siren is a wall-panel thing — a phone that becomes a siren in a meeting gets the
+     * whole feature switched off. But a phone in a pocket is the device most likely to be
+     * *with* whoever needs to know, so it gets this instead: an alarm-stream sound, a
+     * heads-up, and a full-screen intent that opens straight to the keypad the way an
+     * incoming call would.
+     */
+    private fun postAlarmTriggeredNotification() {
+        try {
+            val openKeypad = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pending = PendingIntent.getActivity(
+                this,
+                1,
+                openKeypad,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val notification = NotificationCompat.Builder(this, ALARM_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle("ALARM TRIGGERED")
+                .setContentText("Tap to disarm")
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                // Not swipeable away, and it does not clear itself on tap: it is withdrawn
+                // when the panel actually leaves triggered, not when somebody notices it.
+                .setOngoing(true)
+                .setAutoCancel(false)
+                .setContentIntent(pending)
+                .setFullScreenIntent(pending, true)
+                .build()
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(ALARM_NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            // POST_NOTIFICATIONS can be refused on Android 13+. The siren does not depend on
+            // this, so losing the notification must not take the noise down with it.
+            android.util.Log.w("HvacForegroundService", "Could not post the alarm notification", e)
+        }
+    }
+
+    private fun cancelAlarmTriggeredNotification() {
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(ALARM_NOTIFICATION_ID)
+        } catch (e: Exception) {
+            android.util.Log.w("HvacForegroundService", "Could not cancel the alarm notification", e)
         }
     }
 }

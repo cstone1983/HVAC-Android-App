@@ -14,6 +14,14 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Lets the alarm channel set bypassDnd. Declaring it is not enough on its own: the user
+         must also grant Notification Policy Access in system settings, and without that the
+         flag is silently ignored. The alarm-usage sound is what carries it through DND in the
+         normal case; this is the belt to that braces. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- Lets a triggered alarm take over the screen the way an incoming call does, rather than
+         waiting in the shade to be noticed. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Android Auto & Automotive features -->
