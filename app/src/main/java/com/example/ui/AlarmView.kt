@@ -4,15 +4,19 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -501,209 +505,230 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
         onDismissRequest = { viewModel.dismissAlarmKeypad() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Card(
-            modifier = Modifier.widthIn(max = 380.dp).testTag("alarm_keypad_dialog"),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF12161C)),
-            border = BorderStroke(1.dp, accent.copy(alpha = 0.5f)),
-            shape = hvacCardShape(18)
+        // Kept clear of the system bars, and scrollable if it still does not fit.
+        //
+        // The keys growing to 65dp pushed the bottom of this dialog under Samsung’s taskbar,
+        // which covered part of the disarm key. A keypad you cannot finish using is worse
+        // than a small one, and the failure is invisible until someone is standing in front
+        // of it with a countdown running.
+        //
+        // safeDrawingPadding keeps it inside the status bar, the navigation bar, the taskbar
+        // and any cutout. The scroll underneath is the backstop: insets vary by device and
+        // by how the taskbar is configured, so the layout must survive being given less room
+        // than it wants rather than quietly putting a key out of reach.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier.padding(18.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Card(
+                modifier = Modifier.widthIn(max = 380.dp).testTag("alarm_keypad_dialog"),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF12161C)),
+                border = BorderStroke(1.dp, accent.copy(alpha = 0.5f)),
+                shape = hvacCardShape(18)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    SectionHeader("ALARM", modifier = Modifier.weight(1f))
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close the keypad",
-                        tint = Color.White.copy(alpha = 0.4f),
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clickable { viewModel.dismissAlarmKeypad() }
-                            .testTag("alarm_keypad_close")
-                    )
-                }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SectionHeader("ALARM", modifier = Modifier.weight(1f))
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close the keypad",
+                            tint = Color.White.copy(alpha = 0.4f),
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable { viewModel.dismissAlarmKeypad() }
+                                .testTag("alarm_keypad_close")
+                        )
+                    }
 
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    alarm.headline,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = accent,
-                    textAlign = TextAlign.Center
-                )
-                if (remaining != null) {
-                    Spacer(Modifier.height(2.dp))
+                    Spacer(Modifier.height(10.dp))
                     Text(
-                        "$remaining",
-                        fontSize = 44.sp,
-                        fontWeight = FontWeight.Light,
-                        color = accent
+                        alarm.headline,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accent,
+                        textAlign = TextAlign.Center
                     )
-                }
+                    if (remaining != null) {
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "$remaining",
+                            fontSize = 44.sp,
+                            fontWeight = FontWeight.Light,
+                            color = accent
+                        )
+                    }
 
-                Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(12.dp))
 
-                // The digits only appear when there is actually a code to type.
-                //
-                // Disarming needs the PIN; arming, on this panel, does not. Showing a dead keypad
-                // on a disarmed house puts twelve keys between you and the only two things you
-                // came here to do, so in that state the arm buttons below become the whole dialog
-                // and get the room to be pressed without looking.
-                val needsPin = alarm.phase != AlarmPhase.DISARMED || alarm.requiresCodeToArm
+                    // The digits only appear when there is actually a code to type.
+                    //
+                    // Disarming needs the PIN; arming, on this panel, does not. Showing a dead keypad
+                    // on a disarmed house puts twelve keys between you and the only two things you
+                    // came here to do, so in that state the arm buttons below become the whole dialog
+                    // and get the room to be pressed without looking.
+                    val needsPin = alarm.phase != AlarmPhase.DISARMED || alarm.requiresCodeToArm
 
-                if (needsPin) {
-                    // Masked. The digits are never echoed back, on a screen that hangs on a wall.
-                    Text(
-                        text = if (code.isEmpty()) "• • • •" else "•".repeat(code.length),
-                        fontSize = 24.sp,
-                        letterSpacing = 6.sp,
-                        color = if (code.isEmpty()) Color.White.copy(alpha = 0.2f) else Color.White,
-                        modifier = Modifier.testTag("alarm_code_display")
-                    )
+                    if (needsPin) {
+                        // Masked. The digits are never echoed back, on a screen that hangs on a wall.
+                        Text(
+                            text = if (code.isEmpty()) "• • • •" else "•".repeat(code.length),
+                            fontSize = 24.sp,
+                            letterSpacing = 6.sp,
+                            color = if (code.isEmpty()) Color.White.copy(alpha = 0.2f) else Color.White,
+                            modifier = Modifier.testTag("alarm_code_display")
+                        )
 
-                    Spacer(Modifier.height(14.dp))
+                        Spacer(Modifier.height(14.dp))
 
-                    listOf(
-                        listOf("1", "2", "3"),
-                        listOf("4", "5", "6"),
-                        listOf("7", "8", "9"),
-                        listOf("clear", "0", "back")
-                    ).forEach { rowKeys ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            rowKeys.forEach { key ->
-                                KeypadKey(
-                                    key = key,
-                                    modifier = Modifier.weight(1f),
-                                    onPress = {
-                                        lastKeyAt = System.currentTimeMillis()
-                                        when (key) {
-                                            "clear" -> code = ""
-                                            "back" -> code = code.dropLast(1)
-                                            // A sane upper bound so a stuck key cannot build a
-                                            // megabyte-long string.
-                                            else -> if (code.length < 12) code += key
+                        listOf(
+                            listOf("1", "2", "3"),
+                            listOf("4", "5", "6"),
+                            listOf("7", "8", "9"),
+                            listOf("clear", "0", "back")
+                        ).forEach { rowKeys ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                rowKeys.forEach { key ->
+                                    KeypadKey(
+                                        key = key,
+                                        modifier = Modifier.weight(1f),
+                                        onPress = {
+                                            lastKeyAt = System.currentTimeMillis()
+                                            when (key) {
+                                                "clear" -> code = ""
+                                                "back" -> code = code.dropLast(1)
+                                                // A sane upper bound so a stuck key cannot build a
+                                                // megabyte-long string.
+                                                else -> if (code.length < 12) code += key
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                if (!feedback.isNullOrBlank()) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        feedback!!,
-                        fontSize = 11.sp,
-                        color = Color(0xFFEF4444),
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                // Disarm is offered whenever the panel is anything other than disarmed, because
-                // that is the action someone standing at a beeping panel wants. Arm options only
-                // appear when it is actually disarmed.
-                if (alarm.phase == AlarmPhase.DISARMED) {
-                    val options = alarm.armOptions
-                    if (options.isEmpty()) {
+                    if (!feedback.isNullOrBlank()) {
+                        Spacer(Modifier.height(8.dp))
                         Text(
-                            "This panel reports no arming modes.",
+                            feedback!!,
                             fontSize = 11.sp,
-                            color = Color.White.copy(alpha = 0.4f)
+                            color = Color(0xFFEF4444),
+                            textAlign = TextAlign.Center
                         )
-                    } else if (!needsPin) {
-                        // No keypad above, so these are the dialog. Full width and tall enough to
-                        // hit without aiming.
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            options.forEach { option ->
-                                Button(
-                                    onClick = {
-                                        lastKeyAt = System.currentTimeMillis()
-                                        viewModel.submitAlarmCommand(option.service, code)
-                                        code = ""
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(64.dp)
-                                        .testTag("alarm_arm_${option.label.lowercase()}"),
-                                    shape = hvacCardShape(14),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = LocalHvacTheme.current.coolColor
-                                            .copy(alpha = 0.18f),
-                                        contentColor = Color.White
-                                    ),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        LocalHvacTheme.current.coolColor.copy(alpha = 0.5f)
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = if (option.label == "NIGHT")
-                                            Icons.Default.NightsStay else Icons.Default.Shield,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(24.dp),
-                                        tint = LocalHvacTheme.current.coolColor
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                    Text(
-                                        "ARM ${option.label}",
-                                        fontSize = 17.sp,
-                                        fontWeight = FontWeight.Black,
-                                        letterSpacing = 1.sp
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Disarm is offered whenever the panel is anything other than disarmed, because
+                    // that is the action someone standing at a beeping panel wants. Arm options only
+                    // appear when it is actually disarmed.
+                    if (alarm.phase == AlarmPhase.DISARMED) {
+                        val options = alarm.armOptions
+                        if (options.isEmpty()) {
+                            Text(
+                                "This panel reports no arming modes.",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.4f)
+                            )
+                        } else if (!needsPin) {
+                            // No keypad above, so these are the dialog. Full width and tall enough to
+                            // hit without aiming.
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                options.forEach { option ->
+                                    Button(
+                                        onClick = {
+                                            lastKeyAt = System.currentTimeMillis()
+                                            viewModel.submitAlarmCommand(option.service, code)
+                                            code = ""
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(64.dp)
+                                            .testTag("alarm_arm_${option.label.lowercase()}"),
+                                        shape = hvacCardShape(14),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = LocalHvacTheme.current.coolColor
+                                                .copy(alpha = 0.18f),
+                                            contentColor = Color.White
+                                        ),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            LocalHvacTheme.current.coolColor.copy(alpha = 0.5f)
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = if (option.label == "NIGHT")
+                                                Icons.Default.NightsStay else Icons.Default.Shield,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(24.dp),
+                                            tint = LocalHvacTheme.current.coolColor
+                                        )
+                                        Spacer(Modifier.width(12.dp))
+                                        Text(
+                                            "ARM ${option.label}",
+                                            fontSize = 17.sp,
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 1.sp
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                options.forEach { option ->
+                                    SegmentedControlButton(
+                                        label = option.label,
+                                        icon = if (option.label == "NIGHT") Icons.Default.NightsStay
+                                        else Icons.Default.Shield,
+                                        color = LocalHvacTheme.current.coolColor,
+                                        isSelected = false,
+                                        contentDescription = "Arm ${option.label}",
+                                        testTagId = "alarm_arm_${option.label.lowercase()}",
+                                        onClick = {
+                                            lastKeyAt = System.currentTimeMillis()
+                                            viewModel.submitAlarmCommand(option.service, code)
+                                            code = ""
+                                        }
                                     )
                                 }
                             }
                         }
                     } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            options.forEach { option ->
-                                SegmentedControlButton(
-                                    label = option.label,
-                                    icon = if (option.label == "NIGHT") Icons.Default.NightsStay
-                                    else Icons.Default.Shield,
-                                    color = LocalHvacTheme.current.coolColor,
-                                    isSelected = false,
-                                    contentDescription = "Arm ${option.label}",
-                                    testTagId = "alarm_arm_${option.label.lowercase()}",
-                                    onClick = {
-                                        lastKeyAt = System.currentTimeMillis()
-                                        viewModel.submitAlarmCommand(option.service, code)
-                                        code = ""
-                                    }
-                                )
-                            }
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            SegmentedControlButton(
+                                label = "DISARM",
+                                icon = Icons.Default.LockOpen,
+                                color = LocalHvacTheme.current.ecoColor,
+                                isSelected = false,
+                                contentDescription = "Disarm the alarm",
+                                testTagId = "alarm_disarm_btn",
+                                onClick = {
+                                    lastKeyAt = System.currentTimeMillis()
+                                        viewModel.submitAlarmCommand("alarm_disarm", code)
+                                    code = ""
+                                }
+                            )
                         }
-                    }
-                } else {
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        SegmentedControlButton(
-                            label = "DISARM",
-                            icon = Icons.Default.LockOpen,
-                            color = LocalHvacTheme.current.ecoColor,
-                            isSelected = false,
-                            contentDescription = "Disarm the alarm",
-                            testTagId = "alarm_disarm_btn",
-                            onClick = {
-                                lastKeyAt = System.currentTimeMillis()
-                                    viewModel.submitAlarmCommand("alarm_disarm", code)
-                                code = ""
-                            }
-                        )
                     }
                 }
             }

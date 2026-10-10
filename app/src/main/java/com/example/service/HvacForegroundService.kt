@@ -487,6 +487,10 @@ class HvacForegroundService : Service() {
                     )
                     val notifyEnabled = alarmCfg?.notifyOnTrigger != false && mode.notifiesOnTrigger
                     
+                    // Keep the shared clock fed. Throttled inside HaClock, so this costs nothing on
+                    // most emissions.
+                    HaClock.sampleFrom(statesMap)
+                    
                     val node = statesMap[alarmId]
                     val state = node?.state
                     if (state == lastState) return@collect
@@ -522,7 +526,13 @@ class HvacForegroundService : Service() {
                         // is the fallback for a panel that does not.
                         val total = node?.getDoubleAttribute("delay")?.toInt()
                             ?: alarmCfg?.entryDelaySeconds
-                        beepJob = launch { runCountdownBeeps(total) }
+                        // When the countdown started according to Home Assistant, not according
+                        // to this device. Both panels get the same figure, which is what keeps
+                        // them in the same speed tier — see runCountdownBeeps.
+                        val startedAt = com.example.ui.parseHaTimestamp(
+                            node?.last_changed ?: node?.last_updated
+                        )
+                        beepJob = launch { runCountdownBeeps(total, startedAt) }
                     }
                 }
             }
@@ -837,12 +847,25 @@ class HvacForegroundService : Service() {
      * Ends on its own when the countdown reaches zero, and is cancelled by the collector the
      * moment the panel leaves the delay — disarmed, or triggered and the siren takes over.
      * The track is released in a finally so a cancellation cannot strand it.
+     *
+     * ### Keeping two panels together
+     *
+     * Every time here is [HaClock] time, not device time, and the countdown is measured from
+     * Home Assistant’s own stamp on the state change rather than from the moment this panel
+     * happened to see it.
+     *
+     * Both matter, and the second is the one that was missed first time round. Pinning the
+     * beats to a shared grid is not enough on its own: if one panel sees the state change a
+     * few hundred milliseconds after the other, the two disagree about how many seconds are
+     * left, and near a tier boundary one ends up ticking twice as fast as the other. Grid
+     * alignment cannot rescue that — they are not even trying to play the same rhythm.
+     * Measuring from the server’s timestamp makes the disagreement impossible.
      */
-    private suspend fun runCountdownBeeps(totalSeconds: Int?) {
-        val startMs = System.currentTimeMillis()
+    private suspend fun runCountdownBeeps(totalSeconds: Int?, startedAtServerMs: Long?) {
+        val startMs = startedAtServerMs ?: HaClock.nowMs()
         try {
             while (true) {
-                val elapsed = ((System.currentTimeMillis() - startMs) / 1000L).toInt()
+                val elapsed = ((HaClock.nowMs() - startMs) / 1000L).toInt()
                 val remaining = totalSeconds?.let { (it - elapsed).coerceAtLeast(0) }
                 if (remaining != null && remaining <= 0) break
                 // Wait for the shared beat, then pip — rather than pipping immediately and
@@ -850,7 +873,7 @@ class HvacForegroundService : Service() {
                 // happened to start and leave the panels out of step from the opening tick.
                 delay(
                     AlarmBeeper.millisUntilNextSlot(
-                        System.currentTimeMillis(),
+                        HaClock.nowMs(),
                         AlarmBeeper.intervalMsFor(remaining)
                     )
                 )
