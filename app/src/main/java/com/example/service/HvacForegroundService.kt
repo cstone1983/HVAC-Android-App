@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -168,6 +169,7 @@ class HvacForegroundService : Service() {
         // worse than one that ends early. START_STICKY brings the service back, and it will
         // start sounding again if the panel is still triggered.
         AlarmSiren.stop(this)
+        AlarmBeeper.release()
         cancelAlarmTriggeredNotification()
         super.onDestroy()
     }
@@ -470,28 +472,53 @@ class HvacForegroundService : Service() {
             // than captured, so turning the siren off in settings takes effect mid-alarm instead of
             // at the next service restart.
             launch {
-                var triggered = false
+                var lastState: String? = null
+                var beepJob: Job? = null
                 wsManager.states.collect { statesMap ->
-                    val alarmId = HvacViewModel.getInstance()
-                        ?.getActiveLayoutConfig()?.alarm?.entityId
-                        ?: "alarm_control_panel.alarmo"
+                    val alarmCfg = HvacViewModel.getInstance()?.getActiveLayoutConfig()?.alarm
+                    val alarmId = alarmCfg?.entityId ?: "alarm_control_panel.alarmo"
                     val allowed = sharedPrefs.getBoolean(
                         "alarm_siren_enabled",
                         AlarmSiren.isWallPanel(this@HvacForegroundService)
                     )
-                    val notifyEnabled = HvacViewModel.getInstance()
-                        ?.getActiveLayoutConfig()?.alarm?.notifyOnTrigger != false
-                    val goingOff = statesMap[alarmId]?.state == "triggered"
-                    if (goingOff == triggered) return@collect
-                    triggered = goingOff
+                    val notifyEnabled = alarmCfg?.notifyOnTrigger != false
+                    
+                    val node = statesMap[alarmId]
+                    val state = node?.state
+                    if (state == lastState) return@collect
+                    lastState = state
+                    
                     // The siren is gated per device; the notification is not. A phone kept
                     // deliberately silent should still light up and buzz.
-                    if (goingOff) {
+                    if (state == "triggered") {
                         if (allowed) AlarmSiren.start(this@HvacForegroundService)
                         if (notifyEnabled) postAlarmTriggeredNotification()
                     } else {
                         AlarmSiren.stop(this@HvacForegroundService)
                         cancelAlarmTriggeredNotification()
+                    }
+                    
+                    // The countdown tick, on panels only.
+                    //
+                    // Entry by default, exit on request: a panel that beeps every time the
+                    // house is armed from the sofa wears thin quickly, whereas the tick on
+                    // the way in is the one that stops a false alarm.
+                    val beepNow = allowed && when (state) {
+                        "pending" -> alarmCfg?.entryBeep != false
+                        "arming" -> alarmCfg?.exitBeep == true
+                        else -> false
+                    }
+                    // cancelAndJoin, not cancel: the old loop releases the shared AudioTrack
+                    // in its finally block, and letting that race a newly started loop would
+                    // release the track out from under it.
+                    beepJob?.cancelAndJoin()
+                    beepJob = null
+                    if (beepNow) {
+                        // Alarmo reports the running delay on the entity; the configured value
+                        // is the fallback for a panel that does not.
+                        val total = node?.getDoubleAttribute("delay")?.toInt()
+                            ?: alarmCfg?.entryDelaySeconds
+                        beepJob = launch { runCountdownBeeps(total) }
                     }
                 }
             }
@@ -794,6 +821,31 @@ class HvacForegroundService : Service() {
             // POST_NOTIFICATIONS can be refused on Android 13+. The siren does not depend on
             // this, so losing the notification must not take the noise down with it.
             android.util.Log.w("HvacForegroundService", "Could not post the alarm notification", e)
+        }
+    }
+
+    /**
+     * Tick while the panel waits for a code, faster as the time runs out.
+     *
+     * The acceleration is the information: it says how long is left without asking anyone to
+     * find a screen, at exactly the moment they are least inclined to go looking for one.
+     *
+     * Ends on its own when the countdown reaches zero, and is cancelled by the collector the
+     * moment the panel leaves the delay — disarmed, or triggered and the siren takes over.
+     * The track is released in a finally so a cancellation cannot strand it.
+     */
+    private suspend fun runCountdownBeeps(totalSeconds: Int?) {
+        val startMs = System.currentTimeMillis()
+        try {
+            while (true) {
+                val elapsed = ((System.currentTimeMillis() - startMs) / 1000L).toInt()
+                val remaining = totalSeconds?.let { (it - elapsed).coerceAtLeast(0) }
+                if (remaining != null && remaining <= 0) break
+                AlarmBeeper.beep(this)
+                delay(AlarmBeeper.intervalMsFor(remaining))
+            }
+        } finally {
+            AlarmBeeper.release()
         }
     }
 

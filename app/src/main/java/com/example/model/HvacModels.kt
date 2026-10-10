@@ -692,6 +692,11 @@ data class AlarmConfig(
     // every device, phone included: the siren is a wall-panel thing, but a phone in a pocket is
     // the device most likely to be with whoever needs to know.
     val notifyOnTrigger: Boolean? = true,
+    // The countdown tick on the wall panels, as a real alarm panel does it. Entry is on by
+    // default because that tick is what stops a false alarm; exit is off, because a panel
+    // that beeps every time the house is armed from the sofa wears thin quickly.
+    val entryBeep: Boolean? = true,
+    val exitBeep: Boolean? = false,
     val sensors: List<AlarmSensorConfig>? = emptyList(),
     /**
      * Entry delay in seconds, used only when the panel does not report one itself.

@@ -397,13 +397,26 @@ private fun AlarmStatusCard(
                         )
                     }
                 }
+                // Cancelling a countdown *is* disarming, so it goes to the keypad like any
+                // other disarm and the code is still required. Only the wording changes:
+                // "DISARM" is what you want on an armed house, "CANCEL" is what you are
+                // looking for when the clock is running and you have ten seconds to find it.
+                val counting = alarm.phase == AlarmPhase.ARMING ||
+                    alarm.phase == AlarmPhase.PENDING
                 SegmentedControlButton(
-                    label = if (canArmDirectly) "KEYPAD" else "DISARM",
+                    label = when {
+                        counting -> "CANCEL"
+                        canArmDirectly -> "KEYPAD"
+                        else -> "DISARM"
+                    },
                     icon = if (canArmDirectly) Icons.Default.Lock else Icons.Default.LockOpen,
                     color = accent,
                     isSelected = !canArmDirectly,
-                    contentDescription = if (canArmDirectly) "Open the alarm keypad"
-                        else "Open the keypad to disarm",
+                    contentDescription = when {
+                        counting -> "Open the keypad to cancel the countdown"
+                        canArmDirectly -> "Open the alarm keypad"
+                        else -> "Open the keypad to disarm"
+                    },
                     testTagId = "alarm_show_keypad_btn",
                     onClick = onShowKeypad
                 )
@@ -753,11 +766,12 @@ private fun CircleShapeIfDigit(isDigit: Boolean) =
  * the way out of the door, and arming is now two taps from the home screen rather than a trip
  * to another tab.
  *
- * It **reformats in place** rather than growing. While an exit or entry delay runs, the countdown
- * replaces the arm buttons in the same footprint, so the card never changes height and the number
- * lands where the buttons were. Hiding them is also the honest thing to do: pressing arm again
- * mid-countdown does nothing useful, and leaving a dead button on screen during the one moment
- * that matters invites jabbing at it.
+ * It **reformats in place** rather than growing. While an exit or entry delay runs, the
+ * countdown takes the headline and a single CANCEL key takes the arm buttons’ slot, so the
+ * card never changes height. Swapping rather than hiding matters both ways: pressing arm again
+ * mid-countdown does nothing useful, and a dead button during the one moment that counts
+ * invites jabbing at it — but an empty space would waste the only moment the panel is worth
+ * touching from the home screen at all.
  *
  * Everything shown is derived, never configured: the available modes come from the panel's own
  * `supported_features`, so a mode added or removed in Alarmo changes these buttons without an
@@ -826,6 +840,16 @@ fun HomeAlarmCard(viewModel: HvacViewModel, modifier: Modifier = Modifier) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Spacer(Modifier.height(7.dp))
+                // Takes the slot the arm buttons occupy the rest of the time, so the card
+                // still does not change height — but the slot is no longer empty, because
+                // this is the one thing worth pressing while the clock runs. It opens the
+                // keypad like any other disarm: the code is still required.
+                AlarmChipButton(
+                    label = "CANCEL",
+                    accent = Color(0xFFEF4444),
+                    modifier = Modifier.fillMaxWidth()
+                ) { viewModel.openAlarmKeypad() }
             } else {
                 Text(
                     text = when (alarm.phase) {

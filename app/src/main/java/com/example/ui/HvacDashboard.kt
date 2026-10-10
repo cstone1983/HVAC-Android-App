@@ -1512,6 +1512,40 @@ fun HvacDashboardContent(
         }
     }
 
+    // ...but once the code has actually been accepted, the alarm tab is the wrong place to
+    // be left standing. You walked in, the panel was counting down, you typed the code: what
+    // you want next is the house — temperatures, what is open, whether anything needs doing
+    // — not the screen that just finished its job. The idle timer would get there eventually,
+    // twenty seconds later, which is twenty seconds of staring at a solved problem.
+    //
+    // Deliberately scoped to the keypad having just been used, rather than to the house
+    // becoming disarmed. Those are different events: if the alarm tab is open because
+    // somebody is reading it, and the house is disarmed from a different panel or from Home
+    // Assistant, yanking the page out from under them would be wrong. This only fires for
+    // the person who just typed the code here.
+    val alarmState by viewModel.alarmState.collectAsStateWithLifecycle()
+    var keypadWasOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(alarmKeypadVisible, alarmState.phase) {
+        if (alarmKeypadVisible) {
+            keypadWasOpen = true
+        } else if (keypadWasOpen) {
+            keypadWasOpen = false
+            // Arming through the keypad leaves the phase ARMING, not DISARMED, so this does
+            // not fire on the way out of the door — only on the way back in.
+            if (alarmState.phase == com.example.model.AlarmPhase.DISARMED) {
+                selectedTab = 0
+                lastInteractionTime = System.currentTimeMillis()
+                if (listStates.isNotEmpty()) {
+                    try {
+                        listStates[0].scrollToItem(0)
+                    } catch (e: Exception) {
+                        // Safeguard against scroll interruptions
+                    }
+                }
+            }
+        }
+    }
+
     var isMenuExpanded by remember { mutableStateOf(!isLandscape) }
     val sidePanelWidth by animateDpAsState(targetValue = if (isMenuExpanded) 260.dp else 72.dp, label = "side_panel_width")
 
