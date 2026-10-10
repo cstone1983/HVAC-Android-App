@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -740,3 +741,166 @@ private fun KeypadKey(key: String, modifier: Modifier = Modifier, onPress: () ->
 /** Digits read better as circles; the two action keys as rounded rectangles. */
 private fun CircleShapeIfDigit(isDigit: Boolean) =
     if (isDigit) CircleShape else RoundedCornerShape(14.dp)
+
+// -------------------------------------------------------------------------------------------
+// Home screen card
+// -------------------------------------------------------------------------------------------
+
+/**
+ * The alarm, in the slot on the home screen where humidity used to sit.
+ *
+ * Humidity was a number nobody ever acted on. This is the one piece of state worth a glance on
+ * the way out of the door, and arming is now two taps from the home screen rather than a trip
+ * to another tab.
+ *
+ * It **reformats in place** rather than growing. While an exit or entry delay runs, the countdown
+ * replaces the arm buttons in the same footprint, so the card never changes height and the number
+ * lands where the buttons were. Hiding them is also the honest thing to do: pressing arm again
+ * mid-countdown does nothing useful, and leaving a dead button on screen during the one moment
+ * that matters invites jabbing at it.
+ *
+ * Everything shown is derived, never configured: the available modes come from the panel's own
+ * `supported_features`, so a mode added or removed in Alarmo changes these buttons without an
+ * app release.
+ */
+@Composable
+fun HomeAlarmCard(viewModel: HvacViewModel, modifier: Modifier = Modifier) {
+    val alarm by viewModel.alarmState.collectAsStateWithLifecycle()
+    val theme = LocalHvacTheme.current
+    val accent = phaseColor(alarm.phase)
+    val secondsLeft = rememberSecondsRemaining(alarm)
+    val counting = alarm.phase == AlarmPhase.ARMING || alarm.phase == AlarmPhase.PENDING
+
+    Card(
+        modifier = modifier.testTag("home_alarm_card"),
+        colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+        border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+        shape = hvacCardShape(12)
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    if (alarm.phase == AlarmPhase.DISARMED) Icons.Default.LockOpen
+                    else Icons.Default.Shield,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    "ALARM",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.3.sp,
+                    color = Color.White.copy(alpha = 0.55f)
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+
+            if (counting) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = secondsLeft?.toString() ?: "--",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accent
+                    )
+                    Text(
+                        "s",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accent.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(start = 1.dp, bottom = 3.dp)
+                    )
+                }
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = if (alarm.phase == AlarmPhase.ARMING) "ARMING — EXIT NOW"
+                           else "ENTRY — DISARM NOW",
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp,
+                    color = accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else {
+                Text(
+                    text = when (alarm.phase) {
+                        AlarmPhase.DISARMED -> "DISARMED"
+                        AlarmPhase.ARMED ->
+                            alarm.armMode?.removePrefix("armed_")?.uppercase() ?: "ARMED"
+                        AlarmPhase.TRIGGERED -> "TRIGGERED"
+                        else -> "--"
+                    },
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.height(7.dp))
+                when {
+                    alarm.phase == AlarmPhase.DISARMED && alarm.armOptions.isNotEmpty() -> {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            alarm.armOptions.forEach { option ->
+                                AlarmChipButton(
+                                    label = option.label,
+                                    accent = theme.coolColor,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    // Arming may or may not need the code — that is an Alarmo
+                                    // setting, separate from the one for disarming. Ask for the
+                                    // keypad when it does rather than firing a call that will be
+                                    // refused silently.
+                                    if (alarm.requiresCodeToArm) viewModel.openAlarmKeypad()
+                                    else viewModel.submitAlarmCommand(option.service, "")
+                                }
+                            }
+                        }
+                    }
+                    // Disarming always goes through the keypad: the code is typed and passed
+                    // straight to the service call, never held anywhere.
+                    alarm.isPresent -> AlarmChipButton(
+                        label = "DISARM",
+                        accent = Color(0xFFEF4444),
+                        modifier = Modifier.fillMaxWidth()
+                    ) { viewModel.openAlarmKeypad() }
+                }
+            }
+        }
+    }
+}
+
+/** A compact arm/disarm key, sized to sit inside the home screen's narrow status column. */
+@Composable
+private fun AlarmChipButton(
+    label: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .height(30.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(accent.copy(alpha = 0.16f))
+            .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.8.sp,
+            color = accent,
+            maxLines = 1
+        )
+    }
+}

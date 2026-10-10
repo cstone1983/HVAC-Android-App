@@ -1850,11 +1850,19 @@ fun HvacDashboardContent(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    HumidityCard(
-                        viewModel = viewModel,
-                        sensors = homeStatusCfg?.humiditySensors.orEmpty(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    if (homeStatusCfg?.showAlarmCard != false) {
+                        HomeAlarmCard(
+                            viewModel = viewModel,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (homeStatusCfg?.showHumidityCard == true) {
+                        HumidityCard(
+                            viewModel = viewModel,
+                            sensors = homeStatusCfg?.humiditySensors.orEmpty(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
 
                     if (secondaryRooms.isNotEmpty()) {
                         Card(
@@ -1948,11 +1956,19 @@ fun HvacDashboardContent(
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                HumidityCard(
-                    viewModel = viewModel,
-                    sensors = homeStatusCfg?.humiditySensors.orEmpty(),
-                    modifier = Modifier.weight(1f)
-                )
+                if (homeStatusCfg?.showAlarmCard != false) {
+                    HomeAlarmCard(
+                        viewModel = viewModel,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (homeStatusCfg?.showHumidityCard == true) {
+                    HumidityCard(
+                        viewModel = viewModel,
+                        sensors = homeStatusCfg?.humiditySensors.orEmpty(),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
                 PresenceCard(
                     viewModel = viewModel,
                     presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),

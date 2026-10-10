@@ -1,5 +1,5 @@
 {
-  "version": "6.9.0",
+  "version": "6.10.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -485,7 +485,9 @@
       }
     ],
     "hideRoomSensorIds": [],
-    "presenceHistoryDays": 30
+    "presenceHistoryDays": 30,
+    "showAlarmCard": true,
+    "showHumidityCard": false
   },
   "alarm": {
     "entityId": "alarm_control_panel.alarmo",

@@ -188,7 +188,13 @@ data class HomeStatusConfig(
     // How far back the who's-home popup looks for a real arrival/departure. Should track
     // Home Assistant's recorder purge_keep_days: querying further back than the recorder
     // retains just reports "no change recorded" for everyone.
-    val presenceHistoryDays: Int? = 30
+    val presenceHistoryDays: Int? = 30,
+    // Which card holds the home screen's status slot. The alarm took humidity's place there:
+    // humidity was a number nobody ever acted on, and arming on the way out of the door is.
+    // Both are flags rather than a deletion so the swap can be undone from layout_config.json
+    // without a rebuild, and so a panel that wants both can have both.
+    val showAlarmCard: Boolean? = true,
+    val showHumidityCard: Boolean? = false
 )
 
 @JsonClass(generateAdapter = true)
