@@ -3191,6 +3191,59 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // -------------------------------------------------------------------------------------
+    // Solar Calc (the separate forecasting system behind solar.stoneyshome.com)
+    // -------------------------------------------------------------------------------------
+
+    private val _solarToday = MutableStateFlow(com.example.model.SolarTodayState())
+    val solarToday: StateFlow<com.example.model.SolarTodayState> = _solarToday.asStateFlow()
+
+    /**
+     * Fetch Solar Calc’s view of today.
+     *
+     * Driven by the solar tab being on screen rather than by the foreground service. The
+     * service exists to hold the Home Assistant connection up and to sound the alarm; polling
+     * a website for a chart nobody is looking at would be work done on battery for nothing,
+     * and this app has already been slimmed once for doing too much in the background.
+     *
+     * Failure keeps the previous response. See [com.example.model.SolarTodayState].
+     */
+    suspend fun fetchSolarToday() {
+        val cfg = getActiveLayoutConfig().solarCalc
+        if (cfg?.enabled == false) return
+
+        _solarToday.value = _solarToday.value.copy(isLoading = true)
+        try {
+            val url = com.example.api.SolarCalcClient.todayUrl(cfg?.baseUrl)
+            val response = com.example.api.SolarCalcClient.service.today(url)
+
+            if (!response.isSupported) {
+                // Keep whatever was already on screen. A response whose shape has changed
+                // would still parse into mostly-nulls and draw mostly-plausible numbers,
+                // which on a solar dashboard is worse than saying nothing new.
+                _solarToday.value = _solarToday.value.copy(
+                    isLoading = false,
+                    unsupportedVersion = true,
+                    error = null
+                )
+                return
+            }
+
+            _solarToday.value = com.example.model.SolarTodayState(
+                response = response,
+                isLoading = false,
+                error = null,
+                fetchedAtMillis = System.currentTimeMillis(),
+                unsupportedVersion = false
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("HvacViewModel", "Solar Calc fetch failed", e)
+            _solarToday.value = _solarToday.value.copy(
+                isLoading = false,
+                error = e.message ?: "Could not reach Solar Calc"
+            )
+        }
+    }
     suspend fun fetchWeather() {
         _weatherState.value = _weatherState.value.copy(isLoading = true, error = null)
         try {

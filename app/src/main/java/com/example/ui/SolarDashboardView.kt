@@ -60,51 +60,33 @@ fun SolarDashboardView(
 
     var activeTrendTab by remember { mutableStateOf(1) } // 0: 6h, 1: 24h, 2: 7d
 
-    val (todayGeneration, todayUsage) = remember(history24h, liveState, dailyHistory) {
-        val estTz = java.util.TimeZone.getTimeZone("America/New_York")
-        val cal = java.util.Calendar.getInstance(estTz)
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        cal.set(java.util.Calendar.MINUTE, 0)
-        cal.set(java.util.Calendar.SECOND, 0)
-        cal.set(java.util.Calendar.MILLISECOND, 0)
-        val midnightMillis = cal.timeInMillis
+    // Solar Calc: the separate forecasting system behind solar.stoneyshome.com.
+    //
+    // Polled only while this tab is on screen. It is a website, not a controller, and nobody
+    // needs its chart refreshed on a panel showing the pool.
+    val solarToday by viewModel.solarToday.collectAsStateWithLifecycle()
+    val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
+    val solarCalcCfg = layoutConfig.solarCalc
+    val solarPalette = rememberSolarPalette(solarCalcCfg?.colors)
 
-        val pointsSinceMidnight = history24h.filter { it.epochMillis >= midnightMillis }
-        if (pointsSinceMidnight.isEmpty()) {
-            val todayBarPoint = dailyHistory.lastOrNull()
-            Pair(todayBarPoint?.totalProducedKwh ?: 0f, todayBarPoint?.totalConsumedKwh ?: 0f)
-        } else {
-            val list = pointsSinceMidnight.toMutableList()
-            if (liveState.isFetched) {
-                val nowMs = System.currentTimeMillis()
-                val lastPt = list.lastOrNull()
-                if (lastPt != null && nowMs - lastPt.epochMillis < 300000L) { // 5 mins
-                    list[list.size - 1] = SolarLinePoint(
-                        timestampLabel = lastPt.timestampLabel,
-                        epochMillis = nowMs,
-                        usageWatts = liveState.liveUsageWatts,
-                        productionWatts = liveState.liveProductionWatts
-                    )
-                } else {
-                    val formattedNow = java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).apply {
-                        timeZone = estTz
-                    }.format(java.util.Date(nowMs))
-                    list.add(
-                        SolarLinePoint(
-                            timestampLabel = formattedNow,
-                            epochMillis = nowMs,
-                            usageWatts = liveState.liveUsageWatts,
-                            productionWatts = liveState.liveProductionWatts
-                        )
-                    )
-                }
-            }
-            val prodKwh = list.sumOf { it.productionWatts.toDouble() }.toFloat() / 6000f
-            val consKwh = list.sumOf { it.usageWatts.toDouble() }.toFloat() / 6000f
-            Pair(prodKwh, consKwh)
+    LaunchedEffect(solarCalcCfg?.enabled, solarCalcCfg?.baseUrl, solarCalcCfg?.pollSeconds) {
+        if (solarCalcCfg?.enabled == false) return@LaunchedEffect
+        val everyMs = ((solarCalcCfg?.pollSeconds ?: 60).coerceAtLeast(15)) * 1000L
+        while (true) {
+            viewModel.fetchSolarToday()
+            kotlinx.coroutines.delay(everyMs)
         }
     }
 
+    // The app used to work out today’s generation and usage itself, here, and it was wrong:
+    // it summed every power reading since midnight and divided by 6000, which counts each
+    // reading as exactly ten minutes. The readings are not evenly spaced, so the total ran
+    // about 2% high — always upwards, every day. That is the 98.0 kWh the phone showed
+    // against the website’s 95.7 kWh for the same September day.
+    //
+    // Both figures now come from the endpoint, which does not integrate power at all: they
+    // are the meters’ own daily energy counters, which match Home Assistant’s hourly
+    // statistics to 0.01%. Nothing here recomputes them, so the two can never disagree again.
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = modifier
@@ -129,32 +111,19 @@ fun SolarDashboardView(
             theme = theme
         )
 
-        // B. Side-by-Side Metric Cards
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            MetricCard(
-                title = "CURRENT PRODUCTION",
-                value = liveState.liveProductionWatts,
-                icon = Icons.Default.WbSunny,
-                iconColor = theme.ecoColor,
-                isPower = true,
-                lastUpdated = liveState.productionLastUpdated,
-                modifier = Modifier.weight(1f),
-                theme = theme
-            )
-            MetricCard(
-                title = "GRID STATUS",
-                value = liveState.liveUsageWatts,
-                icon = Icons.Default.Bolt,
-                iconColor = theme.coolColor,
-                isPower = true,
-                lastUpdated = liveState.usageLastUpdated,
-                modifier = Modifier.weight(1f),
-                theme = theme
-            )
-        }
+        // B. Today, from Solar Calc.
+        //
+        // This replaced two cards that were quietly misleading. "CURRENT PRODUCTION" was fine,
+        // but "GRID STATUS" showed whole-house consumption, not the grid — the panel CTs
+        // cannot see export at all, so the export sensor reads a permanent zero and the one
+        // labelled grid usage is really house usage. The Right now tile gets grid from the
+        // endpoint, which knows the difference and signs it: positive pulling, negative
+        // sending.
+        SolarCalcTodaySection(
+            state = solarToday,
+            palette = solarPalette,
+            enabled = solarCalcCfg?.enabled != false
+        )
 
         // C. Bottom Graph / Trends Card
         Card(
@@ -389,86 +358,9 @@ fun SolarDashboardView(
                     }
                 }
 
-                HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Today's Generation card
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(10.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(10.dp))
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.WbSunny,
-                                contentDescription = null,
-                                tint = theme.ecoColor,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = "TODAY'S GENERATION",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White.copy(alpha = 0.5f),
-                                letterSpacing = 0.5.sp
-                            )
-                        }
-                        Text(
-                            text = String.format(java.util.Locale.US, "%.2f kWh", todayGeneration),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White,
-                            modifier = Modifier.testTag("today_generation_value")
-                        )
-                    }
-
-                    // Today's Usage card
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(10.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.04f), RoundedCornerShape(10.dp))
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Bolt,
-                                contentDescription = null,
-                                tint = theme.coolColor,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = "TODAY'S USAGE",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Black,
-                                color = Color.White.copy(alpha = 0.5f),
-                                letterSpacing = 0.5.sp
-                            )
-                        }
-                        Text(
-                            text = String.format(java.util.Locale.US, "%.2f kWh", todayUsage),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White,
-                            modifier = Modifier.testTag("today_usage_value")
-                        )
-                    }
-                }
+                // The TODAY’S GENERATION and TODAY’S USAGE cards stood here. They are now the
+                // Today so far tile at the top of this tab, taking their figures from the
+                // endpoint rather than from power readings added up on the device.
 
                 HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
 

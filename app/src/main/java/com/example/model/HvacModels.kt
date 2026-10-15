@@ -197,6 +197,60 @@ data class HomeStatusConfig(
     val showHumidityCard: Boolean? = false
 )
 
+/**
+ * The Solar Calc endpoint and the colours its Today section is drawn in.
+ *
+ * Everything here is configuration rather than code because the site is a separate system on
+ * its own release schedule: if it moves, or its palette is retuned, the panels should follow
+ * without an app build. Nothing secret belongs in this file — the repository is public — so if
+ * the endpoint ever needs an auth header it comes from on-device settings, like the Home
+ * Assistant token, never from here.
+ */
+@JsonClass(generateAdapter = true)
+data class SolarCalcConfig(
+    val enabled: Boolean? = true,
+    /** Works both at home and away. The LAN address is http://10.10.1.156:8080/. */
+    val baseUrl: String? = "https://solar.stoneyshome.com/",
+    /**
+     * How often to re-fetch while the solar tab is on screen.
+     *
+     * The server re-issues its forecast every fifteen minutes and samples every five, so a
+     * minute is already faster than the data changes. It is this frequent so that the Right
+     * now tile does not visibly lag the net meter card above it, which is live from the Home
+     * Assistant WebSocket.
+     */
+    val pollSeconds: Int? = 60,
+    val colors: SolarCalcColors? = SolarCalcColors()
+)
+
+/**
+ * The site’s own palette, so the tab reads as the same product rather than a lookalike.
+ *
+ * Hex strings rather than theme references on purpose: these are not the app’s theme colours
+ * and should not drift with it. The Today section is a window onto another system and is
+ * supposed to look like that system.
+ */
+@JsonClass(generateAdapter = true)
+data class SolarCalcColors(
+    /** Tile and card background. */
+    val panel: String? = "#111823",
+    /** 1px borders and chart grid. */
+    val line: String? = "#222d3d",
+    /** Values with tone "plain". */
+    val text: String? = "#e6edf7",
+    /** Tile labels and axis labels. */
+    val muted: String? = "#8b98ad",
+    /** Item names, and the lines under the values. */
+    val soft: String? = "#b4c0d2",
+    /** Tone "solar", and the generation line. */
+    val solar: String? = "#f0a92a",
+    /** Tone "house", and the house line. */
+    val house: String? = "#5b8ff9",
+    /** The forecast line. */
+    val model: String? = "#9aa7bd",
+    val good: String? = "#3ecf8e",
+    val warn: String? = "#e8b23a"
+)
 @JsonClass(generateAdapter = true)
 data class HvacLayoutConfig(
     val version: String,
@@ -216,6 +270,7 @@ data class HvacLayoutConfig(
     val waterHeaterRunningEntityId: String? = "binary_sensor.heat_pump_water_heater_running",
     val poolSensors: PoolSensorConfig? = PoolSensorConfig(),
     val solarSensors: SolarSensorConfig? = SolarSensorConfig(),
+    val solarCalc: SolarCalcConfig? = SolarCalcConfig(),
     val alarm: AlarmConfig? = AlarmConfig(),
     val homeStatus: HomeStatusConfig? = HomeStatusConfig(),
     val dynamicSections: List<DynamicSectionConfig>? = emptyList(),

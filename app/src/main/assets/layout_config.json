@@ -1,5 +1,5 @@
 {
-  "version": "6.13.0",
+  "version": "6.14.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -488,6 +488,23 @@
     "presenceHistoryDays": 30,
     "showAlarmCard": true,
     "showHumidityCard": false
+  },
+  "solarCalc": {
+    "enabled": true,
+    "baseUrl": "https://solar.stoneyshome.com/",
+    "pollSeconds": 60,
+    "colors": {
+      "panel": "#111823",
+      "line": "#222d3d",
+      "text": "#e6edf7",
+      "muted": "#8b98ad",
+      "soft": "#b4c0d2",
+      "solar": "#f0a92a",
+      "house": "#5b8ff9",
+      "model": "#9aa7bd",
+      "good": "#3ecf8e",
+      "warn": "#e8b23a"
+    }
   },
   "alarm": {
     "entityId": "alarm_control_panel.alarmo",
