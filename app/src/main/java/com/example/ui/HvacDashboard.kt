@@ -1972,7 +1972,21 @@ fun HvacDashboardContent(
             // and the weather forecast say nothing about the alarm, and together they pushed the
             // status and keypad below the fold on the phone — so the tab's own summary takes
             // their place: whether it is armed, and whether anything is open or detecting.
+            // The header belongs to the main dashboard, and only to it.
+            //
+            // The status row, the room temperature strip and the weather card describe the house
+            // as a whole. On solar and pool they say nothing about what the page is for, and they
+            // were taking roughly a third of the height the graph could have had — on a panel
+            // read from across the room that is the difference between following a line and
+            // squinting at it.
+            //
+            // The alarm tab stays a separate case: it does not merely drop the header, it swaps
+            // in its own summary, because whether it is armed and whether anything is open is
+            // exactly what someone opening that tab came to find out.
             val headerTabId = activeTabs.getOrNull(selectedTab)?.id?.lowercase()
+            val headerTabs = homeStatusCfg?.headerTabIds ?: listOf("zones")
+            val showHeader = headerTabId != null &&
+                headerTabs.any { it.equals(headerTabId, ignoreCase = true) }
 
             if (headerTabId == "alarm") {
                 AlarmSummaryStrip(
@@ -1980,7 +1994,7 @@ fun HvacDashboardContent(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-            } else {
+            } else if (showHeader) {
             // Status row: the two things the phone had no way to show at all. Rooms that
             // already appear as zone cards are excluded from the strip below so the same
             // room can't report two different temperatures on one screen.

@@ -193,6 +193,17 @@ data class HomeStatusConfig(
     // humidity was a number nobody ever acted on, and arming on the way out of the door is.
     // Both are flags rather than a deletion so the swap can be undone from layout_config.json
     // without a rebuild, and so a panel that wants both can have both.
+    // Which tabs carry the header — the status row, the room temperature strip and the
+    // weather card. Only the main dashboard by default.
+    //
+    // Those three are about the house as a whole and say nothing about solar or the pool,
+    // where they were costing roughly a third of the height a graph could have had. A
+    // chart on a wall panel is read from across the room, so that height is the difference
+    // between a line you can follow and one you squint at.
+    //
+    // A list rather than a flag so a tab can be added back without a build. The alarm tab
+    // is not in it and never needs to be: it swaps in its own summary instead.
+    val headerTabIds: List<String>? = listOf("zones"),
     val showAlarmCard: Boolean? = true,
     val showHumidityCard: Boolean? = false
 )

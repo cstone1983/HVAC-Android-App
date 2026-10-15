@@ -1,5 +1,5 @@
 {
-  "version": "6.14.0",
+  "version": "6.15.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -486,6 +486,7 @@
     ],
     "hideRoomSensorIds": [],
     "presenceHistoryDays": 30,
+    "headerTabIds": ["zones"],
     "showAlarmCard": true,
     "showHumidityCard": false
   },
