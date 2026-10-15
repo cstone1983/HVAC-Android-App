@@ -568,7 +568,7 @@ internal fun formatLocalTime(epochMillis: Long): String =
  * Text measurement throws on some layout passes when the width collapses to nothing, and a label
  * is never worth losing the whole graph over.
  */
-private fun DrawScope.drawTextSafely(
+internal fun DrawScope.drawTextSafely(
     measurer: androidx.compose.ui.text.TextMeasurer,
     text: String,
     x: Float,
@@ -678,6 +678,10 @@ fun SolarCalcTodaySection(
                         }
                     }
                 }
+
+                // The week either side of today, below the chart as on the site. Hidden
+                // entirely when the reply predates the field.
+                SolarWeekSection(week = response.week, palette = palette)
             }
         }
     }

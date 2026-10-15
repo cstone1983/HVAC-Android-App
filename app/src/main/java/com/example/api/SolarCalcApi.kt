@@ -63,7 +63,13 @@ data class SolarTodayResponse(
     /** True when the last sample is more than fifteen minutes old. */
     val stale: Boolean? = null,
     val tiles: List<SolarTile>? = null,
-    val chart: SolarChart? = null
+    val chart: SolarChart? = null,
+    /**
+     * The week either side of today. Added after version 1 shipped, which is why it is
+     * optional rather than a version bump: a build that predates it simply never looks, and a
+     * build that expects it hides both cards when the field is absent.
+     */
+    val week: SolarWeek? = null
 ) {
     /**
      * The contract this app was written against.
@@ -163,4 +169,84 @@ data class SolarChartPoint(
 data class SolarShadeSpan(
     val from: String? = null,
     val to: String? = null
+)
+
+// -------------------------------------------------------------------------------------------
+// The week either side of today
+// -------------------------------------------------------------------------------------------
+
+/**
+ * Seven finished days, today, and six forecast days — the same window the website opens on.
+ *
+ * The site offers 7d / 30d / 90d / 1y buttons; the app deliberately does not. The reply always
+ * carries this one window, and adding range buttons would mean either new endpoints or the app
+ * re-slicing data it did not compute, which is the thing this whole contract exists to prevent.
+ */
+@JsonClass(generateAdapter = true)
+data class SolarWeek(
+    val title: String? = null,
+    /** The small line at the card's top right, e.g. "6 days forecast · last 7 days measured". */
+    val tag: String? = null,
+    /** Oldest first: finished days, then today, then the forecast. */
+    val days: List<SolarWeekDay>? = null,
+    val costs: SolarWeekCosts? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class SolarWeekDay(
+    val day: String? = null,
+    val weekday: String? = null,
+    /** "Oct 15". The narrow layout shows the day number alone instead. */
+    val date: String? = null,
+    /** "past", "today" or "future". */
+    val kind: String? = null,
+    /** Finished days only — the solid gold line. */
+    @Json(name = "actual_kwh") val actualKwh: Double? = null,
+    /** Today only — the hollow circle, not joined to either line. */
+    @Json(name = "so_far_kwh") val soFarKwh: Double? = null,
+    @Json(name = "so_far_label") val soFarLabel: String? = null,
+    /** The dashed line. Null leaves a genuine gap rather than a line through nothing. */
+    @Json(name = "forecast_kwh") val forecastKwh: Double? = null,
+    @Json(name = "p10_kwh") val p10Kwh: Double? = null,
+    @Json(name = "p90_kwh") val p90Kwh: Double? = null,
+    val weather: SolarWeekWeather? = null,
+    /** What a tap on this column shows, in order. */
+    val readout: List<SolarTileLine>? = null
+) {
+    val isToday: Boolean get() = kind == "today"
+    val isFuture: Boolean get() = kind == "future"
+
+    /** True when both ends of the band are known; one end alone cannot be drawn. */
+    val hasBand: Boolean get() = p10Kwh != null && p90Kwh != null
+}
+
+@JsonClass(generateAdapter = true)
+data class SolarWeekWeather(
+    /** sunny, partly-sunny, mostly-cloudy, overcast, fog, drizzle, rain, showers, snow, storm. */
+    val kind: String? = null,
+    val label: String? = null,
+    /** e.g. "78% cloud". */
+    val detail: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class SolarWeekCosts(
+    val title: String? = null,
+    val tag: String? = null,
+    /** Header labels, in order. The narrow layout substitutes its own shorter ones. */
+    val columns: List<String>? = null,
+    val rows: List<SolarWeekCostRow>? = null,
+    /** The sentence under the table. May be absent. */
+    val summary: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class SolarWeekCostRow(
+    val day: String? = null,
+    val solar: String? = null,
+    val usage: String? = null,
+    @Json(name = "heat_pumps") val heatPumps: String? = null,
+    @Json(name = "to_bank") val toBank: String? = null,
+    /** good, warn or plain — the only coloured cell in the table. */
+    @Json(name = "to_bank_tone") val toBankTone: String? = null
 )
