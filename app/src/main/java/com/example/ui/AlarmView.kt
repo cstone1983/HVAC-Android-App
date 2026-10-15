@@ -58,6 +58,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -566,6 +567,23 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
         val maxCardHeight = (
             configuration.screenHeightDp.dp - TASKBAR_CLEARANCE - 24.dp
             ).coerceAtLeast(220.dp)
+
+        // Keys sized to the screen rather than fixed.
+        //
+        // 65dp keys plus the chrome around them want about 586dp, and the A9 has 505dp to
+        // give. Pinning the disarm key outside the scroll meant it was always reachable,
+        // but the bottom row of the keypad then went below the fold instead — clear and
+        // backspace, which is a keypad you cannot correct a typo on, during the one minute
+        // you have to type a code correctly.
+        //
+        // So the keys give way instead. CHROME is measured, not guessed: on the A9 the
+        // header, headline, counter, masked display, spacers, padding and the pinned action
+        // came to 294dp of the card, leaving the rest for four rows. Shrinking the counter
+        // on a short screen buys back enough to keep the keys above a fingertip.
+        val compact = maxCardHeight < 560.dp
+        val chromeHeight = if (compact) 268.dp else 294.dp
+        val keyHeight = ((maxCardHeight - chromeHeight) / 4 - 8.dp)
+            .coerceIn(46.dp, 65.dp)
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -637,7 +655,7 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                             Spacer(Modifier.height(2.dp))
                             Text(
                                 "$remaining",
-                                fontSize = 44.sp,
+                                fontSize = if (compact) 30.sp else 44.sp,
                                 fontWeight = FontWeight.Light,
                                 color = accent
                             )
@@ -657,7 +675,7 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                                 modifier = Modifier.testTag("alarm_code_display")
                             )
 
-                            Spacer(Modifier.height(14.dp))
+                            Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
 
                             listOf(
                                 listOf("1", "2", "3"),
@@ -673,6 +691,7 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                                         KeypadKey(
                                             key = key,
                                             modifier = Modifier.weight(1f),
+                                            height = keyHeight,
                                             onPress = {
                                                 lastKeyAt = System.currentTimeMillis()
                                                 when (key) {
@@ -820,11 +839,16 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
  * targets. At 2dp and 32% each key has an actual edge, which is what lets you aim without
  * looking carefully.
  */
-private fun KeypadKey(key: String, modifier: Modifier = Modifier, onPress: () -> Unit) {
+private fun KeypadKey(
+    key: String,
+    modifier: Modifier = Modifier,
+    height: Dp = 65.dp,
+    onPress: () -> Unit
+) {
     val isDigit = key.length == 1 && key[0].isDigit()
     Box(
         modifier = modifier
-            .heightIn(min = 65.dp)
+            .heightIn(min = height)
             .clip(CircleShapeIfDigit(isDigit))
             .background(Color.White.copy(alpha = if (isDigit) 0.05f else 0.02f))
             .border(
