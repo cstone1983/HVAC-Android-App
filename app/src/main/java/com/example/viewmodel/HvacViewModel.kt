@@ -239,6 +239,21 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * [code] is passed straight through to the service call and is never stored, cached or
      * written to a log. The only place it exists is the keypad's own transient state.
      */
+    /**
+     * True while a disarm or arm is in flight.
+     *
+     * Home Assistant acknowledges a service call only once the handler has finished, and
+     * Alarmo’s handler validates the typed code against its stored users before it changes
+     * state. That validation is the pause between pressing disarm and the keypad closing,
+     * and nothing in this app can shorten it.
+     *
+     * What it can do is stop the press looking ignored. The keypad still waits for the
+     * panel to actually disarm before closing — closing on the press would mean a mistyped
+     * code silently dismissed the keypad on a house that is still armed.
+     */
+    private val _alarmBusy = MutableStateFlow(false)
+    val alarmBusy: StateFlow<Boolean> = _alarmBusy.asStateFlow()
+
     fun submitAlarmCommand(service: String, code: String) {
         val entityId = _alarmState.value.entityId
         if (entityId.isEmpty()) {
@@ -247,13 +262,22 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
         _alarmFeedback.value = null
         viewModelScope.launch {
-            val payload = mutableMapOf<String, Any>("entity_id" to entityId)
-            if (code.isNotEmpty()) payload["code"] = code
-            val ok = performServiceCall("alarm_control_panel", service, payload)
-            if (!ok) {
-                // Deliberately vague about WHY. A panel that distinguishes "wrong code" from
-                // "sensor open" to anyone standing at it is a panel that helps you guess.
-                _alarmFeedback.value = "Not accepted — check the code and try again"
+            _alarmBusy.value = true
+            try {
+                val payload = mutableMapOf<String, Any>("entity_id" to entityId)
+                if (code.isNotEmpty()) payload["code"] = code
+                val ok = performServiceCall("alarm_control_panel", service, payload)
+                if (!ok) {
+                    // Deliberately vague about WHY. A panel that distinguishes "wrong code"
+                    // from "sensor open" to anyone standing at it is a panel that helps you
+                    // guess.
+                    _alarmFeedback.value = "Not accepted — check the code and try again"
+                }
+            } finally {
+                // In a finally because the call can time out after ten seconds, and a
+                // button stuck reading CHECKING for the rest of the evening would be
+                // worse than the pause this exists to explain.
+                _alarmBusy.value = false
             }
         }
     }

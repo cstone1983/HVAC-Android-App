@@ -500,6 +500,7 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
 
     val alarm by viewModel.alarmState.collectAsStateWithLifecycle()
     val feedback by viewModel.alarmFeedback.collectAsStateWithLifecycle()
+    val busy by viewModel.alarmBusy.collectAsStateWithLifecycle()
     val accent = phaseColor(alarm.phase)
     val remaining = rememberSecondsRemaining(alarm)
 
@@ -815,16 +816,23 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                     } else {
                         Row(modifier = Modifier.fillMaxWidth()) {
                             SegmentedControlButton(
-                                label = "DISARM",
+                                label = if (busy) "CHECKING…" else "DISARM",
                                 icon = Icons.Default.LockOpen,
                                 color = LocalHvacTheme.current.ecoColor,
-                                isSelected = false,
-                                contentDescription = "Disarm the alarm",
+                                isSelected = busy,
+                                contentDescription = if (busy) "Checking the code"
+                                else "Disarm the alarm",
                                 testTagId = "alarm_disarm_btn",
                                 onClick = {
                                     lastKeyAt.set(System.currentTimeMillis())
+                                    // Ignored while one is already in flight. Pressing it
+                                    // twice during the pause would send a second disarm
+                                    // with an empty code, which Alarmo counts as a failed
+                                    // attempt against you.
+                                    if (!busy) {
                                         viewModel.submitAlarmCommand("alarm_disarm", code)
-                                    code = ""
+                                        code = ""
+                                    }
                                 }
                             )
                         }
