@@ -504,6 +504,15 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
 
     var code by remember { mutableStateOf("") }
 
+    // Disarming needs the PIN; arming, on this panel, does not. Showing a dead keypad on a
+    // disarmed house puts twelve keys between you and the only two things you came here to
+    // do, so in that state the arm buttons become the whole dialog and get the room to be
+    // pressed without looking.
+    //
+    // Declared out here because the keypad scrolls and the action row does not, so the two
+    // live in different columns and both need to know.
+    val needsPin = alarm.phase != AlarmPhase.DISARMED || alarm.requiresCodeToArm
+
     // The keypad closes itself after a minute of nobody touching it, rather than sitting open on
     // a wall panel indefinitely with a half-typed code on screen. Every key press restarts the
     // minute. Closing it leaves you on the alarm tab, and the dashboard's own idle timer then
@@ -578,107 +587,119 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                 border = BorderStroke(1.dp, accent.copy(alpha = 0.5f)),
                 shape = hvacCardShape(18)
             ) {
+                // Two columns, not one, and the split is the whole point.
+                //
+                // Everything used to sit in a single scrolling column with the disarm key last.
+                // When the content outgrew the card — which it does during a real alarm, where
+                // the headline and the counter add about 70dp above the keys — the overflow came
+                // off the bottom, and the bottom is the one key that has to be reachable. Capping
+                // the card’s height stopped it running under the taskbar and handed the same
+                // problem to the scrollbar: the key was no longer off-screen, it was just below
+                // the fold, which on a wall panel is the same thing.
+                //
+                // So the action row is pinned outside the scroll. The keypad above it can scroll
+                // if a screen is too short; the button you came to press cannot be scrolled away.
                 Column(
-                    modifier = Modifier
-                        .verticalScroll(rememberScrollState())
-                        .padding(18.dp),
+                    modifier = Modifier.padding(18.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState()),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        SectionHeader("ALARM", modifier = Modifier.weight(1f))
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close the keypad",
-                            tint = Color.White.copy(alpha = 0.4f),
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clickable { viewModel.dismissAlarmKeypad() }
-                                .testTag("alarm_keypad_close")
-                        )
-                    }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            SectionHeader("ALARM", modifier = Modifier.weight(1f))
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close the keypad",
+                                tint = Color.White.copy(alpha = 0.4f),
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clickable { viewModel.dismissAlarmKeypad() }
+                                    .testTag("alarm_keypad_close")
+                            )
+                        }
 
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        alarm.headline,
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = accent,
-                        textAlign = TextAlign.Center
-                    )
-                    if (remaining != null) {
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(10.dp))
                         Text(
-                            "$remaining",
-                            fontSize = 44.sp,
-                            fontWeight = FontWeight.Light,
-                            color = accent
+                            alarm.headline,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = accent,
+                            textAlign = TextAlign.Center
                         )
-                    }
+                        if (remaining != null) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "$remaining",
+                                fontSize = 44.sp,
+                                fontWeight = FontWeight.Light,
+                                color = accent
+                            )
+                        }
 
-                    Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(12.dp))
 
-                    // The digits only appear when there is actually a code to type.
-                    //
-                    // Disarming needs the PIN; arming, on this panel, does not. Showing a dead keypad
-                    // on a disarmed house puts twelve keys between you and the only two things you
-                    // came here to do, so in that state the arm buttons below become the whole dialog
-                    // and get the room to be pressed without looking.
-                    val needsPin = alarm.phase != AlarmPhase.DISARMED || alarm.requiresCodeToArm
+                        // The digits only appear when there is actually a code to type.
+                        //
+                        if (needsPin) {
+                            // Masked. The digits are never echoed back, on a screen that hangs on a wall.
+                            Text(
+                                text = if (code.isEmpty()) "• • • •" else "•".repeat(code.length),
+                                fontSize = 24.sp,
+                                letterSpacing = 6.sp,
+                                color = if (code.isEmpty()) Color.White.copy(alpha = 0.2f) else Color.White,
+                                modifier = Modifier.testTag("alarm_code_display")
+                            )
 
-                    if (needsPin) {
-                        // Masked. The digits are never echoed back, on a screen that hangs on a wall.
-                        Text(
-                            text = if (code.isEmpty()) "• • • •" else "•".repeat(code.length),
-                            fontSize = 24.sp,
-                            letterSpacing = 6.sp,
-                            color = if (code.isEmpty()) Color.White.copy(alpha = 0.2f) else Color.White,
-                            modifier = Modifier.testTag("alarm_code_display")
-                        )
+                            Spacer(Modifier.height(14.dp))
 
-                        Spacer(Modifier.height(14.dp))
-
-                        listOf(
-                            listOf("1", "2", "3"),
-                            listOf("4", "5", "6"),
-                            listOf("7", "8", "9"),
-                            listOf("clear", "0", "back")
-                        ).forEach { rowKeys ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                rowKeys.forEach { key ->
-                                    KeypadKey(
-                                        key = key,
-                                        modifier = Modifier.weight(1f),
-                                        onPress = {
-                                            lastKeyAt = System.currentTimeMillis()
-                                            when (key) {
-                                                "clear" -> code = ""
-                                                "back" -> code = code.dropLast(1)
-                                                // A sane upper bound so a stuck key cannot build a
-                                                // megabyte-long string.
-                                                else -> if (code.length < 12) code += key
+                            listOf(
+                                listOf("1", "2", "3"),
+                                listOf("4", "5", "6"),
+                                listOf("7", "8", "9"),
+                                listOf("clear", "0", "back")
+                            ).forEach { rowKeys ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    rowKeys.forEach { key ->
+                                        KeypadKey(
+                                            key = key,
+                                            modifier = Modifier.weight(1f),
+                                            onPress = {
+                                                lastKeyAt = System.currentTimeMillis()
+                                                when (key) {
+                                                    "clear" -> code = ""
+                                                    "back" -> code = code.dropLast(1)
+                                                    // A sane upper bound so a stuck key cannot build a
+                                                    // megabyte-long string.
+                                                    else -> if (code.length < 12) code += key
+                                                }
                                             }
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    if (!feedback.isNullOrBlank()) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            feedback!!,
-                            fontSize = 11.sp,
-                            color = Color(0xFFEF4444),
-                            textAlign = TextAlign.Center
-                        )
-                    }
+                        if (!feedback.isNullOrBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                feedback!!,
+                                fontSize = 11.sp,
+                                color = Color(0xFFEF4444),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                    }  // end of the scrolling area
 
                     Spacer(Modifier.height(12.dp))
 
