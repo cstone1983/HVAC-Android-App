@@ -518,10 +518,26 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
     // a wall panel indefinitely with a half-typed code on screen. Every key press restarts the
     // minute. Closing it leaves you on the alarm tab, and the dashboard's own idle timer then
     // takes over from there (see the alarm handling in HvacDashboard).
-    var lastKeyAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(lastKeyAt) {
-        kotlinx.coroutines.delay(60_000)
-        viewModel.dismissAlarmKeypad()
+    // Deliberately not Compose state, and not keyed into the effect.
+    //
+    // It used to be both, which meant every single keypress wrote state, cancelled a
+    // coroutine, started another one to sleep for a minute, and recomposed the whole
+    // dialog — twelve keys, each with its own clip, background and border — purely to
+    // restart an idle timer. On the wall panels, which are budget tablets, that is what
+    // made typing a PIN quickly feel like it was dragging behind your finger.
+    //
+    // Now a keypress writes a plain long and composition never hears about it. One effect
+    // wakes every few seconds and asks how long it has been. A timeout that fires up to
+    // five seconds late costs nothing; a keypad that lags costs the thing it is for.
+    val lastKeyAt = remember { java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(5_000)
+            if (System.currentTimeMillis() - lastKeyAt.get() >= 60_000) {
+                viewModel.dismissAlarmKeypad()
+                break
+            }
+        }
     }
 
     Dialog(
@@ -667,13 +683,7 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                         //
                         if (needsPin) {
                             // Masked. The digits are never echoed back, on a screen that hangs on a wall.
-                            Text(
-                                text = if (code.isEmpty()) "• • • •" else "•".repeat(code.length),
-                                fontSize = 24.sp,
-                                letterSpacing = 6.sp,
-                                color = if (code.isEmpty()) Color.White.copy(alpha = 0.2f) else Color.White,
-                                modifier = Modifier.testTag("alarm_code_display")
-                            )
+                            MaskedCode(code = { code })
 
                             Spacer(Modifier.height(if (compact) 8.dp else 14.dp))
 
@@ -693,7 +703,7 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                                             modifier = Modifier.weight(1f),
                                             height = keyHeight,
                                             onPress = {
-                                                lastKeyAt = System.currentTimeMillis()
+                                                lastKeyAt.set(System.currentTimeMillis())
                                                 when (key) {
                                                     "clear" -> code = ""
                                                     "back" -> code = code.dropLast(1)
@@ -743,7 +753,7 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                                 options.forEach { option ->
                                     Button(
                                         onClick = {
-                                            lastKeyAt = System.currentTimeMillis()
+                                            lastKeyAt.set(System.currentTimeMillis())
                                             viewModel.submitAlarmCommand(option.service, code)
                                             code = ""
                                         },
@@ -794,7 +804,7 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                                         contentDescription = "Arm ${option.label}",
                                         testTagId = "alarm_arm_${option.label.lowercase()}",
                                         onClick = {
-                                            lastKeyAt = System.currentTimeMillis()
+                                            lastKeyAt.set(System.currentTimeMillis())
                                             viewModel.submitAlarmCommand(option.service, code)
                                             code = ""
                                         }
@@ -812,7 +822,7 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                                 contentDescription = "Disarm the alarm",
                                 testTagId = "alarm_disarm_btn",
                                 onClick = {
-                                    lastKeyAt = System.currentTimeMillis()
+                                    lastKeyAt.set(System.currentTimeMillis())
                                         viewModel.submitAlarmCommand("alarm_disarm", code)
                                     code = ""
                                 }
@@ -823,6 +833,28 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
             }
         }
     }
+}
+
+/**
+ * The masked code.
+ *
+ * Takes a lambda rather than a String, which looks fussy and is the entire point. A String
+ * parameter is read where the caller builds it, so every keystroke would subscribe the whole
+ * dialog and recompose twelve keys in order to change four dots. Deferring the read moves
+ * that subscription in here, where the only thing that actually changes lives.
+ *
+ * The digits are never echoed back — this is a screen that hangs on a wall.
+ */
+@Composable
+private fun MaskedCode(code: () -> String) {
+    val current = code()
+    Text(
+        text = if (current.isEmpty()) "• • • •" else "•".repeat(current.length),
+        fontSize = 24.sp,
+        letterSpacing = 6.sp,
+        color = if (current.isEmpty()) Color.White.copy(alpha = 0.2f) else Color.White,
+        modifier = Modifier.testTag("alarm_code_display")
+    )
 }
 
 @Composable
