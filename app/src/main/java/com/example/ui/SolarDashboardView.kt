@@ -103,13 +103,15 @@ fun SolarDashboardView(
             modifier = Modifier.padding(bottom = 4.dp)
         )
 
-        // A. The Main Status Banner (Live Net Meter)
-        NetMeterCard(
-            netPowerWatts = liveState.netPowerWatts,
-            isExporting = liveState.isExporting,
-            isFetched = liveState.isFetched,
-            theme = theme
-        )
+        // The importing/exporting banner stood here. The Right now tile below says the same
+        // thing in words — "Sending 6.21 kW to the grid" — and says it with a figure the
+        // website agrees with, so the banner had become a second opinion on a settled
+        // question.
+        //
+        // It is worth knowing what was given up: the banner was live off the Home Assistant
+        // WebSocket and moved within a second or two, where the tile is a five-minute sample
+        // polled once a minute. If watching the needle swing in real time turns out to
+        // matter, NetMeterCard is still here and takes four lines to put back.
 
         // B. Today, from Solar Calc.
         //

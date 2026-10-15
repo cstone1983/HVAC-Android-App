@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -537,6 +538,25 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
         val systemBottom = with(density) {
             WindowInsets.safeDrawing.getBottom(density).toDp()
         }
+
+        // And an explicit ceiling on the card, because the padding above cannot be trusted
+        // to bound it.
+        //
+        // fillMaxSize inside a Dialog measures the dialog’s own window, not the screen, and
+        // that window sizes itself to its content. So when the content is tall enough, the
+        // Box grows with it and the padding ends up insetting a window that is already
+        // bigger than the display — the card runs off the bottom and the padding changes
+        // nothing.
+        //
+        // That is why this survived the first fix. The keypad I measured was the armed-house
+        // one; a real alarm adds the headline and the countdown above the keys, roughly 70dp
+        // more, which on the A9’s 601dp of height is exactly enough to tip it over. The
+        // screen height is the one figure here that does not depend on how the Dialog
+        // decided to size itself.
+        val configuration = LocalConfiguration.current
+        val maxCardHeight = (
+            configuration.screenHeightDp.dp - TASKBAR_CLEARANCE - 24.dp
+            ).coerceAtLeast(220.dp)
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -550,7 +570,10 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
             contentAlignment = Alignment.Center
         ) {
             Card(
-                modifier = Modifier.widthIn(max = 380.dp).testTag("alarm_keypad_dialog"),
+                modifier = Modifier
+                    .widthIn(max = 380.dp)
+                    .heightIn(max = maxCardHeight)
+                    .testTag("alarm_keypad_dialog"),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF12161C)),
                 border = BorderStroke(1.dp, accent.copy(alpha = 0.5f)),
                 shape = hvacCardShape(18)
