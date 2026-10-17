@@ -1004,13 +1004,23 @@ fun DynamicTabContent(
     val maxContentWidth = this@BoxWithConstraints.maxWidth
     val maxContentHeight = this@BoxWithConstraints.maxHeight
     val screen = LocalConfiguration.current
+    val deviceMode by viewModel.deviceMode.collectAsStateWithLifecycle()
+    val commandLayout = if (tab.id == "zones") commandCenterLayout(
+        enabled = layoutConfig.homeStatus?.commandCenter,
+        phoneEnabled = layoutConfig.homeStatus?.phoneCommandCenter,
+        isLandscape = isLandscape,
+        phone = deviceMode == com.example.model.DeviceMode.PHONE,
+        widthDp = screen.screenWidthDp,
+        heightDp = screen.screenHeightDp
+    ) else null
+    val tightZones = tab.id == "zones" && (isLandscape || commandLayout != null)
     LazyColumn(
         state = listState,
         modifier = Modifier
             .fillMaxSize()
             .testTag("tab_content_${tab.id}"),
-        contentPadding = PaddingValues(bottom = if (isLandscape && tab.id == "zones") 10.dp else 24.dp),
-        verticalArrangement = Arrangement.spacedBy(if (isLandscape && tab.id == "zones") 8.dp else 16.dp)
+        contentPadding = PaddingValues(bottom = if (tightZones) 10.dp else 24.dp),
+        verticalArrangement = Arrangement.spacedBy(if (tightZones) 8.dp else 16.dp)
     ) {
         tab.sections.forEach { section ->
             when (section.lowercase().trim()) {
@@ -1018,25 +1028,21 @@ fun DynamicTabContent(
                     // Redundant copy removed since it's already displayed in the top header.
                 }
                 "zones" -> {
-                    if (tab.id == "zones" && useCommandCenter(
-                            layoutConfig.homeStatus?.commandCenter,
-                            isLandscape,
-                            screen.screenWidthDp,
-                            screen.screenHeightDp
-                        )
-                    ) {
-                        // The wall-panel command center. One item, sized to the measured
-                        // content area, so the whole screen fits without scrolling.
+                    if (commandLayout != null) {
+                        // The command center. One item, sized to the measured content area, so
+                        // the whole screen fits without scrolling (the cover screen scrolls).
                         item {
-                            Column(modifier = Modifier.padding(horizontal = 4.dp)) {
-                                HomeAlertStrip(
-                                    viewModel = viewModel,
-                                    homeStatus = layoutConfig.homeStatus,
-                                    modifier = Modifier.padding(bottom = 4.dp)
+                            Column(
+                                modifier = Modifier.padding(
+                                    horizontal = if (isLandscape && commandLayout == CommandLayout.WIDE) 4.dp else 12.dp
                                 )
+                            ) {
+                                // Alerts live inside the command center now, beside the Other
+                                // rooms, so a confirmation no longer shoves the screen down.
                                 CommandCenterHome(
                                     state = state,
                                     viewModel = viewModel,
+                                    layout = commandLayout,
                                     height = maxContentHeight - 12.dp,
                                     onZoneClick = { activeZoneDetail = it }
                                 )
@@ -1480,6 +1486,10 @@ fun HvacDashboardContent(
     val configuration = LocalConfiguration.current
     val theme = LocalHvacTheme.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // Phones keep the bottom tab bar whichever way they are held; the side rail is for the wall
+    // panels. The Fold's inner screen is nearly square and flips between the two otherwise.
+    val deviceMode by viewModel.deviceMode.collectAsStateWithLifecycle()
+    val isPhone = deviceMode == com.example.model.DeviceMode.PHONE
     val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(0) }
     
@@ -1588,7 +1598,7 @@ fun HvacDashboardContent(
                 }
             }
     ) {
-        if (isLandscape) {
+        if (isLandscape && !isPhone) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -2023,7 +2033,17 @@ fun HvacDashboardContent(
             // exactly what someone opening that tab came to find out.
             val headerTabId = activeTabs.getOrNull(selectedTab)?.id?.lowercase()
             val headerTabs = homeStatusCfg?.headerTabIds ?: listOf("zones")
-            val showHeader = headerTabId != null &&
+            // The command center brings its own alarm, people and weather, so the header would
+            // only repeat them.
+            val commandCenterHere = headerTabId == "zones" && commandCenterLayout(
+                enabled = homeStatusCfg?.commandCenter,
+                phoneEnabled = homeStatusCfg?.phoneCommandCenter,
+                isLandscape = isLandscape,
+                phone = isPhone,
+                widthDp = configuration.screenWidthDp,
+                heightDp = configuration.screenHeightDp
+            ) != null
+            val showHeader = headerTabId != null && !commandCenterHere &&
                 headerTabs.any { it.equals(headerTabId, ignoreCase = true) }
 
             if (headerTabId == "alarm") {

@@ -207,6 +207,9 @@ data class HomeStatusConfig(
     // The wall-panel command center on the home tab, for wide landscape screens. Off puts
     // back the previous layout over the air, without a build.
     val commandCenter: Boolean? = true,
+    // The phone's version of it (Fold inner and cover screens), separately, so the phone can go
+    // back to the previous layout over the air without touching the wall panels.
+    val phoneCommandCenter: Boolean? = true,
     // Room sensors that belong to no zone, shown on one line under the command center's
     // zones (Dining, and the stairway).
     val otherRoomIds: List<String>? = listOf("dining_room", "upstairs"),

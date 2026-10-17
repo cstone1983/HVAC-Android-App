@@ -157,12 +157,17 @@ private fun formatClock(millis: Long): String {
  * The one line on the home screen that is normally absent. It surfaces, in priority order:
  * a door that is actually open, loss of connection, a failed or pending command. Everything
  * here was previously only visible inside the zone popup, or not at all.
+ *
+ * [inline] is the command center's version: one short line that sits in the spare space beside
+ * the "Other" rooms instead of pushing the whole screen down — which on the A9 pushed the footer
+ * off the bottom. Its text shrinks to fit the space it is given rather than wrapping.
  */
 @Composable
 fun HomeAlertStrip(
     viewModel: HvacViewModel,
     homeStatus: HomeStatusConfig?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    inline: Boolean = false
 ) {
     val states by viewModel.entityStates.collectAsStateWithLifecycle()
     val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
@@ -207,6 +212,41 @@ fun HomeAlertStrip(
         )
         isDebouncing -> Triple("APPLYING CHANGES…", Color(0xFFF59E0B), Icons.Default.Sync)
         else -> null
+    }
+
+    if (inline) {
+        // Fades only: the line it lives on has a fixed height, so nothing around it moves.
+        AnimatedVisibility(visible = alert != null, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
+            val (text, tint, icon) = alert ?: return@AnimatedVisibility
+            androidx.compose.foundation.layout.BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(tint.copy(alpha = 0.13f))
+                    .border(BorderStroke(1.dp, tint.copy(alpha = 0.45f)), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                    .testTag("home_alert_strip"),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                // Shrink to fit on one line: about 0.68 em per character in this bold capitals
+                // face with its letter spacing, between 7 and 10.5 sp.
+                val textRoom = (maxWidth.value - 18f).coerceAtLeast(0f)
+                val size = (textRoom / (text.length.coerceAtLeast(1) * 0.68f)).coerceIn(7f, 10.5f)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(13.dp))
+                    Text(
+                        text = text,
+                        fontSize = size.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 0.5.sp,
+                        color = Color.White.copy(alpha = 0.92f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        return
     }
 
     AnimatedVisibility(

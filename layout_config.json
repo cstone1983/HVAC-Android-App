@@ -1,5 +1,5 @@
 {
-  "version": "6.17.0",
+  "version": "6.18.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -500,7 +500,8 @@
     "otherRoomIds": [
       "dining_room",
       "upstairs"
-    ]
+    ],
+    "phoneCommandCenter": true
   },
   "solarCalc": {
     "enabled": true,

@@ -95,21 +95,34 @@ import com.example.viewmodel.HvacViewModel
  *  - **No per-sensor alarm list.** Status and the two arm buttons only; the alarm tab has the rest.
  *  - **No Goodnight / House Off buttons** here.
  *
- * Used only on wide landscape screens — see [useCommandCenter]. Everything else keeps the
- * previous layout, and `homeStatus.commandCenter` turns this off over the air.
+ * Three sizes of the same screen — see [CommandLayout] and [commandCenterLayout]. The wall
+ * tablets get [CommandLayout.WIDE]; the Fold gets a smaller copy of it on the inner screen and a
+ * single scrolling column on the cover screen. `homeStatus.commandCenter` turns all of it off
+ * over the air, and `homeStatus.phoneCommandCenter` just the phone's.
+ *
+ * [height] is the height to fill, for the sizes that fit on one screen; the cover screen
+ * scrolls and ignores it.
  */
 @Composable
 fun CommandCenterHome(
     state: HvacUiState.Success,
     viewModel: HvacViewModel,
+    layout: CommandLayout,
     height: Dp,
     onZoneClick: (ClimateZone) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (layout == CommandLayout.NARROW) {
+        NarrowCommandCenter(state, viewModel, onZoneClick, modifier)
+        return
+    }
+    val medium = layout == CommandLayout.MEDIUM
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(height)
+            // The inner screen turned sideways is shorter than the six cards need. Below this
+            // the page scrolls rather than squeezing the numbers.
+            .height(if (medium) height.coerceAtLeast(480.dp) else height)
             .testTag("command_center"),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -136,12 +149,12 @@ fun CommandCenterHome(
                         .fillMaxWidth()
                 )
                 Spacer(Modifier.height(6.dp))
-                OtherRoomsLine(state, viewModel)
+                OtherRoomsAndAlerts(state, viewModel)
             }
 
             Column(
                 modifier = Modifier
-                    .width(220.dp)
+                    .width(if (medium) 190.dp else 220.dp)
                     .fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -157,26 +170,96 @@ fun CommandCenterHome(
             }
         }
 
-        ControlStrip(state = state, viewModel = viewModel)
+        ControlStrip(state = state, viewModel = viewModel, layout = layout)
     }
 }
 
 /**
- * Whether this screen gets the command center.
+ * The Fold's cover screen: one column, read top to bottom, that scrolls.
  *
- * By window size, never by device model: a wide landscape window, tall enough that six zones
- * stay readable. The two wall tablets pass; so does the Fold's inner screen held sideways. A
- * phone on its side does not — it is wide but nowhere near tall enough.
+ * The alarm leads, because on a phone it is what you check on the way out or in. Zones drop to
+ * two across — three at this width would shrink the room numbers past reading at a glance — and
+ * the three control groups stack, still at the bottom where Chris likes them.
  */
+@Composable
+private fun NarrowCommandCenter(
+    state: HvacUiState.Success,
+    viewModel: HvacViewModel,
+    onZoneClick: (ClimateZone) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("command_center"),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        CommandTopBar(viewModel, outlookDays = 0)
+        val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
+        HomeAlertStrip(viewModel = viewModel, homeStatus = layoutConfig.homeStatus)
+        HomeAlarmCard(viewModel = viewModel, modifier = Modifier.fillMaxWidth())
+        Column {
+            ZonesHeader()
+            Spacer(Modifier.height(6.dp))
+            ZoneGrid(
+                zones = state.zones,
+                onZoneClick = onZoneClick,
+                columns = 2,
+                rowHeight = 150.dp,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(6.dp))
+            OtherRoomsLine(state, viewModel)
+        }
+        EnergyAndPeopleCard(viewModel = viewModel, fillHeight = false, modifier = Modifier.fillMaxWidth())
+        ControlStrip(state = state, viewModel = viewModel, layout = CommandLayout.NARROW)
+    }
+}
+
+/** The three sizes of the command center. */
+enum class CommandLayout {
+    /** The wall tablets: zones beside a right column, controls in one row. */
+    WIDE,
+
+    /** The Fold's inner screen: the tablet layout, smaller, with the controls on two rows. */
+    MEDIUM,
+
+    /** The Fold's cover screen: one scrolling column, alarm first. */
+    NARROW
+}
+
+/**
+ * Which command center this screen gets, or null for the previous layout.
+ *
+ * Wall panels get it only on a wide landscape window, tall enough that six zones stay readable —
+ * a panel stood on end keeps the old layout. A device in Phone mode always gets it, sized by the
+ * window's width, so unfolding and folding the Fold just swaps the size.
+ */
+fun commandCenterLayout(
+    enabled: Boolean?,
+    phoneEnabled: Boolean?,
+    isLandscape: Boolean,
+    phone: Boolean,
+    widthDp: Int,
+    heightDp: Int
+): CommandLayout? = when {
+    enabled == false -> null
+    isLandscape && widthDp >= 840 && heightDp >= 520 -> CommandLayout.WIDE
+    !phone || phoneEnabled == false -> null
+    widthDp >= 600 -> CommandLayout.MEDIUM
+    else -> CommandLayout.NARROW
+}
+
+/** Whether a wall panel's home tab gets the command center — the wide one, beside the side rail. */
 fun useCommandCenter(enabled: Boolean?, isLandscape: Boolean, widthDp: Int, heightDp: Int): Boolean =
-    enabled != false && isLandscape && widthDp >= 840 && heightDp >= 520
+    commandCenterLayout(enabled, null, isLandscape, false, widthDp, heightDp) == CommandLayout.WIDE
 
 // -------------------------------------------------------------------------------------------
 // Top bar
 // -------------------------------------------------------------------------------------------
 
 @Composable
-private fun CommandTopBar(viewModel: HvacViewModel) {
+private fun CommandTopBar(viewModel: HvacViewModel, outlookDays: Int = 3) {
     val weather by viewModel.weatherState.collectAsStateWithLifecycle()
     val entityStates by viewModel.entityStates.collectAsStateWithLifecycle()
     val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
@@ -230,11 +313,13 @@ private fun CommandTopBar(viewModel: HvacViewModel) {
                     today?.condition?.takeIf { it.isNotBlank() }?.let { append(" · ${it.lowercase()}") }
                 },
                 fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.85f)
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
         Spacer(Modifier.weight(1f))
-        weather.days.drop(1).take(3).forEach { day ->
+        weather.days.drop(1).take(outlookDays).forEach { day ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = shortWeekday(day.dateString, day.dayLabel),
@@ -310,19 +395,24 @@ private fun LegendItem(icon: ImageVector, tint: Color, label: String) {
     }
 }
 
-/** Two rows of three, filling whatever height is left so every zone is visible without scrolling. */
+/**
+ * The zones in rows of [columns]. Without a [rowHeight] the rows share whatever height is left, so
+ * every zone is visible without scrolling; with one (the cover screen) each row is that tall.
+ */
 @Composable
 private fun ZoneGrid(
     zones: List<ClimateZone>,
     onZoneClick: (ClimateZone) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    columns: Int = 3,
+    rowHeight: Dp? = null
 ) {
-    val rows = zones.chunked(3)
+    val rows = zones.chunked(columns)
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         rows.forEach { row ->
             Row(
                 modifier = Modifier
-                    .weight(1f)
+                    .then(if (rowHeight != null) Modifier.height(rowHeight) else Modifier.weight(1f))
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -335,7 +425,7 @@ private fun ZoneGrid(
                             .fillMaxHeight()
                     )
                 }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -396,8 +486,9 @@ private fun CommandZoneCard(
         shape = hvacCardShape(12)
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // The hero numeral scales with the card, so the A9's shorter cards still fit.
-            val heroSize = (maxHeight.value * 0.26f).coerceIn(26f, 50f).sp
+            // The hero numeral scales with the card, so the A9's shorter cards and the Fold's
+            // narrower ones still fit — by height on the tablets, by width on the phone.
+            val heroSize = minOf(maxHeight.value * 0.26f, maxWidth.value * 0.24f).coerceIn(26f, 50f).sp
 
             Column(
                 modifier = Modifier
@@ -554,6 +645,30 @@ private fun FlagChip(text: String, color: Color) {
     }
 }
 
+/**
+ * The Other rooms, with the alert line in the space beside them. Fixed height, so a setpoint
+ * confirmation appearing and fading never moves the cards or the footer.
+ */
+@Composable
+private fun OtherRoomsAndAlerts(state: HvacUiState.Success, viewModel: HvacViewModel) {
+    val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(22.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OtherRoomsLine(state, viewModel)
+        Spacer(Modifier.width(14.dp))
+        HomeAlertStrip(
+            viewModel = viewModel,
+            homeStatus = layoutConfig.homeStatus,
+            inline = true,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
 /** The room sensors that do not belong to a zone — Dining and the stairway. */
 @Composable
 private fun OtherRoomsLine(state: HvacUiState.Success, viewModel: HvacViewModel) {
@@ -599,7 +714,11 @@ private fun OtherRoomsLine(state: HvacUiState.Success, viewModel: HvacViewModel)
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EnergyAndPeopleCard(viewModel: HvacViewModel, modifier: Modifier = Modifier) {
+private fun EnergyAndPeopleCard(
+    viewModel: HvacViewModel,
+    modifier: Modifier = Modifier,
+    fillHeight: Boolean = true
+) {
     val solar by viewModel.solarToday.collectAsStateWithLifecycle()
     val entityStates by viewModel.entityStates.collectAsStateWithLifecycle()
     val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
@@ -669,8 +788,9 @@ private fun EnergyAndPeopleCard(viewModel: HvacViewModel, modifier: Modifier = M
         // Everyone where there is room for everyone (the A8). Where there is not (the A9), the
         // people at home keep their names and everyone away folds into one chip — a name cut
         // off halfway reads as a fault, and who is away matters less than who is in.
-        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            val roomForAll = maxHeight >= 48.dp
+        // The cover screen scrolls, so there everyone fits.
+        BoxWithConstraints(modifier = (if (fillHeight) Modifier.weight(1f) else Modifier).fillMaxWidth()) {
+            val roomForAll = !fillHeight || maxHeight >= 48.dp
             val home = people.filter { it.second }
             val away = people.filterNot { it.second }
             FlowRow(
@@ -728,19 +848,38 @@ private fun EnergyLine(label: String, value: String?, color: Color) {
  * temperatures above them are read constantly.
  */
 @Composable
-private fun ControlStrip(state: HvacUiState.Success, viewModel: HvacViewModel) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(hvacCardBgColor(), hvacCardShape(12))
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        // Shorter than everywhere else, at Chris's request: the height goes to the zones.
-        androidx.compose.runtime.CompositionLocalProvider(LocalCompactControls provides true) {
-            ScheduleGroup(state, viewModel, 10.sp, Modifier.weight(1f))
-            HouseModeGroup(state, viewModel, 10.sp, Modifier.weight(1.4f))
-            HotWaterGroup(state, viewModel, 10.sp, Modifier.weight(1.4f))
+private fun ControlStrip(state: HvacUiState.Success, viewModel: HvacViewModel, layout: CommandLayout) {
+    // Shorter than everywhere else, at Chris's request: the height goes to the zones.
+    androidx.compose.runtime.CompositionLocalProvider(LocalCompactControls provides true) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(hvacCardBgColor(), hvacCardShape(12))
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            when (layout) {
+                // One row on the tablets.
+                CommandLayout.WIDE -> Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ScheduleGroup(state, viewModel, 10.sp, Modifier.weight(1f))
+                    HouseModeGroup(state, viewModel, 10.sp, Modifier.weight(1.4f))
+                    HotWaterGroup(state, viewModel, 10.sp, Modifier.weight(1.4f))
+                }
+                // Eleven buttons do not fit across the inner screen: hot water gets its own row.
+                CommandLayout.MEDIUM -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        ScheduleGroup(state, viewModel, 10.sp, Modifier.weight(1f))
+                        HouseModeGroup(state, viewModel, 10.sp, Modifier.weight(1f))
+                    }
+                    HotWaterGroup(state, viewModel, 10.sp, Modifier.fillMaxWidth())
+                }
+                // One group per row on the cover screen.
+                CommandLayout.NARROW -> {
+                    ScheduleGroup(state, viewModel, 10.sp, Modifier.fillMaxWidth())
+                    HouseModeGroup(state, viewModel, 10.sp, Modifier.fillMaxWidth())
+                    HotWaterGroup(state, viewModel, 10.sp, Modifier.fillMaxWidth())
+                }
+            }
         }
     }
 }
