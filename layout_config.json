@@ -1,5 +1,5 @@
 {
-  "version": "6.15.0",
+  "version": "6.16.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -192,7 +192,8 @@
         "day": "input_number.anthony_day_cool",
         "night": "input_number.anthony_night_cool",
         "away": "input_number.anthony_away_cool"
-      }
+      },
+      "roomTemperatureEntityId": "sensor.anthony_temp_sensor_temperature"
     },
     {
       "key": "autumn",
@@ -211,13 +212,14 @@
         "day": "input_number.autumn_day_cool",
         "night": "input_number.autumn_night_cool",
         "away": "input_number.autumn_away_cool"
-      }
+      },
+      "roomTemperatureEntityId": "sensor.autumn_temp_sensor_temperature"
     },
     {
       "key": "bedroom_1",
       "name": "Master 1",
       "climateEntityId": "climate.hp_bedroom",
-      "roomTemperatureEntityId": "sensor.bedroom_temperature",
+      "roomTemperatureEntityId": "sensor.bedroom_temp_sensor_temperature",
       "autoEntityId": "input_boolean.zone_enable_bedroom_1",
       "overrideEntityId": "input_boolean.override_bedroom_1",
       "tiltEntityId": "input_select.bedroom_1_tilt_mode",
@@ -486,7 +488,9 @@
     ],
     "hideRoomSensorIds": [],
     "presenceHistoryDays": 30,
-    "headerTabIds": ["zones"],
+    "headerTabIds": [
+      "zones"
+    ],
     "showAlarmCard": true,
     "showHumidityCard": false
   },
@@ -510,7 +514,9 @@
   "alarm": {
     "entityId": "alarm_control_panel.alarmo",
     "notifyOnTrigger": true,
-    "notifyEvents": ["armed"],
+    "notifyEvents": [
+      "armed"
+    ],
     "entryBeep": true,
     "exitBeep": false,
     "entryDelaySeconds": 60,
