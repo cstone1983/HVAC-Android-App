@@ -1003,6 +1003,7 @@ fun DynamicTabContent(
     // the house panel take ~270dp before any card is drawn.
     val maxContentWidth = this@BoxWithConstraints.maxWidth
     val maxContentHeight = this@BoxWithConstraints.maxHeight
+    val screen = LocalConfiguration.current
     LazyColumn(
         state = listState,
         modifier = Modifier
@@ -1017,6 +1018,32 @@ fun DynamicTabContent(
                     // Redundant copy removed since it's already displayed in the top header.
                 }
                 "zones" -> {
+                    if (tab.id == "zones" && useCommandCenter(
+                            layoutConfig.homeStatus?.commandCenter,
+                            isLandscape,
+                            screen.screenWidthDp,
+                            screen.screenHeightDp
+                        )
+                    ) {
+                        // The wall-panel command center. One item, sized to the measured
+                        // content area, so the whole screen fits without scrolling.
+                        item {
+                            Column(modifier = Modifier.padding(horizontal = 4.dp)) {
+                                HomeAlertStrip(
+                                    viewModel = viewModel,
+                                    homeStatus = layoutConfig.homeStatus,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                                CommandCenterHome(
+                                    state = state,
+                                    viewModel = viewModel,
+                                    height = maxContentHeight - 12.dp,
+                                    onZoneClick = { activeZoneDetail = it }
+                                )
+                            }
+                        }
+                        return@forEach
+                    }
                     item {
                         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                             GlobalSettingsQuickControl(state = state, viewModel = viewModel)
@@ -1867,98 +1894,109 @@ fun HvacDashboardContent(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                // The command center carries its own alarm, energy and people column, so the
+                // house panel stands aside on the home tab when it is showing.
+                val commandCenterShowing = activeTabs.getOrNull(selectedTab)?.id == "zones" &&
+                    useCommandCenter(
+                        layoutConfig.homeStatus?.commandCenter,
+                        isLandscape,
+                        LocalConfiguration.current.screenWidthDp,
+                        LocalConfiguration.current.screenHeightDp
+                    )
+                if (!commandCenterShowing) {
+                    Spacer(modifier = Modifier.width(16.dp))
 
-                // Right-hand house panel. This used to be a "TEMPS" column that repeated
-                // rooms which already have their own zone card — Living read 65° here while
-                // Main Level read 67° two inches away. It now carries only what the zone
-                // cards don't: humidity, presence, the non-zone rooms, and quick actions.
-                val homeStatusCfg = layoutConfig.homeStatus
-                val hiddenRoomIds = homeStatusCfg?.hideRoomSensorIds.orEmpty().toSet()
-                val secondaryRooms = state.roomSensors.filter { it.id !in hiddenRoomIds }
+                    // Right-hand house panel. This used to be a "TEMPS" column that repeated
+                    // rooms which already have their own zone card — Living read 65° here while
+                    // Main Level read 67° two inches away. It now carries only what the zone
+                    // cards don't: humidity, presence, the non-zone rooms, and quick actions.
+                    val homeStatusCfg = layoutConfig.homeStatus
+                    val hiddenRoomIds = homeStatusCfg?.hideRoomSensorIds.orEmpty().toSet()
+                    val secondaryRooms = state.roomSensors.filter { it.id !in hiddenRoomIds }
 
-                Column(
-                    modifier = Modifier
-                        .width(168.dp)
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (homeStatusCfg?.showAlarmCard != false) {
-                        HomeAlarmCard(
-                            viewModel = viewModel,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    if (homeStatusCfg?.showHumidityCard == true) {
-                        HumidityCard(
-                            viewModel = viewModel,
-                            sensors = homeStatusCfg?.humiditySensors.orEmpty(),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    Column(
+                        modifier = Modifier
+                            .width(168.dp)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (homeStatusCfg?.showAlarmCard != false) {
+                            HomeAlarmCard(
+                                viewModel = viewModel,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (homeStatusCfg?.showHumidityCard == true) {
+                            HumidityCard(
+                                viewModel = viewModel,
+                                sensors = homeStatusCfg?.humiditySensors.orEmpty(),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
-                    if (secondaryRooms.isNotEmpty()) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
-                            border = BorderStroke(1.dp, hvacBorderAlphaColor()),
-                            shape = hvacCardShape(12),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                                Text(
-                                    text = "OTHER ROOMS",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color.White.copy(alpha = 0.55f),
-                                    letterSpacing = 1.3.sp
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                secondaryRooms.forEach { room ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = room.name.uppercase(),
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White.copy(alpha = 0.55f),
-                                            letterSpacing = 0.6.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                        Text(
-                                            text = room.temp?.let { "${it.toInt()}°" } ?: "--°",
-                                            fontSize = 17.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
+                        if (secondaryRooms.isNotEmpty()) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+                                border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+                                shape = hvacCardShape(12),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                                    Text(
+                                        text = "OTHER ROOMS",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color.White.copy(alpha = 0.55f),
+                                        letterSpacing = 1.3.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    secondaryRooms.forEach { room ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = room.name.uppercase(),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White.copy(alpha = 0.55f),
+                                                letterSpacing = 0.6.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            Text(
+                                                text = room.temp?.let { "${it.toInt()}°" } ?: "--°",
+                                                fontSize = 17.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
+
+                        PresenceCard(
+                            viewModel = viewModel,
+                            presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),
+                            modifier = Modifier.fillMaxWidth(),
+                            historyWindowDays = homeStatusCfg?.presenceHistoryDays ?: 30,
+                            lastInteractionTime = lastInteractionTime,
+                            popupTimeoutMillis = popupTimeoutMillis,
+                            onInteraction = { lastInteractionTime = System.currentTimeMillis() }
+                        )
+
+                        QuickActionsCard(
+                            viewModel = viewModel,
+                            actions = homeStatusCfg?.quickActions.orEmpty(),
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
-
-                    PresenceCard(
-                        viewModel = viewModel,
-                        presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),
-                        modifier = Modifier.fillMaxWidth(),
-                        historyWindowDays = homeStatusCfg?.presenceHistoryDays ?: 30,
-                        lastInteractionTime = lastInteractionTime,
-                        popupTimeoutMillis = popupTimeoutMillis,
-                        onInteraction = { lastInteractionTime = System.currentTimeMillis() }
-                    )
-
-                    QuickActionsCard(
-                        viewModel = viewModel,
-                        actions = homeStatusCfg?.quickActions.orEmpty(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             }
         }
@@ -2341,7 +2379,7 @@ fun GlobalSettingsQuickControl(
 }
 
 @Composable
-private fun ScheduleGroup(
+internal fun ScheduleGroup(
     state: HvacUiState.Success,
     viewModel: HvacViewModel,
     titleFontSize: androidx.compose.ui.unit.TextUnit,
@@ -2383,7 +2421,7 @@ private fun ScheduleGroup(
 }
 
 @Composable
-private fun HouseModeGroup(
+internal fun HouseModeGroup(
     state: HvacUiState.Success,
     viewModel: HvacViewModel,
     titleFontSize: androidx.compose.ui.unit.TextUnit,
@@ -2439,15 +2477,17 @@ private fun HouseModeGroup(
 }
 
 @Composable
-private fun HotWaterGroup(
+internal fun HotWaterGroup(
     state: HvacUiState.Success,
     viewModel: HvacViewModel,
     titleFontSize: androidx.compose.ui.unit.TextUnit,
     modifier: Modifier = Modifier
 ) {
-    val waterBtnPadding = PaddingValues(horizontal = 4.dp, vertical = 7.dp)
-    val waterIconSize = 20.dp
-    val waterSpacerHeight = 4.dp
+    // Shortened along with the other footer buttons when the command center asks.
+    val compactWater = LocalCompactControls.current
+    val waterBtnPadding = PaddingValues(horizontal = 4.dp, vertical = if (compactWater) 4.dp else 7.dp)
+    val waterIconSize = if (compactWater) 16.dp else 20.dp
+    val waterSpacerHeight = if (compactWater) 3.dp else 4.dp
     val waterLabelFontSize = 8.5.sp
 
     Column(modifier = modifier) {

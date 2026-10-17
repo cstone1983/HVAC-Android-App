@@ -1,5 +1,5 @@
 {
-  "version": "6.16.0",
+  "version": "6.17.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -137,7 +137,7 @@
     },
     {
       "id": "upstairs",
-      "name": "UPSTAIRS",
+      "name": "STAIRWAY",
       "stateId": "climate.upstairs",
       "attributeName": "current_temperature"
     },
@@ -193,7 +193,8 @@
         "night": "input_number.anthony_night_cool",
         "away": "input_number.anthony_away_cool"
       },
-      "roomTemperatureEntityId": "sensor.anthony_temp_sensor_temperature"
+      "roomTemperatureEntityId": "sensor.anthony_temp_sensor_temperature",
+      "roomHumidityEntityId": "sensor.anthony_temp_sensor_humidity"
     },
     {
       "key": "autumn",
@@ -213,7 +214,8 @@
         "night": "input_number.autumn_night_cool",
         "away": "input_number.autumn_away_cool"
       },
-      "roomTemperatureEntityId": "sensor.autumn_temp_sensor_temperature"
+      "roomTemperatureEntityId": "sensor.autumn_temp_sensor_temperature",
+      "roomHumidityEntityId": "sensor.autumn_temp_sensor_humidity"
     },
     {
       "key": "bedroom_1",
@@ -233,7 +235,8 @@
         "day": "input_number.bedroom_1_day_cool",
         "night": "input_number.bedroom_1_night_cool",
         "away": "input_number.bedroom_1_away_cool"
-      }
+      },
+      "roomHumidityEntityId": "sensor.bedroom_temp_sensor_humidity"
     },
     {
       "key": "bedroom_2",
@@ -492,7 +495,12 @@
       "zones"
     ],
     "showAlarmCard": true,
-    "showHumidityCard": false
+    "showHumidityCard": false,
+    "commandCenter": true,
+    "otherRoomIds": [
+      "dining_room",
+      "upstairs"
+    ]
   },
   "solarCalc": {
     "enabled": true,

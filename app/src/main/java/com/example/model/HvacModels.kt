@@ -204,6 +204,12 @@ data class HomeStatusConfig(
     // A list rather than a flag so a tab can be added back without a build. The alarm tab
     // is not in it and never needs to be: it swaps in its own summary instead.
     val headerTabIds: List<String>? = listOf("zones"),
+    // The wall-panel command center on the home tab, for wide landscape screens. Off puts
+    // back the previous layout over the air, without a build.
+    val commandCenter: Boolean? = true,
+    // Room sensors that belong to no zone, shown on one line under the command center's
+    // zones (Dining, and the stairway).
+    val otherRoomIds: List<String>? = listOf("dining_room", "upstairs"),
     val showAlarmCard: Boolean? = true,
     val showHumidityCard: Boolean? = false
 )
@@ -356,6 +362,11 @@ data class ClimateZoneConfig(
      * the state is the hvac mode.
      */
     val roomTemperatureAttribute: String? = null,
+    /**
+     * Humidity reported by the same room sensor, where it has one. Only the three Zigbee
+     * sensors (Anthony, Autumn, Master 1) report it; the Ecobee remotes do not.
+     */
+    val roomHumidityEntityId: String? = null,
     val autoEntityId: String,
     val overrideEntityId: String,
     val tiltEntityId: String,
@@ -426,6 +437,16 @@ data class ClimateZone(
     val secondaryTargetTemp: Double? = null,
     val vaneMode: String = "Auto",
     val fanMode: String = "Auto",
+    /**
+     * The three readings the command-center card shows side by side. Display only:
+     * [currentTemp] is still what drives RUNNING / AT TARGET, and it keeps its own rule
+     * (the head while running, the room sensor while off).
+     */
+    val headTemp: Double? = null,
+    val roomTemp: Double? = null,
+    val roomHumidity: Double? = null,
+    /** The room reading comes from a thermostat rather than a standalone sensor (Basement). */
+    val roomIsThermostat: Boolean = false,
     // Fallbacks for when the helper is missing from the state map. These are the real option
     // lists the tilt/fan helpers carry, verified against live Home Assistant on 2026-09-21.
     // The previous vane fallback was listOf("Auto", "Swing", "1".."5"), of which *not one* is a

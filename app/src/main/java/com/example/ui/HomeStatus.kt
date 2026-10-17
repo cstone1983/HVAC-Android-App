@@ -857,6 +857,15 @@ fun SecondaryRoomChips(
  * A full-width segmented button with its label spelled out. Replaces the 30 dp icon-only
  * squares, which were both the most-used control in the app and the smallest.
  */
+/**
+ * Asks the segmented buttons below it for a shorter version: smaller icon, less padding.
+ *
+ * A CompositionLocal rather than a parameter because the buttons sit two composables down,
+ * inside the schedule, mode and hot water groups, and only the command center's footer wants
+ * them short. Everywhere else, including the alarm page, keeps the full size.
+ */
+val LocalCompactControls = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 @Composable
 fun RowScope.SegmentedControlButton(
     label: String,
@@ -868,10 +877,11 @@ fun RowScope.SegmentedControlButton(
     weight: Float = 1f,
     onClick: () -> Unit
 ) {
+    val compact = LocalCompactControls.current
     Column(
         modifier = Modifier
             .weight(weight)
-            .heightIn(min = 48.dp)
+            .heightIn(min = if (compact) 42.dp else 48.dp)
             .clip(RoundedCornerShape(11.dp))
             .background(if (isSelected) color.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.03f))
             .border(
@@ -879,7 +889,7 @@ fun RowScope.SegmentedControlButton(
                 RoundedCornerShape(11.dp)
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 3.dp, vertical = 7.dp)
+            .padding(horizontal = 3.dp, vertical = if (compact) 4.dp else 7.dp)
             .testTag(testTagId),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -888,9 +898,9 @@ fun RowScope.SegmentedControlButton(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (isSelected) color else color.copy(alpha = 0.55f),
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(if (compact) 16.dp else 20.dp)
         )
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(if (compact) 3.dp else 4.dp))
         Text(
             text = label.uppercase(),
             fontSize = 8.5.sp,

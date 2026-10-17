@@ -1358,6 +1358,20 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
+                val headReading = climate?.getDoubleAttribute("current_temperature")
+                val roomReading = zone.roomTemperatureEntityId
+                    ?.let { statesMap[it] }
+                    ?.let { sensor ->
+                        val attribute = zone.roomTemperatureAttribute
+                        if (attribute.isNullOrBlank()) {
+                            com.example.model.usableRoomTemperature(sensor.state)
+                        } else {
+                            com.example.model.usableRoomTemperature(
+                                sensor.attributes?.get(attribute)?.toString()
+                            )
+                        }
+                    }
+
                 ClimateZone(
                     key = zone.key,
                     name = zone.name,
@@ -1387,20 +1401,16 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     // from the room. See zoneDisplayTemperature.
                     currentTemp = com.example.model.zoneDisplayTemperature(
                         headMode = climate?.state,
-                        headReading = climate?.getDoubleAttribute("current_temperature"),
-                        roomSensorReading = zone.roomTemperatureEntityId
-                            ?.let { statesMap[it] }
-                            ?.let { sensor ->
-                                val attribute = zone.roomTemperatureAttribute
-                                if (attribute.isNullOrBlank()) {
-                                    com.example.model.usableRoomTemperature(sensor.state)
-                                } else {
-                                    com.example.model.usableRoomTemperature(
-                                        sensor.attributes?.get(attribute)?.toString()
-                                    )
-                                }
-                            }
+                        headReading = headReading,
+                        roomSensorReading = roomReading
                     ),
+                    headTemp = headReading,
+                    roomTemp = roomReading,
+                    roomHumidity = zone.roomHumidityEntityId
+                        ?.let { statesMap[it]?.state }
+                        ?.trim()?.toDoubleOrNull()
+                        ?.takeIf { it in 0.0..100.0 },
+                    roomIsThermostat = !zone.roomTemperatureAttribute.isNullOrBlank(),
                     targetTemp = resolvedTargetTemp,
                     // A head missing from the state map is not an off head. Defaulting to "off"
                     // made an absent entity look like a zone somebody deliberately switched off,
