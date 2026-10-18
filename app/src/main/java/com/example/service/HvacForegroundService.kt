@@ -241,194 +241,199 @@ class HvacForegroundService : Service() {
         }
     }
 
-    private fun formatTemp(temp: Double?): String {
-        return if (temp != null && temp > -50.0 && temp < 200.0) {
-            "${Math.round(temp)}°F"
-        } else {
-            "--"
-        }
-    }
+    /** One zone as the notification shows it. */
+    private data class NotificationZone(
+        val name: String,
+        val temp: Double?,
+        val mode: String,
+        val offSchedule: Boolean
+    )
 
+    /**
+     * The ongoing notification: a small copy of the panel.
+     *
+     * Collapsed, one line of temperatures and one of the house. Expanded, the six zones in the
+     * panel's colours — amber heating, blue cooling, purple drying, a red edge when a zone is off
+     * its schedule — then energy and hot water, then Heat / Cool / Off for the whole house with
+     * the current mode lit. Chose 2026-10-17 from three mockups (option C). Alarm arming is not
+     * here: Away and Night are automatic.
+     *
+     * The big number is the room sensor, as on the panel, never the head's return-air reading.
+     * Everything comes from the running view model; the zones are also cached, so a service that
+     * restarted before the app has loaded still shows the last grid rather than nothing.
+     *
+     * Built for the Fold. The wall panels show it too — the service needs a notification — but
+     * nobody pulls their shade down.
+     */
     private fun buildHvacNotification(): Notification {
-        val sharedPrefs = getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
         val viewModel = HvacViewModel.getInstance()
-        val uiState = viewModel?.uiState?.value
+        val uiState = viewModel?.uiState?.value as? HvacUiState.Success
+        val config = viewModel?.getActiveLayoutConfig()
+        val states = viewModel?.entityStates?.value.orEmpty()
 
-        // 1. Living Room Temp
-        var livingRoomTemp: Double? = null
-        if (uiState is HvacUiState.Success) {
-            val lrZone = uiState.zones.find { it.key == "living_room" || it.key == "main_level" }
-            livingRoomTemp = lrZone?.currentTemp
+        val zones = uiState?.zones?.map { z ->
+            NotificationZone(
+                name = z.name,
+                temp = z.roomTemp ?: z.headTemp,
+                mode = z.currentHvacMode.lowercase(Locale.US),
+                offSchedule = !z.autoOn || z.overrideOn
+            )
+        }?.also { cacheZones(prefs, it) } ?: cachedZones(prefs)
+
+        val outdoor = config?.homeStatus?.outdoorTempEntityId
+            ?.let { states[it]?.state?.toDoubleOrNull() }
+            ?: prefs.getFloat("last_known_outdoor_temp", -1f).takeIf { it != -1f }?.toDouble()
+
+        val houseMode = (uiState?.globalSettings?.globalHvacMode
+            ?: prefs.getString("last_known_hvac_mode", null))?.lowercase(Locale.US)
+
+        val alarm = viewModel?.alarmState?.value
+        val alarmLabel = when (alarm?.phase) {
+            com.example.model.AlarmPhase.DISARMED -> "Disarmed"
+            com.example.model.AlarmPhase.ARMING -> "Arming"
+            com.example.model.AlarmPhase.PENDING -> "Entry delay"
+            com.example.model.AlarmPhase.TRIGGERED -> "Alarm triggered"
+            com.example.model.AlarmPhase.ARMED -> alarm.armMode
+                ?.removePrefix("armed_")?.replace('_', ' ')
+                ?.replaceFirstChar { it.uppercase() }
+                ?.let { "Armed $it" } ?: "Armed"
+            else -> null
         }
-        if (livingRoomTemp == null) {
-            val cached = sharedPrefs.getFloat("last_known_living_temp", -1f)
-            if (cached != -1f) {
-                livingRoomTemp = cached.toDouble()
-            } else {
-                val cachedIndoor = sharedPrefs.getFloat("last_known_indoor_temp", -1f)
-                if (cachedIndoor != -1f) livingRoomTemp = cachedIndoor.toDouble()
+
+        val presence = config?.homeStatus?.presenceEntityIds.orEmpty()
+        val peopleHome = if (viewModel == null || presence.isEmpty()) null
+            else presence.count { states[it]?.state == "home" }
+
+        val tiles = viewModel?.solarToday?.value?.response?.tiles.orEmpty()
+        fun soFar(name: String): String? =
+            tiles.firstOrNull { it.id == "so_far" }?.items?.firstOrNull { it.name == name }?.value
+        val made = soFar("Made")
+        val used = soFar("Used")
+
+        val hotWater = uiState?.globalSettings?.waterHeaterFullness
+            ?: prefs.getFloat("last_known_hot_water_fullness", -1f).takeIf { it >= 0f }?.toDouble()
+
+        fun deg(t: Double?) = t?.let { "${Math.round(it)}°" } ?: "--°"
+        val temps = zones.mapNotNull { it.temp?.let { t -> Math.round(t) } }
+        val inside = when {
+            temps.isEmpty() -> "--°"
+            temps.min() == temps.max() -> "${temps.min()}°"
+            else -> "${temps.min()}–${temps.max()}°"
+        }
+        val title = "$inside inside · ${deg(outdoor)} outside"
+        val text = listOfNotNull(
+            peopleHome?.let { "$it home" },
+            made?.let { "solar $it kWh today" },
+            hotWater?.let { "hot water ${it.toInt()}%" }
+        ).joinToString(" · ").ifBlank { "Connecting to Home Assistant" }
+        val summary = listOfNotNull(
+            if (made != null || used != null) "Made ${made ?: "--"} · used ${used ?: "--"} kWh" else null,
+            hotWater?.let { "hot water ${it.toInt()}%" },
+            peopleHome?.let { "$it home" }
+        ).joinToString(" · ")
+
+        val collapsed = android.widget.RemoteViews(packageName, com.example.R.layout.notification_hvac_collapsed).apply {
+            setTextViewText(com.example.R.id.n_title, title)
+            setTextViewText(com.example.R.id.n_text, text)
+        }
+
+        val big = android.widget.RemoteViews(packageName, com.example.R.layout.notification_hvac_expanded)
+        big.setTextViewText(com.example.R.id.n_title, title)
+        val cellIds = intArrayOf(com.example.R.id.nz0, com.example.R.id.nz1, com.example.R.id.nz2,
+            com.example.R.id.nz3, com.example.R.id.nz4, com.example.R.id.nz5)
+        val nameIds = intArrayOf(com.example.R.id.nz0_name, com.example.R.id.nz1_name, com.example.R.id.nz2_name,
+            com.example.R.id.nz3_name, com.example.R.id.nz4_name, com.example.R.id.nz5_name)
+        val tempIds = intArrayOf(com.example.R.id.nz0_temp, com.example.R.id.nz1_temp, com.example.R.id.nz2_temp,
+            com.example.R.id.nz3_temp, com.example.R.id.nz4_temp, com.example.R.id.nz5_temp)
+        for (i in cellIds.indices) {
+            val zone = zones.getOrNull(i)
+            if (zone == null) {
+                // Keeps its share of the row, so a missing zone never stretches the others.
+                big.setInt(cellIds[i], "setVisibility", android.view.View.INVISIBLE)
+                continue
             }
+            big.setInt(cellIds[i], "setVisibility", android.view.View.VISIBLE)
+            big.setTextViewText(nameIds[i], zone.name)
+            big.setTextViewText(tempIds[i], deg(zone.temp))
+            big.setInt(cellIds[i], "setBackgroundResource", cellBackground(zone))
         }
+        big.setTextViewText(com.example.R.id.n_summary, summary)
+        big.setViewVisibility(
+            com.example.R.id.n_summary,
+            if (summary.isBlank()) android.view.View.GONE else android.view.View.VISIBLE
+        )
 
-        // 2. Bedroom 2 Temp
-        var bedroom2Temp: Double? = null
-        if (uiState is HvacUiState.Success) {
-            val b2Zone = uiState.zones.find { it.key == "bedroom_2" }
-            bedroom2Temp = b2Zone?.currentTemp
-        }
-        if (bedroom2Temp == null) {
-            val cached = sharedPrefs.getFloat("last_known_bedroom2_temp", -1f)
-            if (cached != -1f) bedroom2Temp = cached.toDouble()
-        }
+        fun modeIntent(action: String, code: Int) = PendingIntent.getService(
+            this, code,
+            Intent(this, HvacForegroundService::class.java).apply { this.action = action },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        big.setOnClickPendingIntent(com.example.R.id.n_btn_heat, modeIntent(ACTION_HEAT, 101))
+        big.setOnClickPendingIntent(com.example.R.id.n_btn_cool, modeIntent(ACTION_COOL, 102))
+        big.setOnClickPendingIntent(com.example.R.id.n_btn_off, modeIntent(ACTION_OFF, 103))
+        // The current house mode is lit, so the buttons double as the readout.
+        big.setInt(com.example.R.id.n_btn_heat, "setBackgroundResource",
+            if (houseMode == "heat") com.example.R.drawable.nc_btn_heat else com.example.R.drawable.nc_btn)
+        big.setInt(com.example.R.id.n_btn_cool, "setBackgroundResource",
+            if (houseMode == "cool") com.example.R.drawable.nc_btn_cool else com.example.R.drawable.nc_btn)
+        big.setInt(com.example.R.id.n_btn_off, "setBackgroundResource",
+            if (houseMode == "off") com.example.R.drawable.nc_btn_off else com.example.R.drawable.nc_btn)
 
-        // 3. Outside Temp. This used to read the day's forecast HIGH, so the notification
-        // disagreed with the panel beside it for most of the day and read materially warmer.
-        // The panel's own value comes from the configured outdoor sensor; use the same one.
-        var outdoorTemp: Double? = viewModel?.let { vm ->
-            val id = vm.getActiveLayoutConfig().homeStatus?.outdoorTempEntityId
-            id?.let { vm.entityStates.value[it]?.state?.toDoubleOrNull() }
-        }
-        if (outdoorTemp == null) {
-            val cached = sharedPrefs.getFloat("last_known_outdoor_temp", -1f)
-            if (cached != -1f) outdoorTemp = cached.toDouble()
-        }
-
-        // 4. Pool Temp
-        var poolTemp: Double? = viewModel?.poolState?.value?.waterTemperature
-        if (poolTemp == null) {
-            val cached = sharedPrefs.getFloat("last_known_pool_temp", -1f)
-            if (cached != -1f) poolTemp = cached.toDouble()
-        }
-
-        // 5. Global HVAC Season Mode
-        val currentMode = if (uiState is HvacUiState.Success) {
-            uiState.globalSettings.globalHvacMode
-        } else {
-            sharedPrefs.getString("last_known_hvac_mode", "heat") ?: "heat"
-        }
-
-        // 6. Additional info (Solar, Battery, Hot Water, other zones)
-        var solarKw: Double? = viewModel?.solarLiveState?.value?.let {
-            if (it.liveProductionWatts > 0f) (it.liveProductionWatts / 1000.0) else null
-        }
-        if (solarKw == null) {
-            val cached = sharedPrefs.getFloat("last_known_solar_kw", -1f)
-            if (cached != -1f) solarKw = cached.toDouble()
-        }
-
-        var hwFullness: Double? = if (uiState is HvacUiState.Success) {
-            uiState.globalSettings.waterHeaterFullness
-        } else null
-        if (hwFullness == null) {
-            val cached = sharedPrefs.getFloat("last_known_hot_water_fullness", -1f)
-            if (cached != -1f) hwFullness = cached.toDouble()
-        }
-
-        var hwTemp: Double? = null
-        val cachedHwTemp = sharedPrefs.getFloat("last_known_hot_water_temp", -1f)
-        if (cachedHwTemp != -1f) {
-            hwTemp = cachedHwTemp.toDouble()
-        }
-
-        // Zone key "master_bedroom" does not exist in layout_config; the six keys are main_level,
-        // anthony, autumn, bedroom_1, bedroom_2 and basement. This line was permanently dead.
-        val masterTemp = (if (uiState is HvacUiState.Success) uiState.zones.find { it.key == "bedroom_1" }?.currentTemp else null)
-            ?: sharedPrefs.getFloat("last_known_master_temp", -1f).takeIf { it != -1f }?.toDouble()
-
-        val basementTemp = (if (uiState is HvacUiState.Success) uiState.zones.find { it.key == "basement" }?.currentTemp else null)
-            ?: sharedPrefs.getFloat("last_known_basement_temp", -1f).takeIf { it != -1f }?.toDouble()
-
-        // Formatting text tokens
-        val livingStr = formatTemp(livingRoomTemp)
-        val bed2Str = formatTemp(bedroom2Temp)
-        val outdoorStr = formatTemp(outdoorTemp)
-        val poolStr = formatTemp(poolTemp)
-        val modeStr = currentMode.uppercase(Locale.US)
-
-        // Collapsed View
-        val collapsedTitle = "🏠 Living: $livingStr  •  🛏️ Bed 2: $bed2Str"
-        val collapsedText = "⛅ Out: $outdoorStr  •  🏊 Pool: $poolStr  •  $modeStr"
-
-        // Expanded BigTextStyle Content
-        val bigTextBuilder = StringBuilder()
-        bigTextBuilder.append("🏠 Living Room: $livingStr    •    🛏️ Bedroom 2: $bed2Str\n")
-        bigTextBuilder.append("⛅ Outside Temp: $outdoorStr    •    🏊 Pool Water: $poolStr\n")
-
-        // No battery entity exists in this Home Assistant instance, so the battery line could
-        // never populate. Dropped rather than left as a branch that reads as unimplemented.
-        val extraTelemetry = mutableListOf<String>()
-        if (solarKw != null && solarKw >= 0.0) {
-            extraTelemetry.add(String.format(Locale.US, "☀️ Solar: %.1f kW", solarKw))
-        }
-
-        if (hwFullness != null && hwFullness >= 0.0) {
-            val hwText = "💧 Hot Water: ${hwFullness.toInt()}%"
-            val hwTempText = if (hwTemp != null && hwTemp > 0) " (${hwTemp.toInt()}°F)" else ""
-            extraTelemetry.add("$hwText$hwTempText")
-        }
-        if (extraTelemetry.isNotEmpty()) {
-            bigTextBuilder.append(extraTelemetry.joinToString("   •   ")).append("\n")
-        }
-
-        // bedroom_1 is "Master 1" on the panel and in the config. It was labelled "Gym" here and
-        // separately read as a second "Master" line from a climate entity that does not exist,
-        // so one room had two names in one notification and neither matched the panel.
-        val extraRooms = mutableListOf<String>()
-        if (masterTemp != null) extraRooms.add("Master 1: ${formatTemp(masterTemp)}")
-        if (basementTemp != null) extraRooms.add("Basement: ${formatTemp(basementTemp)}")
-        if (extraRooms.isNotEmpty()) {
-            bigTextBuilder.append("🛏️ " + extraRooms.joinToString("  •  ")).append("\n")
-        }
-
-        bigTextBuilder.append("⚙️ Season Mode: $modeStr   •   Active Deck Connection")
-
-        val bigTextStyle = NotificationCompat.BigTextStyle()
-            .setBigContentTitle("🏠 Living: $livingStr  |  🛏️ Bed 2: $bed2Str  |  🏊 Pool: $poolStr")
-            .setSummaryText("Home Climate & Pool Deck")
-            .bigText(bigTextBuilder.toString())
-
-        val openAppIntent = Intent(this, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
         val pendingOpenApp = PendingIntent.getActivity(
             this,
             0,
-            openAppIntent,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Action Buttons Setup
-        val heatIntent = Intent(this, HvacForegroundService::class.java).apply { action = ACTION_HEAT }
-        val pendingHeat = PendingIntent.getService(this, 101, heatIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-
-        val coolIntent = Intent(this, HvacForegroundService::class.java).apply { action = ACTION_COOL }
-        val pendingCool = PendingIntent.getService(this, 102, coolIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-
-        val offIntent = Intent(this, HvacForegroundService::class.java).apply { action = ACTION_OFF }
-        val pendingOff = PendingIntent.getService(this, 103, offIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-
-        val dismissIntent = Intent(this, HvacForegroundService::class.java).apply { action = ACTION_DISMISS }
-        val pendingDismiss = PendingIntent.getService(this, 104, dismissIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(collapsedTitle)
-            .setContentText(collapsedText)
-            .setSubText("Climate & Pool")
-            .setStyle(bigTextStyle)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            // Plain title and text too: they are what the lock screen, a watch and the
+            // accessibility services read, and the fallback anywhere custom views are not drawn.
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSubText(alarmLabel)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(collapsed)
+            .setCustomBigContentView(big)
+            .setSmallIcon(com.example.R.drawable.ic_climate_zone)
             .setOngoing(true)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
             .setContentIntent(pendingOpenApp)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setDeleteIntent(pendingDismiss)
-            .addAction(0, "HEAT", pendingHeat)
-            .addAction(0, "COOL", pendingCool)
-            .addAction(0, "OFF", pendingOff)
-            .addAction(0, "DISMISS (5M)", pendingDismiss)
+            // Swiping it away still parks the service for five minutes, as before; the
+            // separate DISMISS (5M) button went with the old layout.
+            .setDeleteIntent(modeIntent(ACTION_DISMISS, 104))
             .build()
     }
+
+    private fun cellBackground(zone: NotificationZone): Int = when (zone.mode) {
+        "heat" -> if (zone.offSchedule) com.example.R.drawable.nc_cell_heat_hold else com.example.R.drawable.nc_cell_heat
+        "cool" -> if (zone.offSchedule) com.example.R.drawable.nc_cell_cool_hold else com.example.R.drawable.nc_cell_cool
+        "dry" -> if (zone.offSchedule) com.example.R.drawable.nc_cell_dry_hold else com.example.R.drawable.nc_cell_dry
+        else -> if (zone.offSchedule) com.example.R.drawable.nc_cell_plain_hold else com.example.R.drawable.nc_cell_plain
+    }
+
+    private fun cacheZones(prefs: android.content.SharedPreferences, zones: List<NotificationZone>) {
+        val packed = zones.joinToString("\n") { z ->
+            listOf(z.name.replace('\t', ' '), z.temp?.toString() ?: "", z.mode, z.offSchedule.toString())
+                .joinToString("\t")
+        }
+        if (prefs.getString("notification_zones", null) != packed) {
+            prefs.edit().putString("notification_zones", packed).apply()
+        }
+    }
+
+    private fun cachedZones(prefs: android.content.SharedPreferences): List<NotificationZone> =
+        prefs.getString("notification_zones", null).orEmpty().lines().mapNotNull { line ->
+            val f = line.split('\t')
+            if (f.size < 4) null
+            else NotificationZone(f[0], f[1].toDoubleOrNull(), f[2], f[3].toBoolean())
+        }
 
     private fun startPollingLoop() {
         pollJob?.cancel()
@@ -652,8 +657,19 @@ class HvacForegroundService : Service() {
             }
 
             // Fallback baseline sync or periodic weather update check
+            var minutes = 0
             while (isActive) {
                 try {
+                    // The notification shows today's energy, and only the home screen polls
+                    // Solar Calc — so with the app closed the figures went stale. Every five
+                    // minutes is plenty for counters that move a few kWh an hour.
+                    if (minutes++ % 5 == 0) {
+                        try {
+                            HvacViewModel.getInstance()?.fetchSolarToday()
+                        } catch (e: Exception) {
+                            android.util.Log.w("HvacForegroundService", "Solar refresh failed", e)
+                        }
+                    }
                     // Refresh the cached outdoor reading from the real sensor. This used to write
                     // the day's forecast HIGH over the cache every minute, so even the fallback
                     // value was wrong.
