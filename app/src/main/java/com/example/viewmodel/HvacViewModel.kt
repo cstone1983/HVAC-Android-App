@@ -1442,7 +1442,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     entityId = light.entityId,
                     name = light.name,
                     isOn = node?.state?.lowercase() == "on",
-                    brightness = node?.getDoubleAttribute("brightness")?.toInt()
+                    brightness = node?.getDoubleAttribute("brightness")?.toInt(),
+                    area = light.area
                 )
             }
 
@@ -1452,7 +1453,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 SwitchControl(
                     entityId = sm.entityId,
                     name = sm.name,
-                    isOn = node?.state?.lowercase() == "on"
+                    isOn = node?.state?.lowercase() == "on",
+                    area = sm.area,
+                    includeInAllOff = sm.allOff != false
                 )
             }
 
@@ -1462,7 +1465,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 CoverControl(
                     entityId = cv.entityId,
                     name = cv.name,
-                    state = node?.state ?: "closed"
+                    state = node?.state ?: "closed",
+                    area = cv.area,
+                    lastChanged = node?.last_changed
                 )
             }
 
@@ -2288,6 +2293,24 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         callServiceWithOptimisticFeedback("switch", service, mapOf(
             "entity_id" to entityId
         ), "$name Switch toggled")
+    }
+
+    /** A power group's "All off": one call per domain for everything in it that is on. */
+    fun turnOffAll(
+        area: String,
+        lights: List<com.example.model.LightControl>,
+        switches: List<com.example.model.SwitchControl>
+    ) {
+        if (lights.isNotEmpty()) {
+            callServiceWithOptimisticFeedback("light", "turn_off", mapOf(
+                "entity_id" to lights.map { it.entityId }
+            ), "$area: lights off")
+        }
+        if (switches.isNotEmpty()) {
+            callServiceWithOptimisticFeedback("switch", "turn_off", mapOf(
+                "entity_id" to switches.map { it.entityId }
+            ), "$area: all off")
+        }
     }
 
     fun controlCover(entityId: String, state: String, name: String) {

@@ -210,6 +210,9 @@ data class HomeStatusConfig(
     // The phone's version of it (Fold inner and cover screens), separately, so the phone can go
     // back to the previous layout over the air without touching the wall panels.
     val phoneCommandCenter: Boolean? = true,
+    // Tabs on which the wall panels' right-hand house panel stands aside for the page's own
+    // content. Its alarm, people and rooms are on the home screen already.
+    val housePanelHiddenTabs: List<String>? = listOf("aux"),
     // Room sensors that belong to no zone, shown on one line under the command center's
     // zones (Dining, and the stairway).
     val otherRoomIds: List<String>? = listOf("dining_room", "upstairs"),
@@ -279,6 +282,8 @@ data class HvacLayoutConfig(
     val lights: List<LightControlConfig>,
     val switches: List<SwitchControlConfig>,
     val covers: List<CoverControlConfig>,
+    // The power tab's groups, in order. Devices name theirs with `area`.
+    val powerAreas: List<String>? = null,
     val appTitle: String? = "Home Control",
     val appSubtitle: String? = "HVAC SYSTEM CONTROLLER",
     val theme: HvacThemeConfig? = HvacThemeConfig(),
@@ -381,19 +386,25 @@ data class ClimateZoneConfig(
 @JsonClass(generateAdapter = true)
 data class LightControlConfig(
     val entityId: String,
-    val name: String
+    val name: String,
+    /** Which group the power tab shows it in ("Inside", "Outside", "Pool"...). */
+    val area: String? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class SwitchControlConfig(
     val entityId: String,
-    val name: String
+    val name: String,
+    val area: String? = null,
+    /** False keeps it out of its group's "All off" — the pool pump is a switch, not a light. */
+    val allOff: Boolean? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class CoverControlConfig(
     val entityId: String,
-    val name: String
+    val name: String,
+    val area: String? = null
 )
 
 data class RoomSensor(
@@ -1088,19 +1099,25 @@ data class LightControl(
     val entityId: String,
     val name: String,
     val isOn: Boolean = false,
-    val brightness: Int? = null // 0-255
+    val brightness: Int? = null, // 0-255
+    val area: String? = null
 )
 
 data class SwitchControl(
     val entityId: String,
     val name: String,
-    val isOn: Boolean = false
+    val isOn: Boolean = false,
+    val area: String? = null,
+    val includeInAllOff: Boolean = true
 )
 
 data class CoverControl(
     val entityId: String,
     val name: String,
-    val state: String = "closed" // open, closed, opening, closing
+    val state: String = "closed", // open, closed, opening, closing
+    val area: String? = null,
+    /** Home Assistant's last_changed, for "open since". */
+    val lastChanged: String? = null
 )
 
 data class PoolHistoryPoint(

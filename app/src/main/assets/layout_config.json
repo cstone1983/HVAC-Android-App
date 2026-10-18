@@ -1,5 +1,5 @@
 {
-  "version": "6.18.0",
+  "version": "6.19.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -283,61 +283,76 @@
   "lights": [
     {
       "entityId": "light.kitchen_main_lights",
-      "name": "Kitchen"
+      "name": "Kitchen",
+      "area": "Inside"
     },
     {
       "entityId": "light.living_room_sconces",
-      "name": "Living Sconces"
+      "name": "Living Sconces",
+      "area": "Inside"
     },
     {
       "entityId": "light.dining_room_main_lights",
-      "name": "Dining"
+      "name": "Dining",
+      "area": "Inside"
     },
     {
       "entityId": "light.stairs_main_lights",
-      "name": "Stairs"
+      "name": "Stairs",
+      "area": "Inside"
     },
     {
       "entityId": "light.exterior_sconces",
-      "name": "Exterior Sconces"
+      "name": "Exterior Sconces",
+      "area": "Outside"
     },
     {
       "entityId": "light.porch_light",
-      "name": "Porch Side"
+      "name": "Porch Side",
+      "area": "Outside"
     },
     {
       "entityId": "light.porch_stairway_1",
-      "name": "Porch Stair 1"
+      "name": "Porch Stair 1",
+      "area": "Outside"
     },
     {
       "entityId": "light.pool_flood1",
-      "name": "Pool Flood 1"
+      "name": "Pool Flood 1",
+      "area": "Pool"
     },
     {
       "entityId": "light.pool_flood2",
-      "name": "Pool Flood 2"
+      "name": "Pool Flood 2",
+      "area": "Pool"
     }
   ],
   "switches": [
     {
       "entityId": "switch.exterior_backyard_flood",
-      "name": "Exterior Flood"
+      "name": "Exterior Flood",
+      "area": "Outside"
     },
     {
       "entityId": "switch.porch_led_strip",
-      "name": "Porch LED"
+      "name": "Porch LED",
+      "area": "Outside"
     },
     {
       "entityId": "switch.mudroom_wall_led",
-      "name": "Mudroom LED"
+      "name": "Mudroom LED",
+      "area": "Inside"
     },
     {
       "entityId": "switch.pool_fence_lights",
-      "name": "Fence Lights"
+      "name": "Fence Lights",
+      "area": "Pool"
     },
     {
       "entityId": "switch.pool_pump",
-      "name": "Pool Pump"
+      "name": "Pool Pump",
+      "area": "Pool",
+      "allOff": false
     }
   ],
   "dynamicSections": [
@@ -421,15 +436,18 @@
   "covers": [
     {
       "entityId": "cover.konnected_d332ec_garage_door",
-      "name": "Garage South"
+      "name": "Garage South",
+      "area": "Garage"
     },
     {
       "entityId": "cover.garage_garage_door_north_garage_door",
-      "name": "Garage North"
+      "name": "Garage North",
+      "area": "Garage"
     },
     {
       "entityId": "switch.shellyplus1_b8d61a8a78b0_switch_0",
-      "name": "Workshop"
+      "name": "Workshop",
+      "area": "Garage"
     }
   ],
   "idleReturnSeconds": 20,
@@ -501,7 +519,10 @@
       "dining_room",
       "upstairs"
     ],
-    "phoneCommandCenter": true
+    "phoneCommandCenter": true,
+    "housePanelHiddenTabs": [
+      "aux"
+    ]
   },
   "solarCalc": {
     "enabled": true,
@@ -557,5 +578,11 @@
         "type": "motion"
       }
     ]
-  }
+  },
+  "powerAreas": [
+    "Inside",
+    "Outside",
+    "Garage",
+    "Pool"
+  ]
 }
