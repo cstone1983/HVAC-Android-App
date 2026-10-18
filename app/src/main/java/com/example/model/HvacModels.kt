@@ -1133,3 +1133,14 @@ data class PoolState(
     val actionsPending: Int? = null
 )
 
+/**
+ * Heat runs the refrigerant cycle the opposite way from Cool and Dry, so switching across that
+ * boundary abruptly can stress the compressor and warrants confirmation. Cool and Dry share a
+ * direction, so switching between them does not. Used by the panel and the notification alike.
+ */
+fun modeSwitchNeedsConfirmation(target: String, lastNonOff: String): Boolean {
+    val to = target.lowercase()
+    val from = lastNonOff.lowercase()
+    val coolCycleModes = setOf("cool", "dry")
+    return (to == "heat" && from in coolCycleModes) || (to in coolCycleModes && from == "heat")
+}

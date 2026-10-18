@@ -243,6 +243,7 @@ class HvacForegroundService : Service() {
 
     /** One zone as the notification shows it. */
     private data class NotificationZone(
+        val key: String,
         val name: String,
         val temp: Double?,
         val mode: String,
@@ -274,6 +275,7 @@ class HvacForegroundService : Service() {
 
         val zones = uiState?.zones?.map { z ->
             NotificationZone(
+                key = z.key,
                 name = z.name,
                 temp = z.roomTemp ?: z.headTemp,
                 mode = z.currentHvacMode.lowercase(Locale.US),
@@ -357,6 +359,9 @@ class HvacForegroundService : Service() {
             big.setTextViewText(nameIds[i], zone.name)
             big.setTextViewText(tempIds[i], deg(zone.temp))
             big.setInt(cellIds[i], "setBackgroundResource", cellBackground(zone))
+            big.setOnClickPendingIntent(cellIds[i], openAppIntent(200 + i) {
+                putExtra(com.example.ui.LaunchRequests.EXTRA_OPEN_ZONE, zone.key)
+            })
         }
         big.setTextViewText(com.example.R.id.n_summary, summary)
         big.setViewVisibility(
@@ -369,8 +374,20 @@ class HvacForegroundService : Service() {
             Intent(this, HvacForegroundService::class.java).apply { this.action = action },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        big.setOnClickPendingIntent(com.example.R.id.n_btn_heat, modeIntent(ACTION_HEAT, 101))
-        big.setOnClickPendingIntent(com.example.R.id.n_btn_cool, modeIntent(ACTION_COOL, 102))
+        // A switch across heating and cooling opens the app on the panel's confirmation instead
+        // of applying — the compressor rule is not waived for being one tap away. A service
+        // cannot open the app itself from a notification tap on current Android, so the button
+        // is built as the right kind of intent up front; it is rebuilt on every state change.
+        val lastNonOff = (viewModel?.uiState?.value as? HvacUiState.Success)?.globalSettings?.lastNonOffHvacMode
+            ?: prefs.getString("last_non_off_hvac_mode", "heat") ?: "heat"
+        fun modeButton(mode: String, action: String, code: Int): PendingIntent =
+            if (com.example.model.modeSwitchNeedsConfirmation(mode, lastNonOff)) {
+                openAppIntent(code + 50) { putExtra(com.example.ui.LaunchRequests.EXTRA_CONFIRM_MODE, mode) }
+            } else {
+                modeIntent(action, code)
+            }
+        big.setOnClickPendingIntent(com.example.R.id.n_btn_heat, modeButton("heat", ACTION_HEAT, 101))
+        big.setOnClickPendingIntent(com.example.R.id.n_btn_cool, modeButton("cool", ACTION_COOL, 102))
         big.setOnClickPendingIntent(com.example.R.id.n_btn_off, modeIntent(ACTION_OFF, 103))
         // The current house mode is lit, so the buttons double as the readout.
         big.setInt(com.example.R.id.n_btn_heat, "setBackgroundResource",
@@ -380,14 +397,7 @@ class HvacForegroundService : Service() {
         big.setInt(com.example.R.id.n_btn_off, "setBackgroundResource",
             if (houseMode == "off") com.example.R.drawable.nc_btn_off else com.example.R.drawable.nc_btn)
 
-        val pendingOpenApp = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val pendingOpenApp = openAppIntent(0)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             // Plain title and text too: they are what the lock screen, a watch and the
@@ -411,6 +421,19 @@ class HvacForegroundService : Service() {
             .build()
     }
 
+    /** Opens the app, reusing the running screen; [extras] says what to open it on. */
+    private fun openAppIntent(requestCode: Int, extras: Intent.() -> Unit = {}): PendingIntent =
+        PendingIntent.getActivity(
+            this,
+            requestCode,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                extras()
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
     private fun cellBackground(zone: NotificationZone): Int = when (zone.mode) {
         "heat" -> if (zone.offSchedule) com.example.R.drawable.nc_cell_heat_hold else com.example.R.drawable.nc_cell_heat
         "cool" -> if (zone.offSchedule) com.example.R.drawable.nc_cell_cool_hold else com.example.R.drawable.nc_cell_cool
@@ -420,7 +443,7 @@ class HvacForegroundService : Service() {
 
     private fun cacheZones(prefs: android.content.SharedPreferences, zones: List<NotificationZone>) {
         val packed = zones.joinToString("\n") { z ->
-            listOf(z.name.replace('\t', ' '), z.temp?.toString() ?: "", z.mode, z.offSchedule.toString())
+            listOf(z.key, z.name.replace('\t', ' '), z.temp?.toString() ?: "", z.mode, z.offSchedule.toString())
                 .joinToString("\t")
         }
         if (prefs.getString("notification_zones", null) != packed) {
@@ -431,8 +454,8 @@ class HvacForegroundService : Service() {
     private fun cachedZones(prefs: android.content.SharedPreferences): List<NotificationZone> =
         prefs.getString("notification_zones", null).orEmpty().lines().mapNotNull { line ->
             val f = line.split('\t')
-            if (f.size < 4) null
-            else NotificationZone(f[0], f[1].toDoubleOrNull(), f[2], f[3].toBoolean())
+            if (f.size < 5) null
+            else NotificationZone(f[0], f[1], f[2].toDoubleOrNull(), f[3], f[4].toBoolean())
         }
 
     private fun startPollingLoop() {
@@ -699,41 +722,66 @@ class HvacForegroundService : Service() {
         }
     }
 
+    /**
+     * Heat / Cool / Off from the notification.
+     *
+     * These never worked until 47.0. They read the Home Assistant address and token from
+     * preferences, which a normal install never writes — the same dead read that once kept the
+     * connection below from ever opening — so every tap returned quietly and changed nothing.
+     *
+     * With the app's view model alive (the usual case, since this service keeps the process up)
+     * the tap goes through the same call the panel's own buttons use, with the same feedback. If
+     * not, straight over the WebSocket, then REST, with the credentials resolved the same way as
+     * the connection's.
+     */
     private fun triggerHvacMode(mode: String) {
+        val viewModel = HvacViewModel.getInstance()
+        if (viewModel != null) {
+            viewModel.selectGlobalHvacMode(mode)
+            updateNotification()
+            return
+        }
         serviceScope.launch {
             try {
-                val sharedPrefs = getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
-                val url = sharedPrefs.getString("ha_url", "") ?: ""
-                val token = sharedPrefs.getString("ha_token", "") ?: ""
-
-                if (url.isNotEmpty() && token.isNotEmpty()) {
-                    val wsManager = HomeAssistantWebSocketManager.getInstance(applicationContext)
-                    val success = wsManager.callService(
-                        domain = "input_select",
-                        service = "select_option",
-                        serviceData = mapOf("option" to mode),
-                        target = mapOf("entity_id" to "input_select.global_hvac_mode")
-                    )
-
-                    if (!success) {
-                        HomeAssistantClient.initialize(url, token)
-                        HomeAssistantClient.service.callService(
-                            "input_select",
-                            "select_option",
-                            mapOf(
-                                "entity_id" to "input_select.global_hvac_mode",
-                                "option" to mode
-                            )
-                        )
-                    }
-
-                    sharedPrefs.edit().putString("last_known_hvac_mode", mode).apply()
+                val (url, token) = resolveHaCredentials()
+                if (url.isEmpty() || token.isEmpty()) {
+                    android.util.Log.w("HvacForegroundService", "No Home Assistant credentials; mode tap ignored")
+                    return@launch
                 }
+                val wsManager = HomeAssistantWebSocketManager.getInstance(applicationContext)
+                val success = wsManager.callService(
+                    domain = "input_select",
+                    service = "select_option",
+                    serviceData = mapOf("option" to mode),
+                    target = mapOf("entity_id" to "input_select.global_hvac_mode")
+                )
+                if (!success) {
+                    HomeAssistantClient.initialize(url, token)
+                    HomeAssistantClient.service.callService(
+                        "input_select",
+                        "select_option",
+                        mapOf("entity_id" to "input_select.global_hvac_mode", "option" to mode)
+                    )
+                }
+                getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
+                    .edit().putString("last_known_hvac_mode", mode).apply()
                 updateNotification()
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("HvacForegroundService", "Mode tap failed", e)
             }
         }
+    }
+
+    /** BuildConfig first, then the saved preference — the order the connection uses. */
+    private fun resolveHaCredentials(): Pair<String, String> {
+        val prefs = getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
+        val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+        val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" }
+        val url = buildUrl.takeIf { it.isNotEmpty() && it != "https://localhost/" }
+            ?: prefs.getString("ha_url", null).orEmpty()
+        val token = buildToken.takeIf { it.isNotEmpty() && it != "YOUR_HOME_ASSISTANT_TOKEN" }
+            ?: prefs.getString("ha_token", null).orEmpty()
+        return url to token
     }
 
     private fun scheduleRestartInFiveMinutes() {

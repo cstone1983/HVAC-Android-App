@@ -2,6 +2,7 @@ package com.example
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -46,6 +47,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // A tap on the notification while the app is already open arrives here rather than onCreate.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLaunchIntent(intent)
+    }
+
+    /** Hands a notification tap — a zone, or a mode to confirm — to the dashboard. */
+    private fun handleLaunchIntent(intent: Intent?) {
+        intent?.getStringExtra(com.example.ui.LaunchRequests.EXTRA_OPEN_ZONE)?.let {
+            com.example.ui.LaunchRequests.openZone.value = it
+            intent.removeExtra(com.example.ui.LaunchRequests.EXTRA_OPEN_ZONE)
+        }
+        intent?.getStringExtra(com.example.ui.LaunchRequests.EXTRA_CONFIRM_MODE)?.let {
+            com.example.ui.LaunchRequests.confirmMode.value = it
+            intent.removeExtra(com.example.ui.LaunchRequests.EXTRA_CONFIRM_MODE)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -72,6 +92,8 @@ class MainActivity : ComponentActivity() {
         }
 
         enableEdgeToEdge()
+
+        handleLaunchIntent(intent)
 
         // Read initial screen on preference
         val sharedPrefs = getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)

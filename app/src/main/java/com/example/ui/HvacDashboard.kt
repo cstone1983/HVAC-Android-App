@@ -944,6 +944,16 @@ fun DynamicTabContent(
     val theme = LocalHvacTheme.current
     val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
     var activeZoneDetail by remember { mutableStateOf<ClimateZone?>(null) }
+
+    // A zone tapped in the notification. Waits for that zone to exist, then opens it once.
+    val zoneFromNotification by LaunchRequests.openZone.collectAsStateWithLifecycle()
+    LaunchedEffect(zoneFromNotification, state.zones) {
+        val key = zoneFromNotification ?: return@LaunchedEffect
+        if (tab.id != "zones") return@LaunchedEffect
+        val zone = state.zones.find { it.key == key } ?: return@LaunchedEffect
+        activeZoneDetail = zone
+        LaunchRequests.openZone.value = null
+    }
     var activeLightPopupId by remember { mutableStateOf<String?>(null) }
     var activeSwitchPopupId by remember { mutableStateOf<String?>(null) }
 
@@ -1522,6 +1532,24 @@ fun HvacDashboardContent(
     // aimed at a screen that had already changed. That is not merely cosmetic on a keypad: the
     // buttons underneath include the whole-house mode row.
     val alarmKeypadVisible by viewModel.showAlarmKeypad.collectAsStateWithLifecycle()
+
+    // Opened from the notification. A zone tap goes to the zones tab (the tab itself opens the
+    // popup once its zones are loaded); a Heat/Cool tap that crosses heating and cooling asks
+    // the same confirmation the panel's own buttons ask.
+    val zoneFromNotification by LaunchRequests.openZone.collectAsStateWithLifecycle()
+    LaunchedEffect(zoneFromNotification) {
+        if (zoneFromNotification == null) return@LaunchedEffect
+        val zonesTab = activeTabs.indexOfFirst { it.id == "zones" }
+        if (zonesTab >= 0) selectedTab = zonesTab
+        lastInteractionTime = System.currentTimeMillis()
+    }
+    val modeFromNotification by LaunchRequests.confirmMode.collectAsStateWithLifecycle()
+    LaunchedEffect(modeFromNotification) {
+        val mode = modeFromNotification ?: return@LaunchedEffect
+        viewModel.requestGlobalHvacMode(mode)
+        LaunchRequests.confirmMode.value = null
+        lastInteractionTime = System.currentTimeMillis()
+    }
 
     LaunchedEffect(lastInteractionTime, alarmKeypadVisible) {
         if (alarmKeypadVisible) return@LaunchedEffect

@@ -1676,17 +1676,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun requestGlobalHvacMode(label: String) {
-        val lastNonOff = lastNonOffHvacMode.lowercase()
-        val targetMode = label.lowercase()
-
-        // Heat runs the opposite refrigerant cycle direction from Cool/Dry, so switching across
-        // that boundary abruptly can stress the compressor and warrants confirmation. Cool and Dry
-        // share a cycle direction, so switching directly between them does not need confirming.
-        val coolCycleModes = setOf("cool", "dry")
-        val needsConfirmation = (targetMode == "heat" && lastNonOff in coolCycleModes) ||
-            (targetMode in coolCycleModes && lastNonOff == "heat")
-
-        if (needsConfirmation) {
+        if (com.example.model.modeSwitchNeedsConfirmation(label, lastNonOffHvacMode)) {
             _pendingHvacMode.value = label
             _showModeConfirmDialog.value = true
         } else {
