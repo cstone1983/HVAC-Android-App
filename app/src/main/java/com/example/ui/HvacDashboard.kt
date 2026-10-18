@@ -2570,11 +2570,28 @@ internal fun HotWaterGroup(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf(
-                        WaterHeaterItem("eco", "ECO", Icons.Default.WaterDrop, Color(0xFF10B981)),
-                        WaterHeaterItem("heat_pump", "HEAT PUMP", Icons.Default.HeatPump, Color(0xFFF59E0B)),
-                        WaterHeaterItem("high_demand", "BOOST", Icons.Default.Bolt, Color(0xFFEF4444))
-                    ).forEach { item ->
+                    val hwConfig = viewModel.getActiveLayoutConfig()
+                    val hwStates by viewModel.entityStates.collectAsStateWithLifecycle()
+                    // What the input_select offers right now. A configured mode it does not offer
+                    // (yet) is left out, rather than drawn as a button that would be refused.
+                    val offered = (hwStates[hwConfig.waterHeaterEntityId ?: "input_select.water_heater_mode"]
+                        ?.attributes?.get("options") as? List<*>)?.map { it.toString().lowercase() }
+                    (hwConfig.waterHeaterModes ?: com.example.model.DefaultWaterHeaterModes)
+                        .filter { offered == null || it.option.lowercase() in offered }
+                        .map { m ->
+                            WaterHeaterItem(
+                                m.option,
+                                m.label,
+                                when (m.icon) {
+                                    "water_drop" -> Icons.Default.WaterDrop
+                                    "heat_pump" -> Icons.Default.HeatPump
+                                    "fire" -> Icons.Default.LocalFireDepartment
+                                    else -> Icons.Default.Bolt
+                                },
+                                parseHexColor(m.color, Color(0xFFEF4444))
+                            )
+                        }
+                        .forEach { item ->
                         val option = item.option
                         val label = item.label
                         val icon = item.icon

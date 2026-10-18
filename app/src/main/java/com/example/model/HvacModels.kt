@@ -289,6 +289,10 @@ data class HvacLayoutConfig(
     val theme: HvacThemeConfig? = HvacThemeConfig(),
     val limits: SystemLimitsConfig? = SystemLimitsConfig(),
     val waterHeaterEntityId: String? = "input_select.water_heater_mode",
+    // The hot water buttons, in order. Each sends its `option` to waterHeaterEntityId, and only
+    // appears while that input_select actually offers it — so a mode can be added in Home
+    // Assistant and here in either order without a dead button in between.
+    val waterHeaterModes: List<WaterHeaterModeConfig>? = null,
     val waterHeaterFullnessEntityId: String? = "sensor.heat_pump_water_heater_available_hot_water",
     // Binary sensor that reports whether the tank is actually heating right now, so the card
     // can explain itself instead of appearing to change mode on its own.
@@ -1161,3 +1165,25 @@ fun modeSwitchNeedsConfirmation(target: String, lastNonOff: String): Boolean {
     val coolCycleModes = setOf("cool", "dry")
     return (to == "heat" && from in coolCycleModes) || (to in coolCycleModes && from == "heat")
 }
+
+/** One hot water button. `icon`: water_drop, heat_pump, bolt or fire. `color`: hex. */
+@JsonClass(generateAdapter = true)
+data class WaterHeaterModeConfig(
+    val option: String,
+    val label: String,
+    val icon: String? = null,
+    val color: String? = null
+)
+
+/** The buttons the panels had before they were configurable, plus X BOOST (2026-10-18). */
+val DefaultWaterHeaterModes = listOf(
+    WaterHeaterModeConfig("eco", "ECO", "water_drop", "#10B981"),
+    WaterHeaterModeConfig("heat_pump", "HEAT PUMP", "heat_pump", "#F59E0B"),
+    // Live today: the water heater's own high demand mode at 130°. Chris's intended rewrite
+    // (n8n Water Heater workflow draft of 2026-10-11, not yet published) makes this heat pump
+    // mode at 130°, which is what gives X BOOST below a different job.
+    WaterHeaterModeConfig("high_demand", "BOOST", "bolt", "#EF4444"),
+    // The water heater's own high demand mode at 130°. Hidden until input_select.water_heater_mode
+    // offers "extra_boost" and the n8n applier maps it to high_demand.
+    WaterHeaterModeConfig("extra_boost", "X BOOST", "fire", "#D946EF")
+)
