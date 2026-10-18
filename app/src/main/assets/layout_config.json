@@ -1,5 +1,5 @@
 {
-  "version": "6.20.0",
+  "version": "6.21.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -594,21 +594,15 @@
     },
     {
       "option": "heat_pump",
-      "label": "HEAT PUMP",
-      "icon": "heat_pump",
+      "label": "BOOST",
+      "icon": "bolt",
       "color": "#F59E0B"
     },
     {
       "option": "high_demand",
-      "label": "BOOST",
-      "icon": "bolt",
-      "color": "#EF4444"
-    },
-    {
-      "option": "extra_boost",
       "label": "X BOOST",
       "icon": "fire",
-      "color": "#D946EF"
+      "color": "#EF4444"
     }
   ]
 }

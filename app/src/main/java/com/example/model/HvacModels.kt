@@ -1175,15 +1175,17 @@ data class WaterHeaterModeConfig(
     val color: String? = null
 )
 
-/** The buttons the panels had before they were configurable, plus X BOOST (2026-10-18). */
+/**
+ * The hot water buttons, as settled with Chris on 2026-10-18: two boosts at the same 130°, one per
+ * real operation mode, so the select value maps one-to-one onto what the heater does (the n8n
+ * Water Heater workflow applies it). The evening boost moves the select to heat_pump by itself,
+ * so BOOST lighting up unpressed between 18:00 and 20:00 is the automation, not a fault.
+ */
 val DefaultWaterHeaterModes = listOf(
+    // Eco at 120°.
     WaterHeaterModeConfig("eco", "ECO", "water_drop", "#10B981"),
-    WaterHeaterModeConfig("heat_pump", "HEAT PUMP", "heat_pump", "#F59E0B"),
-    // Live today: the water heater's own high demand mode at 130°. Chris's intended rewrite
-    // (n8n Water Heater workflow draft of 2026-10-11, not yet published) makes this heat pump
-    // mode at 130°, which is what gives X BOOST below a different job.
-    WaterHeaterModeConfig("high_demand", "BOOST", "bolt", "#EF4444"),
-    // The water heater's own high demand mode at 130°. Hidden until input_select.water_heater_mode
-    // offers "extra_boost" and the n8n applier maps it to high_demand.
-    WaterHeaterModeConfig("extra_boost", "X BOOST", "fire", "#D946EF")
+    // Heat pump at 130° — compressor only.
+    WaterHeaterModeConfig("heat_pump", "BOOST", "bolt", "#F59E0B"),
+    // High demand at 130° — the resistive element too. The planner never picks this itself.
+    WaterHeaterModeConfig("high_demand", "X BOOST", "fire", "#EF4444")
 )
