@@ -1,5 +1,5 @@
 {
-  "version": "6.21.0",
+  "version": "6.22.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -454,7 +454,7 @@
   "popupTimeoutSeconds": 20,
   "waterHeaterRunningEntityId": "binary_sensor.heat_pump_water_heater_running",
   "homeStatus": {
-    "outdoorTempEntityId": "sensor.hp_living_room_outdoor_temperature",
+    "outdoorTempEntityId": "sensor.hp_anthony_outdoor_temperature",
     "humiditySensors": [
       {
         "name": "Dining",
