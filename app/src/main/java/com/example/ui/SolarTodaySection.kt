@@ -170,6 +170,7 @@ fun DuoStatTile(
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun TileItem(item: SolarTileItem, palette: SolarPalette) {
     val toneColor = palette.tone(item.tone)
@@ -194,7 +195,12 @@ private fun TileItem(item: SolarTileItem, palette: SolarPalette) {
             )
         }
         Spacer(Modifier.height(2.dp))
-        Row(verticalAlignment = Alignment.Bottom) {
+        // Value, unit and the optional note share one baseline, as on the site. A flow row so
+        // that where the tile is too narrow (the folded phone) the note drops whole onto its
+        // own line under the value instead of wrapping inside itself.
+        // Spacing between items rather than padding on them: a note that wraps then starts
+        // flush left under the value, not indented.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 text = item.value.orEmpty(),
                 // The By midnight tile shows three figures, so they are set smaller to keep the
@@ -202,16 +208,31 @@ private fun TileItem(item: SolarTileItem, palette: SolarPalette) {
                 fontSize = if (item.small == true) 16.sp else 23.sp,
                 fontWeight = if (item.small == true) FontWeight.Medium else FontWeight.SemiBold,
                 color = toneColor,
-                maxLines = 1
+                maxLines = 1,
+                modifier = Modifier.alignByBaseline()
             )
             if (!item.unit.isNullOrBlank()) {
-                Spacer(Modifier.size(3.dp))
                 Text(
                     text = item.unit,
                     fontSize = 13.sp,
                     color = toneColor,
-                    modifier = Modifier.padding(bottom = 2.dp),
-                    maxLines = 1
+                    maxLines = 1,
+                    modifier = Modifier.alignByBaseline()
+                )
+            }
+            item.note?.takeIf { it.isNotBlank() }?.let { note ->
+                Text(
+                    text = note,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = when (item.noteTone) {
+                        "good" -> palette.good
+                        "warn" -> palette.warn
+                        else -> palette.soft
+                    },
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(start = 2.dp).alignByBaseline()
                 )
             }
         }

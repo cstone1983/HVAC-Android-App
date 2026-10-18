@@ -44,6 +44,24 @@ class SolarTodayParsingTest {
     }
 
     @Test
+    fun `an item's note and its tone are read, and are optional`() {
+        // Sent since 2026-10-17 on By midnight's Bank, after the fixture was captured, so it is
+        // exercised on a minimal reply of its own. The real reply also has items without one.
+        val json = """
+            {"version":1,"tiles":[{"id":"by_midnight","items":[
+              {"name":"Bank","value":"+52.6","unit":"kWh","tone":"good",
+               "note":"(+13.0 vs last night)","note_tone":"good"},
+              {"name":"Made","value":"~91.3","unit":"kWh"}
+            ]}]}
+        """.trimIndent()
+        val items = adapter.fromJson(json)!!.tiles!!.single().items!!
+        assertEquals("(+13.0 vs last night)", items[0].note)
+        assertEquals("good", items[0].noteTone)
+        assertNull(items[1].note)
+        assertNull(items[1].noteTone)
+    }
+
+    @Test
     fun `the three tiles arrive in the order the site shows them`() {
         val ids = parsed().tiles.orEmpty().map { it.id }
         assertEquals(listOf("right_now", "so_far", "by_midnight"), ids)

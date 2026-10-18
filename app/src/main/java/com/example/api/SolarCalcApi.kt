@@ -126,7 +126,15 @@ data class SolarTileItem(
     /** "solar" or "house" draws a coloured dot beside the name. */
     val dot: String? = null,
     /** The By midnight tile carries three values, so they are set smaller. */
-    val small: Boolean? = null
+    val small: Boolean? = null,
+    /**
+     * A short aside drawn after the value, e.g. "(+12.9 vs last night)" on By midnight's Bank:
+     * how far the bank is heading above or below what last night's forecast planned. Optional —
+     * absent before any forecast exists, and then nothing is drawn.
+     */
+    val note: String? = null,
+    /** The note's colour: "good", "warn" or "plain" (the soft text colour). */
+    @Json(name = "note_tone") val noteTone: String? = null
 )
 
 @JsonClass(generateAdapter = true)
