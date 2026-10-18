@@ -175,11 +175,12 @@ fun CommandCenterHome(
 }
 
 /**
- * The Fold's cover screen: one column, read top to bottom, that scrolls.
+ * The Fold's cover screen: one column, read top to bottom, sized to fit without scrolling.
  *
- * The alarm leads, because on a phone it is what you check on the way out or in. Zones drop to
- * two across — three at this width would shrink the room numbers past reading at a glance — and
- * the three control groups stack, still at the bottom where Chris likes them.
+ * Layout C of three mockups (2026-10-17): the alarm on one line at the top, because on a phone
+ * it is what you check on the way out or in; then one row per heat pump, scanned down like a
+ * list of thermostats; energy and people on one small card; the controls at the bottom on two
+ * rows, where Chris likes them. It still scrolls if the screen is shorter than this.
  */
 @Composable
 private fun NarrowCommandCenter(
@@ -197,23 +198,173 @@ private fun NarrowCommandCenter(
         CommandTopBar(viewModel, outlookDays = 0)
         val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
         HomeAlertStrip(viewModel = viewModel, homeStatus = layoutConfig.homeStatus)
-        HomeAlarmCard(viewModel = viewModel, modifier = Modifier.fillMaxWidth())
-        Column {
+        HomeAlarmCard(viewModel = viewModel, slim = true, modifier = Modifier.fillMaxWidth())
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
             ZonesHeader()
-            Spacer(Modifier.height(6.dp))
-            ZoneGrid(
-                zones = state.zones,
-                onZoneClick = onZoneClick,
-                columns = 2,
-                rowHeight = 150.dp,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(6.dp))
+            state.zones.forEach { zone ->
+                CommandZoneRow(zone = zone, onClick = { onZoneClick(zone) })
+            }
             OtherRoomsLine(state, viewModel)
         }
-        EnergyAndPeopleCard(viewModel = viewModel, fillHeight = false, modifier = Modifier.fillMaxWidth())
-        ControlStrip(state = state, viewModel = viewModel, layout = CommandLayout.NARROW)
+        EnergyAndPeopleStrip(viewModel)
+        // Two rows, as on the inner screen: three rows cost the height the zones need.
+        ControlStrip(state = state, viewModel = viewModel, layout = CommandLayout.MEDIUM)
     }
+}
+
+/**
+ * One heat pump as one line, for the cover screen. The same colour language as the cards — mode
+ * tint, red edge off schedule, glow only while running — with the room reading still the big
+ * number, the head and target stacked on the right, and HOLD spelled out because there is room.
+ */
+@Composable
+private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
+    val theme = LocalHvacTheme.current
+    val activeColor = theme.colorForMode(zone.currentHvacMode)
+    val modeTint = theme.tintForMode(zone.currentHvacMode)
+    val pulse = rememberInfiniteTransition(label = "cc_row")
+    val glow by pulse.animateFloat(
+        initialValue = 0.05f,
+        targetValue = if (zone.isCalling) 0.22f else 0.05f,
+        animationSpec = infiniteRepeatable(tween(3000, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "cc_row_glow"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clickable { onClick() }
+            .testTag("cc_zone_${zone.key}")
+            .drawBehind {
+                if (zone.isCalling) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(activeColor.copy(alpha = glow), Color.Transparent),
+                            center = androidx.compose.ui.geometry.Offset(size.width * 0.75f, size.height * 0.5f),
+                            radius = size.width * 0.35f
+                        )
+                    )
+                }
+            },
+        colors = CardDefaults.cardColors(
+            containerColor = modeTint?.let { hvacActiveCardBgColor(it) } ?: hvacCardBgColor()
+        ),
+        border = BorderStroke(
+            1.dp,
+            when {
+                zone.overrideOn || !zone.autoOn -> hvacActiveBorderAlphaColor(theme.boostColor)
+                modeTint != null -> hvacActiveBorderAlphaColor(modeTint)
+                else -> hvacBorderAlphaColor()
+            }
+        ),
+        shape = hvacCardShape(10)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = zoneIcon(zone.key),
+                contentDescription = null,
+                tint = activeColor,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = zone.name,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = zone.statusLabel.lowercase(),
+                        fontSize = 10.sp,
+                        color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.5f),
+                        maxLines = 1
+                    )
+                    if (!zone.autoOn) {
+                        Text(" · ", fontSize = 10.sp, color = Color.White.copy(alpha = 0.35f))
+                        Text("hold", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF08A8A))
+                    }
+                    if (zone.overrideOn) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.Shield,
+                            contentDescription = "Override active",
+                            tint = theme.boostColor,
+                            modifier = Modifier.size(10.dp)
+                        )
+                    }
+                }
+            }
+            // Fixed widths from here on, so the numbers line up down the list.
+            Box(modifier = Modifier.width(44.dp)) {
+                zone.roomHumidity?.let { humidity ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.WaterDrop, contentDescription = "Humidity", tint = HumidityColor, modifier = Modifier.size(11.dp))
+                        Text("${humidity.toInt()}%", fontSize = 11.sp, color = HumidityColor)
+                    }
+                }
+            }
+            val room = zone.roomTemp
+            Icon(
+                imageVector = when {
+                    room == null -> Icons.Default.Air
+                    zone.roomIsThermostat -> Icons.Default.Thermostat
+                    else -> Icons.Default.Home
+                },
+                contentDescription = when {
+                    room == null -> "Head reading"
+                    zone.roomIsThermostat -> "Thermostat reading"
+                    else -> "Room sensor"
+                },
+                tint = if (room == null) Color.White.copy(alpha = 0.55f) else RoomColor,
+                modifier = Modifier.size(13.dp)
+            )
+            Spacer(Modifier.width(3.dp))
+            Text(
+                text = (room ?: zone.headTemp)?.let { "${it.toInt()}°" } ?: "--°",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Light,
+                letterSpacing = (-0.8).sp,
+                color = Color.White,
+                maxLines = 1,
+                modifier = Modifier.width(44.dp)
+            )
+            Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(58.dp)) {
+                if (room != null) {
+                    Text(
+                        text = "head ${zone.headTemp?.toInt()?.let { "$it°" } ?: "--"}",
+                        fontSize = 10.sp,
+                        color = Color.White.copy(alpha = 0.55f),
+                        maxLines = 1
+                    )
+                }
+                Text(
+                    text = "SET ${zone.targetTemp?.toInt() ?: "--"}°",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.6.sp,
+                    color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.6f),
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+private fun zoneIcon(key: String): ImageVector = when (key) {
+    "main_level" -> Icons.Default.Weekend
+    "bedroom_1", "bedroom_2" -> Icons.Default.Bed
+    "basement" -> Icons.Default.AcUnit
+    else -> Icons.Default.Person
 }
 
 /** The three sizes of the command center. */
@@ -224,7 +375,7 @@ enum class CommandLayout {
     /** The Fold's inner screen: the tablet layout, smaller, with the controls on two rows. */
     MEDIUM,
 
-    /** The Fold's cover screen: one scrolling column, alarm first. */
+    /** The Fold's cover screen: one column, alarm first, one row per heat pump. */
     NARROW
 }
 
@@ -395,24 +546,19 @@ private fun LegendItem(icon: ImageVector, tint: Color, label: String) {
     }
 }
 
-/**
- * The zones in rows of [columns]. Without a [rowHeight] the rows share whatever height is left, so
- * every zone is visible without scrolling; with one (the cover screen) each row is that tall.
- */
+/** Two rows of three, filling whatever height is left so every zone is visible without scrolling. */
 @Composable
 private fun ZoneGrid(
     zones: List<ClimateZone>,
     onZoneClick: (ClimateZone) -> Unit,
-    modifier: Modifier = Modifier,
-    columns: Int = 3,
-    rowHeight: Dp? = null
+    modifier: Modifier = Modifier
 ) {
-    val rows = zones.chunked(columns)
+    val rows = zones.chunked(3)
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         rows.forEach { row ->
             Row(
                 modifier = Modifier
-                    .then(if (rowHeight != null) Modifier.height(rowHeight) else Modifier.weight(1f))
+                    .weight(1f)
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -425,7 +571,7 @@ private fun ZoneGrid(
                             .fillMaxHeight()
                     )
                 }
-                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
@@ -499,12 +645,7 @@ private fun CommandZoneCard(
                 // Name and what it is doing.
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = when (zone.key) {
-                            "main_level" -> Icons.Default.Weekend
-                            "bedroom_1", "bedroom_2" -> Icons.Default.Bed
-                            "basement" -> Icons.Default.AcUnit
-                            else -> Icons.Default.Person
-                        },
+                        imageVector = zoneIcon(zone.key),
                         contentDescription = null,
                         tint = activeColor,
                         modifier = Modifier
@@ -714,11 +855,7 @@ private fun OtherRoomsLine(state: HvacUiState.Success, viewModel: HvacViewModel)
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EnergyAndPeopleCard(
-    viewModel: HvacViewModel,
-    modifier: Modifier = Modifier,
-    fillHeight: Boolean = true
-) {
+private fun EnergyAndPeopleCard(viewModel: HvacViewModel, modifier: Modifier = Modifier) {
     val solar by viewModel.solarToday.collectAsStateWithLifecycle()
     val entityStates by viewModel.entityStates.collectAsStateWithLifecycle()
     val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
@@ -788,9 +925,8 @@ private fun EnergyAndPeopleCard(
         // Everyone where there is room for everyone (the A8). Where there is not (the A9), the
         // people at home keep their names and everyone away folds into one chip — a name cut
         // off halfway reads as a fault, and who is away matters less than who is in.
-        // The cover screen scrolls, so there everyone fits.
-        BoxWithConstraints(modifier = (if (fillHeight) Modifier.weight(1f) else Modifier).fillMaxWidth()) {
-            val roomForAll = !fillHeight || maxHeight >= 48.dp
+        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            val roomForAll = maxHeight >= 48.dp
             val home = people.filter { it.second }
             val away = people.filterNot { it.second }
             FlowRow(
@@ -806,6 +942,63 @@ private fun EnergyAndPeopleCard(
                 }
             }
         }
+    }
+}
+
+/**
+ * The cover screen's energy and people: made and used on one line, who is home on the next, and
+ * everyone away folded into one chip. The forecast stays on the solar tab and the bigger screens.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun EnergyAndPeopleStrip(viewModel: HvacViewModel) {
+    val solar by viewModel.solarToday.collectAsStateWithLifecycle()
+    val entityStates by viewModel.entityStates.collectAsStateWithLifecycle()
+    val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
+    val solarCfg = layoutConfig.solarCalc
+    LaunchedEffect(solarCfg?.enabled, solarCfg?.pollSeconds) {
+        if (solarCfg?.enabled == false) return@LaunchedEffect
+        val everyMs = ((solarCfg?.pollSeconds ?: 60).coerceAtLeast(15)) * 1000L
+        while (true) {
+            viewModel.fetchSolarToday()
+            kotlinx.coroutines.delay(everyMs)
+        }
+    }
+    val tiles = solar.response?.tiles.orEmpty()
+    fun item(name: String): String? =
+        tiles.firstOrNull { it.id == "so_far" }?.items?.firstOrNull { it.name == name }?.value
+    val theme = LocalHvacTheme.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(hvacCardBgColor(), hvacCardShape(12))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("TODAY", fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp, color = Color.White.copy(alpha = 0.55f), modifier = Modifier.padding(bottom = 2.dp))
+            StripFigure("Made", item("Made"), Color(0xFFF0A92A))
+            StripFigure("Used", item("Used"), Color(0xFF5B8FF9))
+            Text("kWh", fontSize = 10.sp, color = Color.White.copy(alpha = 0.45f), modifier = Modifier.padding(bottom = 2.dp))
+        }
+        val people = layoutConfig.homeStatus?.presenceEntityIds.orEmpty().mapNotNull { id ->
+            val node = entityStates[id] ?: return@mapNotNull null
+            (node.getStringAttribute("friendly_name") ?: id.substringAfter('.')) to (node.state == "home")
+        }
+        val away = people.count { !it.second }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            people.filter { it.second }.forEach { (name, _) -> PersonChip(name, true, theme.ecoColor) }
+            if (away > 0) PersonChip("+$away away", false, theme.ecoColor)
+        }
+    }
+}
+
+@Composable
+private fun StripFigure(label: String, value: String?, color: Color) {
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(bottom = 1.dp))
+        Text(value ?: "--", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = color)
     }
 }
 
@@ -865,18 +1058,12 @@ private fun ControlStrip(state: HvacUiState.Success, viewModel: HvacViewModel, l
                     HouseModeGroup(state, viewModel, 10.sp, Modifier.weight(1.4f))
                     HotWaterGroup(state, viewModel, 10.sp, Modifier.weight(1.4f))
                 }
-                // Eleven buttons do not fit across the inner screen: hot water gets its own row.
-                CommandLayout.MEDIUM -> {
+                // Eleven buttons do not fit across the Fold: hot water gets its own row.
+                CommandLayout.MEDIUM, CommandLayout.NARROW -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         ScheduleGroup(state, viewModel, 10.sp, Modifier.weight(1f))
                         HouseModeGroup(state, viewModel, 10.sp, Modifier.weight(1f))
                     }
-                    HotWaterGroup(state, viewModel, 10.sp, Modifier.fillMaxWidth())
-                }
-                // One group per row on the cover screen.
-                CommandLayout.NARROW -> {
-                    ScheduleGroup(state, viewModel, 10.sp, Modifier.fillMaxWidth())
-                    HouseModeGroup(state, viewModel, 10.sp, Modifier.fillMaxWidth())
                     HotWaterGroup(state, viewModel, 10.sp, Modifier.fillMaxWidth())
                 }
             }

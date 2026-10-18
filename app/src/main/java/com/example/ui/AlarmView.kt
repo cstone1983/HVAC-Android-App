@@ -948,14 +948,83 @@ private fun CircleShapeIfDigit(isDigit: Boolean) =
  * Everything shown is derived, never configured: the available modes come from the panel's own
  * `supported_features`, so a mode added or removed in Alarmo changes these buttons without an
  * app release.
+ *
+ * [slim] is the phone cover screen's one-line version: the same states and the same buttons,
+ * laid out in a row — status on the left, keys on the right.
  */
 @Composable
-fun HomeAlarmCard(viewModel: HvacViewModel, modifier: Modifier = Modifier) {
+fun HomeAlarmCard(viewModel: HvacViewModel, modifier: Modifier = Modifier, slim: Boolean = false) {
     val alarm by viewModel.alarmState.collectAsStateWithLifecycle()
     val theme = LocalHvacTheme.current
     val accent = phaseColor(alarm.phase)
     val secondsLeft = rememberSecondsRemaining(alarm)
     val counting = alarm.phase == AlarmPhase.ARMING || alarm.phase == AlarmPhase.PENDING
+
+    if (slim) {
+        Card(
+            modifier = modifier.testTag("home_alarm_card"),
+            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+            border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+            shape = hvacCardShape(12)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    if (alarm.phase == AlarmPhase.DISARMED) Icons.Default.LockOpen
+                    else Icons.Default.Shield,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = when {
+                        counting -> "${secondsLeft ?: "--"}s " +
+                            if (alarm.phase == AlarmPhase.ARMING) "EXIT NOW" else "DISARM NOW"
+                        alarm.phase == AlarmPhase.DISARMED -> "DISARMED"
+                        alarm.phase == AlarmPhase.ARMED ->
+                            alarm.armMode?.removePrefix("armed_")?.uppercase() ?: "ARMED"
+                        alarm.phase == AlarmPhase.TRIGGERED -> "TRIGGERED"
+                        else -> "--"
+                    },
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                when {
+                    // Same rules as the full card below: CANCEL during a countdown, the arm
+                    // modes while disarmed, DISARM otherwise — and the code always typed.
+                    counting -> AlarmChipButton(
+                        label = "CANCEL",
+                        accent = Color(0xFFEF4444),
+                        modifier = Modifier.width(84.dp)
+                    ) { viewModel.openAlarmKeypad() }
+                    alarm.phase == AlarmPhase.DISARMED && alarm.armOptions.isNotEmpty() ->
+                        alarm.armOptions.forEach { option ->
+                            AlarmChipButton(
+                                label = option.label,
+                                accent = theme.coolColor,
+                                modifier = Modifier.width(64.dp)
+                            ) {
+                                if (alarm.requiresCodeToArm) viewModel.openAlarmKeypad()
+                                else viewModel.submitAlarmCommand(option.service, "")
+                            }
+                        }
+                    alarm.isPresent -> AlarmChipButton(
+                        label = "DISARM",
+                        accent = Color(0xFFEF4444),
+                        modifier = Modifier.width(84.dp)
+                    ) { viewModel.openAlarmKeypad() }
+                }
+            }
+        }
+        return
+    }
 
     Card(
         modifier = modifier.testTag("home_alarm_card"),
