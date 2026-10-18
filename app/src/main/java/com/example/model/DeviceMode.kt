@@ -74,6 +74,15 @@ enum class DeviceMode {
      */
     val showsStatusNotifications: Boolean get() = this == PHONE
 
+    /**
+     * Whether the screen goes back to the home page after a stretch untouched.
+     *
+     * A wall panel should: whoever walks up next expects the house at a glance, not the page the
+     * last person left open. A phone should not — it is one person's, picked up and put down
+     * mid-task, and coming back to find the solar tab swapped for home is just annoying.
+     */
+    val returnsHomeWhenIdle: Boolean get() = this == PANEL
+
     val label: String
         get() = when (this) {
             PANEL -> "Wall panel"

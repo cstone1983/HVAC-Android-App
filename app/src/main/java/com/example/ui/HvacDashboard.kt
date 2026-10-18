@@ -1542,8 +1542,10 @@ fun HvacDashboardContent(
         lastInteractionTime = System.currentTimeMillis()
     }
 
-    LaunchedEffect(lastInteractionTime, alarmKeypadVisible) {
+    LaunchedEffect(lastInteractionTime, alarmKeypadVisible, deviceMode) {
         if (alarmKeypadVisible) return@LaunchedEffect
+        // Wall panels only; a phone stays on whatever page it was left on.
+        if (!deviceMode.returnsHomeWhenIdle) return@LaunchedEffect
         kotlinx.coroutines.delay(idleReturnMillis)
         selectedTab = 0
         if (listStates.isNotEmpty()) {
