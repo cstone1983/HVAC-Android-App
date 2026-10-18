@@ -668,14 +668,9 @@ fun HvacDashboard(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 modifier = Modifier.padding(end = 12.dp)
                             ) {
-                                // Real outdoor reading from Home Assistant. The weather card
-                                // below shows a forecast, which is not the same thing and
-                                // defaults to the wrong hemisphere until coordinates are set.
-                                OutdoorReadingChip(
-                                    viewModel = viewModel,
-                                    entityId = layoutConfig.homeStatus?.outdoorTempEntityId,
-                                    compact = true
-                                )
+                                // No outdoor reading here any more: the home screen's own top line
+                                // ("41° outside · sunny") already shows it, and this copy squeezed
+                                // the app name off the phone's title bar (2026-10-18).
 
                                 // Settings Button
                                 Box(
