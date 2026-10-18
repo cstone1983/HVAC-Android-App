@@ -2260,14 +2260,14 @@ fun UpdateAlertBanner(
                 Spacer(modifier = Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "NEW CORE UPGRADE DETECTED",
+                        text = "LAYOUT UPDATE AVAILABLE",
                         fontSize = 8.sp,
                         fontWeight = FontWeight.Black,
                         color = theme.coolColor,
                         letterSpacing = 1.sp
                     )
                     Text(
-                        text = "Home Control ${availableUpdate.version} is ready for installation. Tap to upgrade now.",
+                        text = "A new layout is on GitHub (${availableUpdate.version}). Tap to see it on the Updates tab.",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -3983,6 +3983,17 @@ fun ZoneDetailPopup(
 
 // ======================== TAB 4: SYSTEM UPDATES ========================
 
+/**
+ * The Updates tab: is this panel's layout current, and one button to make it so.
+ *
+ * Rebuilt 2026-10-18 because the action was below the fold — on the A9 you scrolled past a
+ * paragraph about over-the-air sync, the repository box and two link buttons to reach it. Now the
+ * status and the button are the first thing on the page, the history is a compact list beneath,
+ * and the links and the restore are one quiet footer line.
+ *
+ * Honest about scope: this page pulls layout_config.json and nothing else. New app code arrives
+ * by reinstalling, so a push that changed only code is reported as such rather than offered.
+ */
 @Composable
 fun UpdatesTab(
     viewModel: HvacViewModel
@@ -3992,740 +4003,117 @@ fun UpdatesTab(
     val layoutVersion by viewModel.layoutVersion.collectAsStateWithLifecycle()
     val activeVersion by viewModel.activeVersion.collectAsStateWithLifecycle()
     val appliedLayoutCommit by viewModel.appliedLayoutCommit.collectAsStateWithLifecycle()
-    val layoutUpdateError by viewModel.layoutUpdateError.collectAsStateWithLifecycle()
     val githubRepo by viewModel.githubRepo.collectAsStateWithLifecycle()
     val githubBranch by viewModel.githubBranch.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val recentCommits by viewModel.recentCommits.collectAsStateWithLifecycle()
-
-    fun formatBytes(bytes: Long): String {
-        if (bytes <= 0) return "0 B"
-        val units = arrayOf("B", "KB", "MB", "GB")
-        val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
-        val index = if (digitGroups >= units.size) units.size - 1 else digitGroups
-        return try {
-            String.format("%.2f %s", bytes / Math.pow(1024.0, index.toDouble()), units[index])
-        } catch (e: Exception) {
-            "$bytes B"
-        }
-    }
+    val latestPush by viewModel.latestPush.collectAsStateWithLifecycle()
 
     LaunchedEffect(activeVersion) {
         viewModel.checkForUpdates(activeVersion)
     }
 
-    // No auto-install. A staged APK now opens the real system installer, so firing it from a
-    // side effect would throw an OS dialog at whoever happens to be standing at the panel. The
-    // Success card has an explicit Install button.
+    // No auto-install. A staged APK opens the real system installer, so firing it from a side
+    // effect would throw an OS dialog at whoever is standing at the panel.
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("updates_tab")
             .padding(vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // UNIFIED SYSTEM DECK UPDATER CARD
-        Card(
-            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
-            border = BorderStroke(1.dp, hvacBorderAlphaColor()),
-            shape = hvacCardShape(16)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp)
-            ) {
-                // Header Row
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "DYNAMIC SYSTEM DECK SYNC",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White.copy(alpha = 0.5f),
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Over-the-Air Broad Update",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-
-                    Icon(
-                        imageVector = Icons.Default.CloudDownload,
-                        contentDescription = null,
-                        tint = theme.ecoColor,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = "Sync details are processed over-the-air to dynamically load configurations, layouts, and entities directly from your GitHub repository branch without rebuilding the application binary.",
-                    fontSize = 11.sp,
-                    color = Color.White.copy(alpha = 0.7f),
-                    lineHeight = 16.sp
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Connection Info Block
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)), RoundedCornerShape(8.dp))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Code,
-                            contentDescription = null,
-                            tint = theme.coolColor,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Repository: $githubRepo",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.8f)
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.AccountTree,
-                            contentDescription = null,
-                            tint = theme.coolColor,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Branch: $githubBranch",
-                            fontSize = 10.sp,
-                            color = Color.White.copy(alpha = 0.5f)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Source File Actions
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Button(
-                        onClick = {
-                            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/$githubRepo/blob/$githubBranch/layout_config.json"))
-                            context.startActivity(webIntent)
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.05f)),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Launch,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("VIEW ON GITHUB", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-
-                    Button(
-                        onClick = {
-                            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://raw.githubusercontent.com/$githubRepo/$githubBranch/layout_config.json"))
-                            context.startActivity(webIntent)
-                        },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.05f)),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Launch,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("VIEW RAW JSON", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Active Version & Live Actions Block
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "ACTIVE CORE STATUS",
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White.copy(alpha = 0.5f),
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            activeVersion,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = theme.ecoColor
-                        )
-                    }
-
-                    Button(
-                        onClick = {
-                            viewModel.checkForUpdates(activeVersion)
-                            android.widget.Toast.makeText(context, "Scanning branch for broad updates...", android.widget.Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White.copy(alpha = 0.08f),
-                            contentColor = Color.White
-                        ),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Sync,
-                            contentDescription = "Sync",
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("SCAN GITHUB", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Dynamically Render UpdateState details
-                when (val state = updateState) {
-                    is UpdateState.Checking -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
-                                .padding(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                "Scanning repository branch for updates...",
-                                color = Color.White.copy(alpha = 0.7f),
-                                fontSize = 11.sp
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            LinearProgressIndicator(
-                                modifier = Modifier.fillMaxWidth(),
-                                color = theme.ecoColor,
-                                trackColor = Color.White.copy(alpha = 0.1f)
-                            )
-                        }
-                    }
-                    is UpdateState.Error -> {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFD32F2F).copy(alpha = 0.12f)),
-                            border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = Color(0xFFEF5350),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        "UPDATE CHECK FAILURE",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color(0xFFEF5350)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = state.message,
-                                    fontSize = 11.sp,
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
-                            }
-                        }
-                    }
-                    is UpdateState.NoReleases -> {
-                        Text(
-                            "No commits or releases found on specified branch.",
-                            fontSize = 11.sp,
-                            color = Color.White.copy(alpha = 0.5f),
-                            modifier = Modifier.padding(vertical = 4.dp)
-                        )
-                    }
-                    is UpdateState.UpToDate -> {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.08f)),
-                                border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.2f)),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = null,
-                                        tint = theme.ecoColor,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        "System configuration is fully up to date (v${state.version})",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFE8F5E9)
-                                    )
-                                }
-                            }
-
-                            if (state.downloadUrl != null) {
-                                Button(
-                                    onClick = {
-                                        viewModel.downloadUpdateAndInstall(context, state.downloadUrl)
-                                        android.widget.Toast.makeText(context, "Initiating configuration pull...", android.widget.Toast.LENGTH_SHORT).show()
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.05f)),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("FORCE REINSTALL CURRENT CONFIG", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
-                        }
-                    }
-                    is UpdateState.UpdateAvailable -> {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.12f)),
-                                border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.4f)),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Info,
-                                            contentDescription = null,
-                                            tint = theme.ecoColor,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            "NEW SYSTEM DECK CONFIG v${state.version} AVAILABLE!",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = theme.ecoColor
-                                        )
-                                    }
-                                    if (state.size > 0) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = "Dynamic config payload size: ${formatBytes(state.size)}",
-                                            fontSize = 10.sp,
-                                            color = Color.White.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
-                            }
-
-                            if (state.releaseNotes.isNotBlank()) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
-                                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)), RoundedCornerShape(8.dp))
-                                        .padding(10.dp)
-                                ) {
-                                    Text(
-                                        "UPDATE DETAILS:",
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White.copy(alpha = 0.5f),
-                                        letterSpacing = 0.5.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = state.releaseNotes,
-                                        fontSize = 10.sp,
-                                        color = Color.White.copy(alpha = 0.8f),
-                                        maxLines = 8,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            // A release asset is an APK and installs through the OS. Anything else
-                            // is the layout config, which really does apply in place. The button
-                            // used to say "apply system update" and pull the layout either way.
-                            val isApk = state.downloadUrl.endsWith(".apk", ignoreCase = true)
-                            Button(
-                                onClick = {
-                                    if (isApk) {
-                                        viewModel.downloadApkAndStage(context, state.downloadUrl, state.version)
-                                    } else {
-                                        viewModel.downloadUpdateAndInstall(context, state.downloadUrl)
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = theme.ecoColor,
-                                    contentColor = Color.Black
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Black)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    if (isApk) "DOWNLOAD ${state.version}" else "APPLY LAYOUT UPDATE",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color.Black
-                                )
-                            }
-                        }
-                    }
-                    is UpdateState.Downloading -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "Downloading broad update payload...",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    if (state.progress >= 0) "${state.progress}%" else "In progress",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = theme.ecoColor
-                                )
-                            }
-
-                            if (state.progress >= 0) {
-                                LinearProgressIndicator(
-                                    progress = { state.progress / 100f },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = theme.ecoColor,
-                                    trackColor = Color.White.copy(alpha = 0.1f)
-                                )
-                            } else {
-                                LinearProgressIndicator(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = theme.ecoColor,
-                                    trackColor = Color.White.copy(alpha = 0.1f)
-                                )
-                            }
-                        }
-                    }
-                    is UpdateState.Installing -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
-                                        color = theme.ecoColor,
-                                        strokeWidth = 2.dp
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        "Applying broad deck update...",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
-                                }
-                                Text(
-                                    "${state.progress}%",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = theme.ecoColor
-                                )
-                            }
-                            
-                            LinearProgressIndicator(
-                                progress = { state.progress / 100f },
-                                modifier = Modifier.fillMaxWidth(),
-                                color = theme.ecoColor,
-                                trackColor = Color.White.copy(alpha = 0.1f)
-                            )
-                            
-                            Text(
-                                text = state.currentAction,
-                                fontSize = 10.sp,
-                                color = Color.White.copy(alpha = 0.6f)
-                            )
-                        }
-                    }
-                    is UpdateState.Success -> {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.12f)),
-                                border = BorderStroke(1.dp, Color(0xFF34D399).copy(alpha = 0.4f)),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = null,
-                                        tint = theme.ecoColor,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        "Broad update package ready to install!",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFE8F5E9)
-                                    )
-                                }
-                            }
-
-                            Button(
-                                onClick = {
-                                    viewModel.installApk(context, state.apkPath)
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = theme.ecoColor,
-                                    contentColor = Color.Black
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Default.Build, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Black)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("INSTALL APK NOW", fontSize = 11.sp, fontWeight = FontWeight.Black, color = Color.Black)
-                            }
-                        }
-                    }
-                    else -> {
-                        Button(
-                            onClick = {
-                                viewModel.checkForUpdates(activeVersion)
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.04f)),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("INITIALIZE BROAD UPDATE SCAN", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                    }
-                }
-            }
-        }
+        UpdateStatusCard(
+            state = updateState,
+            appVersion = activeVersion,
+            layoutVersion = layoutVersion,
+            appliedCommit = appliedLayoutCommit,
+            latestPush = latestPush,
+            onCheck = { viewModel.checkForUpdates(activeVersion) },
+            onApplyLayout = { url -> viewModel.downloadUpdateAndInstall(context, url) },
+            onDownloadApk = { url, version -> viewModel.downloadApkAndStage(context, url, version) },
+            onInstallApk = { path -> viewModel.installApk(context, path) }
+        )
 
         if (recentCommits.isNotEmpty()) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
                 border = BorderStroke(1.dp, hvacBorderAlphaColor()),
-                shape = hvacCardShape(16),
-                modifier = Modifier.fillMaxWidth()
+                shape = hvacCardShape(14)
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "RECENT OTA UPDATE HISTORY",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Black,
-                                color = theme.coolColor,
-                                letterSpacing = 1.sp
-                            )
-                            Text(
-                                text = "Last ${recentCommits.size} layout updates on '$githubBranch'",
-                                fontSize = 11.sp,
-                                color = Color.White.copy(alpha = 0.5f)
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.Default.History,
-                            contentDescription = "History Icon",
-                            tint = theme.coolColor,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.05f))
-
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Text(
+                        "RECENT PUSHES",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 1.sp,
+                        color = Color.White.copy(alpha = 0.5f)
+                    )
+                    Spacer(Modifier.height(4.dp))
                     recentCommits.forEach { commit ->
                         val shortSha = commit.sha.take(7)
-                        val commitMsg = commit.commit?.message?.lines()?.firstOrNull() ?: "No message"
-                        val author = commit.commit?.author?.name ?: "Unknown"
-                        val commitDateStr = commit.commit?.author?.date ?: ""
-                        
-                        val cleanDate = remember(commitDateStr) {
-                            if (commitDateStr.contains("T")) {
-                                val parts = commitDateStr.split("T")
-                                val datePart = parts[0]
-                                val timePart = parts[1].take(5)
-                                "$datePart $timePart"
-                            } else {
-                                commitDateStr
-                            }
-                        }
-
-                        // Compared against the commit this panel actually applied, not against the
-                        // build name. `activeVersion` is "v13.0" and never contains a sha, so this
-                        // test could never be true: no row ever showed ACTIVE, and every row —
-                        // including the one already applied — offered to pull itself again.
-                        val isActive = appliedLayoutCommit.isNotEmpty() &&
-                            appliedLayoutCommit.startsWith(shortSha)
-
+                        val isActive = appliedLayoutCommit.isNotEmpty() && appliedLayoutCommit.startsWith(shortSha)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(
-                                    if (isActive) Color.White.copy(alpha = 0.04f) else Color.Transparent,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isActive) theme.ecoColor.copy(alpha = 0.15f) else Color.Transparent,
-                                    RoundedCornerShape(8.dp)
-                                )
-                                .padding(10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .height(34.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(
-                                        text = shortSha,
-                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isActive) theme.ecoColor else theme.coolColor
-                                    )
-                                    if (isActive) {
-                                        Box(
-                                            modifier = Modifier
-                                                .background(theme.ecoColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                                .border(1.dp, theme.ecoColor.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
-                                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                                        ) {
-                                            Text(
-                                                text = "ACTIVE",
-                                                fontSize = 7.sp,
-                                                fontWeight = FontWeight.Black,
-                                                color = theme.ecoColor
+                            Text(
+                                text = shortSha,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = if (isActive) theme.ecoColor else Color.White.copy(alpha = 0.45f)
+                            )
+                            Text(
+                                text = commit.commit?.message?.lineSequence()?.firstOrNull().orEmpty(),
+                                fontSize = 12.sp,
+                                color = Color.White.copy(alpha = if (isActive) 0.95f else 0.75f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = relativeCommitTime(commit.commit?.author?.date),
+                                fontSize = 11.sp,
+                                color = Color.White.copy(alpha = 0.4f)
+                            )
+                            if (isActive) {
+                                Text(
+                                    "RUNNING",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 0.6.sp,
+                                    color = theme.ecoColor,
+                                    modifier = Modifier
+                                        .width(64.dp)
+                                        .background(theme.ecoColor.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                        .padding(vertical = 3.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                            } else {
+                                // Pull this commit's layout — for going back to an earlier one.
+                                Text(
+                                    "USE THIS",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 0.6.sp,
+                                    color = Color.White.copy(alpha = 0.6f),
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .width(64.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                        .clickable {
+                                            viewModel.downloadUpdateAndInstall(
+                                                context,
+                                                "https://raw.githubusercontent.com/$githubRepo/${commit.sha}/layout_config.json",
+                                                commitSha = commit.sha
                                             )
                                         }
-                                    }
-                                }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Text(
-                                    text = commitMsg,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White.copy(alpha = 0.9f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                        .padding(vertical = 3.dp)
                                 )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "by $author • $cleanDate",
-                                    fontSize = 9.sp,
-                                    color = Color.White.copy(alpha = 0.4f)
-                                )
-                            }
-
-                            if (!isActive) {
-                                val configUrl = "https://raw.githubusercontent.com/$githubRepo/${commit.sha}/layout_config.json"
-                                IconButton(
-                                    onClick = {
-                                        viewModel.downloadUpdateAndInstall(context, configUrl, commitSha = commit.sha)
-                                        android.widget.Toast.makeText(context, "Pulling layout config for $shortSha...", android.widget.Toast.LENGTH_SHORT).show()
-                                    },
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .background(Color.White.copy(alpha = 0.05f), CircleShape)
-                                        .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CloudDownload,
-                                        contentDescription = "Apply dynamic update",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                }
                             }
                         }
                     }
@@ -4733,59 +4121,221 @@ fun UpdatesTab(
             }
         }
 
-        // RESTORE BUILT-IN LAYOUT ACTION
-        Card(
-            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
-            shape = hvacCardShape(12),
-            modifier = Modifier.fillMaxWidth()
+        // The rarely-used things, on one line.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "LAYOUT SYNC FIX",
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White.copy(alpha = 0.4f),
-                        letterSpacing = 1.sp
+            Text(
+                "$githubRepo · $githubBranch",
+                fontSize = 11.sp,
+                color = Color.White.copy(alpha = 0.4f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            FooterLink("GitHub") {
+                try {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://github.com/$githubRepo/tree/$githubBranch")
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        "Restore app's built-in layout configuration template",
-                        fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.7f)
-                    )
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(context, "No browser available", android.widget.Toast.LENGTH_SHORT).show()
                 }
-
-                Button(
-                    onClick = {
-                        viewModel.resetLayoutToDefault()
-                        android.widget.Toast.makeText(context, "Layout reset to bundled default v${viewModel.layoutVersion.value}", android.widget.Toast.LENGTH_LONG).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Transparent,
-                        contentColor = theme.coolColor
-                    ),
-                    border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.4f)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Restore Default",
-                        modifier = Modifier.size(13.dp),
-                        tint = theme.coolColor
+            }
+            FooterLink("Raw file") {
+                try {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://raw.githubusercontent.com/$githubRepo/$githubBranch/layout_config.json")
+                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("RESTORE DEFAULT", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = theme.coolColor)
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(context, "No browser available", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            FooterLink("Pull again") {
+                viewModel.downloadUpdateAndInstall(
+                    context,
+                    "https://raw.githubusercontent.com/$githubRepo/$githubBranch/layout_config.json"
+                )
+            }
+            FooterLink("Restore built-in", theme.coolColor) {
+                viewModel.resetLayoutToDefault()
+                android.widget.Toast.makeText(
+                    context,
+                    "Layout reset to the built-in ${viewModel.layoutVersion.value}",
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+}
+
+/** Status first, with the one action that matters right now beside it. */
+@Composable
+private fun UpdateStatusCard(
+    state: UpdateState,
+    appVersion: String,
+    layoutVersion: String,
+    appliedCommit: String,
+    latestPush: com.example.viewmodel.LatestPush?,
+    onCheck: () -> Unit,
+    onApplyLayout: (String) -> Unit,
+    onDownloadApk: (String, String) -> Unit,
+    onInstallApk: (String) -> Unit
+) {
+    val theme = LocalHvacTheme.current
+    val errorColor = Color(0xFFEF4444)
+
+    val (icon, tint, title) = when (state) {
+        is UpdateState.UpdateAvailable -> Triple(Icons.Default.CloudDownload, theme.ecoColor, "Layout update available")
+        is UpdateState.Checking -> Triple(Icons.Default.Sync, Color.White.copy(alpha = 0.6f), "Checking GitHub…")
+        is UpdateState.Downloading -> Triple(Icons.Default.CloudDownload, theme.coolColor, "Downloading…")
+        is UpdateState.Installing -> Triple(Icons.Default.Sync, theme.coolColor, state.currentAction.ifBlank { "Applying…" })
+        is UpdateState.Success -> Triple(Icons.Default.Build, theme.ecoColor, "App update downloaded")
+        is UpdateState.Error -> Triple(Icons.Default.Warning, errorColor, "Couldn't check for updates")
+        is UpdateState.UpToDate -> Triple(Icons.Default.CheckCircle, theme.ecoColor, "Up to date")
+        else -> Triple(Icons.Default.CheckCircle, Color.White.copy(alpha = 0.6f), "Not checked yet")
+    }
+    val running = buildString {
+        append("App $appVersion · layout $layoutVersion")
+        if (appliedCommit.isNotEmpty()) append(" · ${appliedCommit.take(7)}")
+    }
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+        border = BorderStroke(
+            1.dp,
+            if (state is UpdateState.UpdateAvailable) theme.ecoColor.copy(alpha = 0.45f) else hvacBorderAlphaColor()
+        ),
+        shape = hvacCardShape(14)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(26.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(running, fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.width(12.dp))
+                when (state) {
+                    is UpdateState.UpdateAvailable -> {
+                        val isApk = state.downloadUrl.endsWith(".apk", ignoreCase = true)
+                        Button(
+                            onClick = { if (isApk) onDownloadApk(state.downloadUrl, state.version) else onApplyLayout(state.downloadUrl) },
+                            colors = ButtonDefaults.buttonColors(containerColor = theme.ecoColor, contentColor = Color.Black),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(if (isApk) "DOWNLOAD" else "UPDATE", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color.Black)
+                        }
+                    }
+                    is UpdateState.Success -> Button(
+                        onClick = { onInstallApk(state.apkPath) },
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.ecoColor, contentColor = Color.Black),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("INSTALL", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color.Black)
+                    }
+                    is UpdateState.Checking, is UpdateState.Downloading, is UpdateState.Installing -> {}
+                    else -> OutlinedButton(
+                        onClick = onCheck,
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("CHECK", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+
+            // One line of detail under the headline, depending on what is going on.
+            val detail: String? = when (state) {
+                is UpdateState.UpdateAvailable -> listOfNotNull(
+                    latestPush?.layoutVersion?.let { "Layout $it" },
+                    latestPush?.headline?.takeIf { it.isNotBlank() }?.let { "“$it”" },
+                    latestPush?.date?.let { relativeCommitTime(it) }?.takeIf { it.isNotBlank() }
+                ).joinToString(" · ").ifBlank { "New layout at ${state.version}" }
+                is UpdateState.UpToDate -> if (latestPush?.layoutChanged == false)
+                    "The latest push (“${latestPush.headline}”) changed app code only — nothing to pull. New app code needs a reinstall."
+                else null
+                is UpdateState.Error -> state.message
+                else -> null
+            }
+            if (detail != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    detail,
+                    fontSize = 12.sp,
+                    color = if (state is UpdateState.Error) errorColor.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.7f),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 38.dp)
+                )
+            }
+
+            val progress = when (state) {
+                is UpdateState.Downloading -> state.progress
+                is UpdateState.Installing -> state.progress
+                else -> null
+            }
+            if (progress != null) {
+                Spacer(Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .padding(start = 38.dp)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress.coerceIn(0, 100) / 100f)
+                            .fillMaxHeight()
+                            .background(theme.coolColor)
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FooterLink(label: String, color: Color = Color.White.copy(alpha = 0.6f), onClick: () -> Unit) {
+    Text(
+        label,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        color = color,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 6.dp)
+    )
+}
+
+/** "3h ago" or "Oct 14" from GitHub's ISO time. */
+private fun relativeCommitTime(iso: String?): String {
+    if (iso.isNullOrBlank()) return ""
+    return try {
+        val format = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX", java.util.Locale.US)
+        val then = format.parse(iso)?.time ?: return ""
+        val minutes = (System.currentTimeMillis() - then) / 60_000
+        when {
+            minutes < 1 -> "just now"
+            minutes < 60 -> "${minutes}m ago"
+            minutes < 24 * 60 -> "${minutes / 60}h ago"
+            minutes < 7 * 24 * 60 -> "${minutes / (24 * 60)}d ago"
+            else -> java.text.SimpleDateFormat("MMM d", java.util.Locale.US).format(java.util.Date(then))
+        }
+    } catch (e: Exception) {
+        ""
     }
 }
 

@@ -2416,6 +2416,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     // ======================== GITHUB UPDATER FUNCTIONALITY ========================
 
+    /** The newest commit on the branch, as the update page describes it. */
+    private val _latestPush = MutableStateFlow<LatestPush?>(null)
+    val latestPush: StateFlow<LatestPush?> = _latestPush.asStateFlow()
+
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
@@ -2507,6 +2511,50 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 // A brand-new install has no baseline, so offer the pull rather than claiming to
                 // be up to date with something it has never fetched.
                 val repoHasNewCommit = appliedLayoutCommit.isNotEmpty() && sha != appliedLayoutCommit
+
+                val headline = commitMsg.lineSequence().firstOrNull()?.trim().orEmpty()
+
+                // Every push moves the branch, but most of them change app code, which this page
+                // cannot deliver — it only ever pulls layout_config.json. So look at the layout
+                // itself. If the file at the new commit is the one already running, there is
+                // nothing to pull: record that commit as applied and say so, instead of offering
+                // a code-only push as an "upgrade" that would re-apply the same file.
+                var remoteLayoutVersion: String? = null
+                if (repoHasNewCommit || appliedLayoutCommit.isEmpty()) {
+                    try {
+                        val remoteJson = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            val raw = com.example.api.GithubClient.service.getLayoutConfig(
+                                "https://raw.githubusercontent.com/$repo/$sha/layout_config.json",
+                                System.currentTimeMillis()
+                            )
+                            if (raw.isSuccessful) raw.body()?.string() else null
+                        }
+                        if (remoteJson != null) {
+                            val parsed = layoutConfigAdapter.fromJson(remoteJson)?.let { ensureSolarAndPoolTabs(it) }
+                            remoteLayoutVersion = parsed?.version
+                            val unchanged = sharedPrefs.getString("layout_config_json", null) == remoteJson ||
+                                (parsed != null && parsed == _layoutConfig.value)
+                            if (unchanged) {
+                                sharedPrefs.edit().putString("layout_commit_sha", sha).apply()
+                                _appliedLayoutCommit.value = sha
+                                _latestPush.value = LatestPush(sha, headline, commitDate, remoteLayoutVersion, layoutChanged = false)
+                                _updateState.value = UpdateState.UpToDate(
+                                    version = sha.take(7),
+                                    downloadUrl = "https://raw.githubusercontent.com/$repo/$sha/layout_config.json",
+                                    size = remoteJson.length.toLong()
+                                )
+                                return@launch
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Could not compare: fall through and offer it, as before.
+                        android.util.Log.w("HvacViewModel", "Layout comparison failed", e)
+                    }
+                }
+                _latestPush.value = LatestPush(
+                    sha, headline, commitDate, remoteLayoutVersion,
+                    layoutChanged = if (repoHasNewCommit || appliedLayoutCommit.isEmpty()) true else null
+                )
 
                 if (repoHasNewCommit || appliedLayoutCommit.isEmpty()) {
                     pendingReleaseId = 99999L
@@ -4416,6 +4464,18 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         return cleaned.toFloatOrNull()
     }
 }
+
+/**
+ * The newest commit on the branch. [layoutChanged] is false when that commit left
+ * layout_config.json exactly as it is running, true when the file differs, null when unknown.
+ */
+data class LatestPush(
+    val sha: String,
+    val headline: String,
+    val date: String,
+    val layoutVersion: String?,
+    val layoutChanged: Boolean?
+)
 
 sealed interface UpdateState {
     object Idle : UpdateState
