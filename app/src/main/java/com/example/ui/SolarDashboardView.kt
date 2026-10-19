@@ -130,10 +130,10 @@ fun SolarDashboardView(
         // C. Bottom Graph / Trends Card
         Card(
             colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = theme.cardOpacity)),
-            shape = RoundedCornerShape(12.dp),
+            shape = com.example.ui.theme.themedShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(12.dp))
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -180,7 +180,7 @@ fun SolarDashboardView(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(theme.boostColor.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                            .background(theme.boostColor.copy(alpha = 0.12f), com.example.ui.theme.themedShape(8.dp))
                             .padding(12.dp)
                     ) {
                         Text(
@@ -332,7 +332,7 @@ fun SolarDashboardView(
                         Box(
                             modifier = Modifier
                                 .size(10.dp)
-                                .background(theme.ecoColor, RoundedCornerShape(2.dp))
+                                .background(theme.ecoColor, com.example.ui.theme.themedShape(2.dp))
                         )
                         Text(
                             text = "Solar Production",
@@ -349,7 +349,7 @@ fun SolarDashboardView(
                         Box(
                             modifier = Modifier
                                 .size(10.dp)
-                                .background(theme.coolColor, RoundedCornerShape(2.dp))
+                                .background(theme.coolColor, com.example.ui.theme.themedShape(2.dp))
                         )
                         Text(
                             text = "Energy Consumed",
@@ -385,8 +385,8 @@ fun SolarDashboardView(
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.015f), com.example.ui.theme.themedShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.03f), com.example.ui.theme.themedShape(8.dp))
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -415,8 +415,8 @@ fun SolarDashboardView(
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.015f), com.example.ui.theme.themedShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.03f), com.example.ui.theme.themedShape(8.dp))
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -463,8 +463,8 @@ fun SolarDashboardView(
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .background(Color.White.copy(alpha = 0.015f), RoundedCornerShape(8.dp))
-                            .border(1.dp, Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.015f), com.example.ui.theme.themedShape(8.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.03f), com.example.ui.theme.themedShape(8.dp))
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -498,10 +498,10 @@ fun SolarDashboardView(
 
         Card(
             colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = theme.cardOpacity)),
-            shape = RoundedCornerShape(12.dp),
+            shape = com.example.ui.theme.themedShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(12.dp))
                 .testTag("solar_diagnostic_card")
         ) {
             Column(
@@ -567,8 +567,8 @@ fun SolarDashboardView(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                                .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                .background(Color.Black.copy(alpha = 0.3f), com.example.ui.theme.themedShape(8.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.05f), com.example.ui.theme.themedShape(8.dp))
                                 .padding(12.dp)
                         ) {
                             Text(
@@ -588,7 +588,7 @@ fun SolarDashboardView(
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = theme.ecoColor.copy(alpha = 0.15f), contentColor = theme.ecoColor),
-                            shape = RoundedCornerShape(8.dp),
+                            shape = com.example.ui.theme.themedShape(8.dp),
                             modifier = Modifier.align(Alignment.End)
                         ) {
                             Icon(
@@ -624,10 +624,10 @@ fun NetMeterCard(
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = theme.cardOpacity)),
-        shape = RoundedCornerShape(12.dp),
+        shape = com.example.ui.theme.themedShape(12.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(12.dp))
             .testTag("net_meter_card")
     ) {
         Row(
@@ -640,7 +640,7 @@ fun NetMeterCard(
             Box(
                 modifier = Modifier
                     .size(52.dp)
-                    .background(accentColor.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+                    .background(accentColor.copy(alpha = 0.15f), com.example.ui.theme.themedShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -667,7 +667,7 @@ fun NetMeterCard(
                     if (!isFetched) {
                         Box(
                             modifier = Modifier
-                                .background(theme.offColor.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                .background(theme.offColor.copy(alpha = 0.2f), com.example.ui.theme.themedShape(4.dp))
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         ) {
                             Text(
@@ -716,9 +716,9 @@ fun MetricCard(
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = theme.cardOpacity)),
-        shape = RoundedCornerShape(12.dp),
+        shape = com.example.ui.theme.themedShape(12.dp),
         modifier = modifier
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(12.dp))
             .testTag("metric_card_${title.lowercase().replace(" ", "_")}")
     ) {
         Column(
@@ -740,7 +740,7 @@ fun MetricCard(
                 Box(
                     modifier = Modifier
                         .size(24.dp)
-                        .background(iconColor.copy(alpha = 0.12f), RoundedCornerShape(6.dp)),
+                        .background(iconColor.copy(alpha = 0.12f), com.example.ui.theme.themedShape(6.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -787,8 +787,8 @@ fun SegmentedButtonRow(
         modifier = modifier
             .fillMaxWidth()
             .height(36.dp)
-            .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(18.dp))
-            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.04f), com.example.ui.theme.themedShape(18.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.06f), com.example.ui.theme.themedShape(18.dp))
             .padding(2.dp)
     ) {
         segments.forEachIndexed { index, title ->
@@ -801,7 +801,7 @@ fun SegmentedButtonRow(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .background(itemBgColor, RoundedCornerShape(16.dp))
+                    .background(itemBgColor, com.example.ui.theme.themedShape(16.dp))
                     .clickable { onSegmentSelected(index) }
                     .testTag("trend_segment_$index"),
                 contentAlignment = Alignment.Center
@@ -1105,8 +1105,8 @@ fun LineChart6h(data: List<SolarLinePoint>, theme: HvacThemeColors) {
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp)
-                        .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.85f), com.example.ui.theme.themedShape(8.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), com.example.ui.theme.themedShape(8.dp))
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1413,8 +1413,8 @@ fun LineChart24h(data: List<SolarLinePoint>, theme: HvacThemeColors) {
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp)
-                        .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.85f), com.example.ui.theme.themedShape(8.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), com.example.ui.theme.themedShape(8.dp))
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1717,8 +1717,8 @@ fun LineChart7d(data: List<SolarLinePoint>, theme: HvacThemeColors) {
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp)
-                        .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.85f), com.example.ui.theme.themedShape(8.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), com.example.ui.theme.themedShape(8.dp))
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -2037,8 +2037,8 @@ fun HistoricalLineChart(data: List<SolarBarPoint>, isMonth: Boolean, theme: Hvac
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp)
-                        .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.85f), com.example.ui.theme.themedShape(8.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), com.example.ui.theme.themedShape(8.dp))
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {

@@ -1,5 +1,6 @@
 package com.example.ui.theme
 
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -41,6 +42,15 @@ fun MyApplicationTheme(
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
     MaterialTheme(
+        // Cards, dialogs and fields that do not set a shape take these, so they follow the
+        // corner setting like everything else.
+        shapes = androidx.compose.material3.Shapes(
+            extraSmall = themedShape(4.dp),
+            small = themedShape(8.dp),
+            medium = themedShape(12.dp),
+            large = themedShape(16.dp),
+            extraLarge = themedShape(28.dp)
+        ),
         colorScheme = colorScheme,
         typography = Typography,
         content = content

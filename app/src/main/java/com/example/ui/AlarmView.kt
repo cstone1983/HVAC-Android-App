@@ -925,7 +925,7 @@ private fun KeypadKey(
 
 /** Digits read better as circles; the two action keys as rounded rectangles. */
 private fun CircleShapeIfDigit(isDigit: Boolean) =
-    if (isDigit) CircleShape else RoundedCornerShape(14.dp)
+    if (isDigit) CircleShape else com.example.ui.theme.themedShape(14.dp)
 
 // -------------------------------------------------------------------------------------------
 // Home screen card
@@ -1153,9 +1153,9 @@ private fun AlarmChipButton(
     Box(
         modifier = modifier
             .height(30.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(com.example.ui.theme.themedShape(8.dp))
             .background(accent.copy(alpha = 0.16f))
-            .border(1.dp, accent.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+            .border(1.dp, accent.copy(alpha = 0.45f), com.example.ui.theme.themedShape(8.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {

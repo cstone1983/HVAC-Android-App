@@ -134,9 +134,9 @@ fun HvacSettingsDialog(
                 .widthIn(max = 820.dp)
                 .fillMaxWidth(0.94f)
                 .heightIn(max = screen.screenHeightDp.dp * 0.92f)
-                .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), RoundedCornerShape(20.dp))
+                .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)), com.example.ui.theme.themedShape(20.dp))
                 .testTag("settings_dialog"),
-            shape = RoundedCornerShape(20.dp),
+            shape = com.example.ui.theme.themedShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF0C1322))
         ) {
             BoxWithConstraints {
@@ -212,7 +212,7 @@ private fun SectionList(selected: SettingsSection, onSelect: (SettingsSection) -
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(com.example.ui.theme.themedShape(8.dp))
                     .background(if (on) theme.coolColor.copy(alpha = 0.16f) else Color.Transparent)
                     .clickable { onSelect(s) }
                     .padding(horizontal = 10.dp, vertical = 9.dp)
@@ -376,7 +376,7 @@ private fun OverviewPage(viewModel: HvacViewModel, showSections: Boolean, onOpen
                     icon = if (isOffline) Icons.Default.CloudOff else Icons.Default.Wifi,
                     label = "Connection",
                     value = if (isOffline) "Offline" else "Connected",
-                    detail = if (isOffline) "tap for details" else if (usingBackup) "backup address" else "main address",
+                    detail = if (isOffline) "tap for details" else if (usingBackup) "direct, at home" else "remote",
                     ok = !isOffline
                 ) { onOpen(SettingsSection.CONNECTION) }
             },
@@ -464,9 +464,9 @@ private fun HealthTile(
     val warn = Color(0xFFF0A92A)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(com.example.ui.theme.themedShape(12.dp))
             .background(Color.White.copy(alpha = 0.04f))
-            .border(1.dp, if (ok) Color.Transparent else warn.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .border(1.dp, if (ok) Color.Transparent else warn.copy(alpha = 0.5f), com.example.ui.theme.themedShape(12.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 11.dp, vertical = 9.dp)
     ) {
@@ -513,7 +513,7 @@ private fun AppearancePage(viewModel: HvacViewModel) {
 
     // The settings window covers most of the screen, so the app behind it is no use for judging
     // a change. This is: it redraws with every tap and every slider movement.
-    AppearancePreview(background)
+    AppearancePreview(background, presetId)
 
     SettingsGroup {
         val preset = HvacThemePresetsList.firstOrNull { it.id == presetId }
@@ -557,7 +557,7 @@ private fun ThemePickerDialog(viewModel: HvacViewModel, onDismiss: () -> Unit) {
         Card(
             colors = CardDefaults.cardColors(containerColor = Color(0xFF101A2B)),
             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-            shape = RoundedCornerShape(18.dp)
+            shape = com.example.ui.theme.themedShape(18.dp)
         ) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -568,7 +568,7 @@ private fun ThemePickerDialog(viewModel: HvacViewModel, onDismiss: () -> Unit) {
                         fontWeight = FontWeight.Bold,
                         color = theme.coolColor,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(com.example.ui.theme.themedShape(6.dp))
                             .clickable(onClick = onDismiss)
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                     )
@@ -576,7 +576,7 @@ private fun ThemePickerDialog(viewModel: HvacViewModel, onDismiss: () -> Unit) {
                 Text("Changes apply as you tap.", fontSize = 12.sp, color = Color.White.copy(alpha = 0.5f))
                 Spacer(Modifier.height(10.dp))
                 val background by viewModel.backgroundDesign.collectAsStateWithLifecycle()
-                AppearancePreview(background, height = 120.dp)
+                AppearancePreview(background, presetId, height = 120.dp)
                 Spacer(Modifier.height(10.dp))
                 Column(
                     modifier = Modifier
@@ -589,9 +589,9 @@ private fun ThemePickerDialog(viewModel: HvacViewModel, onDismiss: () -> Unit) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(com.example.ui.theme.themedShape(10.dp))
                                 .background(if (on) Color.White.copy(alpha = 0.07f) else Color.Transparent)
-                                .border(1.dp, if (on) theme.coolColor.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
+                                .border(1.dp, if (on) theme.coolColor.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.06f), com.example.ui.theme.themedShape(10.dp))
                                 .clickable { viewModel.setSelectedThemePreset(preset.id) }
                                 .padding(10.dp)
                                 .testTag("theme_preset_${preset.id}"),
@@ -618,34 +618,16 @@ private fun ThemePickerDialog(viewModel: HvacViewModel, onDismiss: () -> Unit) {
  * border and corner helpers the real screens use, so what it shows is what the panels will show.
  */
 @Composable
-private fun AppearancePreview(background: String, height: Dp = 150.dp) {
+private fun AppearancePreview(background: String, presetId: String, height: Dp = 150.dp) {
     val theme = LocalHvacTheme.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .height(height)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(com.example.ui.theme.themedShape(12.dp))
             .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(theme.bgStart, theme.bgEnd)))
-            .drawBehind {
-                drawCircle(
-                    brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                        listOf(theme.glowColor.copy(alpha = theme.glowAlpha * 2.5f), Color.Transparent),
-                        center = androidx.compose.ui.geometry.Offset(size.width * 0.8f, size.height * 0.1f),
-                        radius = size.width * 0.6f
-                    ),
-                    radius = size.width * 0.6f,
-                    center = androidx.compose.ui.geometry.Offset(size.width * 0.8f, size.height * 0.1f)
-                )
-                if (background == "grid") {
-                    val step = 22.dp.toPx()
-                    val line = theme.coolColor.copy(alpha = 0.06f)
-                    var x = 0f
-                    while (x < size.width) { drawLine(line, androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Offset(x, size.height)); x += step }
-                    var y = 0f
-                    while (y < size.height) { drawLine(line, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y)); y += step }
-                }
-            }
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+            .drawBehind { drawHvacBackground(background, theme, theme.glowColor, presetId) }
+            .border(1.dp, Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(12.dp))
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -762,14 +744,15 @@ private fun ConnectionPage(viewModel: HvacViewModel) {
     Text(
         when {
             isOffline -> "Not connected to Home Assistant. Showing the last values it sent."
-            usingBackup -> "Connected through the backup address."
-            else -> "Connected through the main address."
+            usingBackup -> "Connected directly, through the home address."
+            else -> "Connected through the main (remote) address."
         },
         fontSize = 13.sp,
         color = if (isOffline) Color(0xFFF0A92A) else Color(0xFF3CCF91)
     )
-    SettingsField("Main address", primary, { primary = it }, keyboard = KeyboardType.Uri)
-    SettingsField("Backup address (used when the main one fails)", backup, { backup = it }, keyboard = KeyboardType.Uri)
+    HomeWifiSection(viewModel)
+    SettingsField("Main address (away from home)", primary, { primary = it }, keyboard = KeyboardType.Uri)
+    SettingsField("Home address (on the home Wi-Fi, and the backup)", backup, { backup = it }, keyboard = KeyboardType.Uri)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PillButton("Save and reconnect", primary = true) {
             viewModel.updateHaUrl(primary)
@@ -782,6 +765,71 @@ private fun ConnectionPage(viewModel: HvacViewModel) {
         }
     }
     Text("The access token is built into the app and isn't shown here.", fontSize = 11.sp, color = Color.White.copy(alpha = 0.4f))
+}
+
+/**
+ * Which Wi-Fi counts as home. On it the app uses the home (local) address directly.
+ *
+ * "Use this Wi-Fi" asks for location access first, because Android will not tell any app the
+ * network's name without it. Without a name the app still recognises home by its network
+ * address, so the setting is a refinement, not a requirement.
+ */
+@Composable
+private fun HomeWifiSection(viewModel: HvacViewModel) {
+    val context = LocalContext.current
+    val homeSsid by viewModel.homeWifiSsid.collectAsStateWithLifecycle()
+    val onHome by viewModel.onHomeNetwork.collectAsStateWithLifecycle()
+    val usingBackup by viewModel.usingBackupUrl.collectAsStateWithLifecycle()
+    var ssidText by remember(homeSsid) { mutableStateOf(homeSsid) }
+    var current by remember { mutableStateOf(viewModel.currentWifiSsid()) }
+
+    fun useCurrent() {
+        current = viewModel.currentWifiSsid()
+        val ssid = current
+        if (ssid == null) {
+            Toast.makeText(context, "Android didn't give the Wi-Fi name — check location is on", Toast.LENGTH_LONG).show()
+        } else {
+            ssidText = ssid
+            viewModel.setHomeWifiSsid(ssid)
+            Toast.makeText(context, "Home Wi-Fi set to $ssid", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val askLocation = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) useCurrent()
+        else Toast.makeText(context, "Without location access the app can't read the Wi-Fi name", Toast.LENGTH_LONG).show()
+    }
+
+    SettingsGroup {
+        ValueRow(
+            "Home network",
+            when (onHome) {
+                true -> "On the home network — talking to Home Assistant directly" + if (usingBackup) "" else " (switching…)"
+                false -> "Away from home — using the main address"
+                null -> "Can't tell right now"
+            }
+        )
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+            SettingsField("Home Wi-Fi name (optional)", ssidText, { ssidText = it })
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton("Use this Wi-Fi" + (current?.let { " ($it)" } ?: ""), primary = true) {
+                    val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    if (granted) useCurrent() else askLocation.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                }
+                PillButton("Save name") { viewModel.setHomeWifiSsid(ssidText) }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Left blank, home is recognised by the network address instead, which needs no permission.",
+                fontSize = 11.sp,
+                color = Color.White.copy(alpha = 0.4f)
+            )
+        }
+    }
 }
 
 @Composable
@@ -931,7 +979,7 @@ private fun SettingsGroup(content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(com.example.ui.theme.themedShape(12.dp))
             .background(Color.White.copy(alpha = 0.04f))
     ) {
         content()
@@ -1033,9 +1081,9 @@ private fun SegmentRow(title: String, options: List<Pair<String, String>>, selec
                     fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
                     color = if (on) Color.White else Color.White.copy(alpha = 0.6f),
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(com.example.ui.theme.themedShape(8.dp))
                         .background(if (on) theme.coolColor.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.04f))
-                        .border(1.dp, if (on) theme.coolColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                        .border(1.dp, if (on) theme.coolColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(8.dp))
                         .clickable { onSelect(key) }
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 )
@@ -1053,8 +1101,8 @@ private fun DeviceModeRow(viewModel: HvacViewModel) {
             Text("Device mode", fontSize = 14.sp, color = Color.White, modifier = Modifier.weight(1f))
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                    .clip(com.example.ui.theme.themedShape(8.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.12f), com.example.ui.theme.themedShape(8.dp))
             ) {
                 DeviceMode.values().forEach { m ->
                     val on = m == mode
@@ -1114,9 +1162,9 @@ private fun PillButton(label: String, primary: Boolean = false, onClick: () -> U
         fontWeight = FontWeight.Bold,
         color = if (primary) Color.White else Color.White.copy(alpha = 0.75f),
         modifier = Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(com.example.ui.theme.themedShape(10.dp))
             .background(if (primary) theme.coolColor.copy(alpha = 0.3f) else Color.Transparent)
-            .border(1.dp, if (primary) theme.coolColor.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
+            .border(1.dp, if (primary) theme.coolColor.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.15f), com.example.ui.theme.themedShape(10.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 9.dp)
     )

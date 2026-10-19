@@ -618,6 +618,123 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _usingBackupUrl = MutableStateFlow(false)
     val usingBackupUrl: StateFlow<Boolean> = _usingBackupUrl.asStateFlow()
 
+    // ------------------------------------------------------------------------------------------
+    // Home network: on the home Wi-Fi, talk to Home Assistant directly
+    // ------------------------------------------------------------------------------------------
+
+    /**
+     * The home Wi-Fi's name, per device. On it, the app connects to the local (backup) address
+     * first instead of going out through the remote one and back — a direct hop on the LAN.
+     *
+     * Blank is fine: the home network is then recognised by the device's own address sharing a
+     * subnet with the local address, which needs no permission at all. The name only matters
+     * where that is ambiguous, and reading it needs location access (Android's rule, not ours).
+     */
+    private val _homeWifiSsid = MutableStateFlow(sharedPrefs.getString("home_wifi_ssid", "") ?: "")
+    val homeWifiSsid: StateFlow<String> = _homeWifiSsid.asStateFlow()
+
+    /** True on the home network, false away, null when it cannot be told. */
+    private val _onHomeNetwork = MutableStateFlow<Boolean?>(null)
+    val onHomeNetwork: StateFlow<Boolean?> = _onHomeNetwork.asStateFlow()
+
+    fun setHomeWifiSsid(ssid: String) {
+        val clean = ssid.trim().trim('"')
+        sharedPrefs.edit().putString("home_wifi_ssid", clean).apply()
+        _homeWifiSsid.value = clean
+        applyHomeNetworkPreference()
+    }
+
+    /** The current Wi-Fi's name, or null when not on Wi-Fi or Android will not say. */
+    fun currentWifiSsid(): String? = try {
+        val wm = getApplication<Application>().applicationContext
+            .getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+        @Suppress("DEPRECATION")
+        val raw = wm.connectionInfo?.ssid?.trim('"')
+        raw?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
+    } catch (e: Exception) {
+        null
+    }
+
+    /**
+     * Whether this device is on the same subnet as the local address — the permission-free way
+     * of knowing it is home. Null when the local address is a name rather than an IP literal.
+     */
+    private fun onLocalSubnet(): Boolean? {
+        val host = _backupHaUrl.value.substringAfter("://").substringBefore('/').substringBefore(':')
+        val target = host.split('.').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 4 }
+            ?: return null
+        val targetBits = target.fold(0L) { acc, b -> (acc shl 8) or b.toLong() }
+        return try {
+            val cm = getApplication<Application>().applicationContext
+                .getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val props = cm.getLinkProperties(cm.activeNetwork) ?: return false
+            props.linkAddresses.any { la ->
+                val addr = la.address as? java.net.Inet4Address ?: return@any false
+                val prefix = la.prefixLength.coerceIn(0, 32)
+                val mine = addr.address.fold(0L) { acc, b -> (acc shl 8) or (b.toLong() and 0xFF) }
+                val mask = if (prefix == 0) 0L else (0xFFFFFFFFL shl (32 - prefix)) and 0xFFFFFFFFL
+                (mine and mask) == (targetBits and mask)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun evaluateHomeNetwork(): Boolean? {
+        val home = _homeWifiSsid.value
+        val ssid = currentWifiSsid()
+        if (home.isNotBlank() && ssid != null) return ssid.equals(home, ignoreCase = false)
+        return onLocalSubnet()
+    }
+
+    /**
+     * Point the connection at the local address on the home network and the main one away,
+     * switching only when the answer changes. Called at sync start and on every network change.
+     */
+    fun applyHomeNetworkPreference() {
+        val home = evaluateHomeNetwork()
+        _onHomeNetwork.value = home
+        if (home == null || !_isLoggedIn.value) return
+        val wantLocal = home && _backupHaUrl.value.isNotBlank()
+        if (wsManager.usingBackupUrl.value == wantLocal && _usingBackupUrl.value == wantLocal) return
+        val token = resolveHaToken()
+        if (token.isEmpty() || _haUrl.value.isBlank()) return
+        android.util.Log.i("HvacViewModel", "Home network: ${if (wantLocal) "local" else "main"} address")
+        _usingBackupUrl.value = wantLocal
+        HomeAssistantClient.initialize(if (wantLocal) _backupHaUrl.value else _haUrl.value, token)
+        // A plain connectWithFailover would be skipped as "already connected with identical
+        // settings" — the addresses are the same, only the preference changed.
+        wsManager.disconnect()
+        wsManager.connectWithFailover(_haUrl.value, _backupHaUrl.value, token, preferBackup = wantLocal)
+    }
+
+    private var networkCallbackRegistered = false
+    private var networkChangeJob: Job? = null
+
+    /** Re-checks after any network change, settled for a moment so a Wi-Fi handover is one switch. */
+    private fun watchNetworkChanges() {
+        if (networkCallbackRegistered) return
+        try {
+            val cm = getApplication<Application>().applicationContext
+                .getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) = settle()
+                override fun onLinkPropertiesChanged(network: android.net.Network, lp: android.net.LinkProperties) = settle()
+                override fun onLost(network: android.net.Network) = settle()
+                private fun settle() {
+                    networkChangeJob?.cancel()
+                    networkChangeJob = viewModelScope.launch {
+                        delay(2_000L)
+                        applyHomeNetworkPreference()
+                    }
+                }
+            })
+            networkCallbackRegistered = true
+        } catch (e: Exception) {
+            android.util.Log.w("HvacViewModel", "Could not watch network changes", e)
+        }
+    }
+
     fun updateBackupHaUrl(newUrl: String) {
         val formattedUrl = HomeAssistantClient.formatBaseUrl(newUrl)
         sharedPrefs.edit().putString("backup_ha_url", formattedUrl).apply()
@@ -1095,11 +1212,22 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startSync() {
+        // On the home network, start on the local address rather than finding it by failing over.
+        val home = evaluateHomeNetwork()
+        _onHomeNetwork.value = home
+        if (home == true && _backupHaUrl.value.isNotBlank()) _usingBackupUrl.value = true
         val targetUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
         val token = resolveHaToken()
         if (token.isNotEmpty() && targetUrl.isNotEmpty() && targetUrl != "https://localhost/") {
             HomeAssistantClient.initialize(targetUrl, token)
             wsManager.connectWithFailover(_haUrl.value, _backupHaUrl.value, token, preferBackup = _usingBackupUrl.value)
+        }
+        watchNetworkChanges()
+        // The background service may have opened the remote connection before this ran, in which
+        // case the connect above was skipped as a duplicate. Correct it once things settle.
+        viewModelScope.launch {
+            delay(4_000L)
+            applyHomeNetworkPreference()
         }
 
         syncJob?.cancel()

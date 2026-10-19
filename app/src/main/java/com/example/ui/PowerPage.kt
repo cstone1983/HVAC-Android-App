@@ -167,7 +167,7 @@ private fun PowerArea(
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF7FB3EC),
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(com.example.ui.theme.themedShape(6.dp))
                         .clickable { viewModel.turnOffAll(area, lightsOn, switchesOn) }
                         .padding(horizontal = 6.dp, vertical = 3.dp)
                         .testTag("power_all_off_${area.lowercase()}")
@@ -224,9 +224,9 @@ private fun PowerTile(
     Row(
         modifier = modifier
             .height(54.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(com.example.ui.theme.themedShape(10.dp))
             .background(if (on) OnColor.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.045f))
-            .border(1.dp, if (on) OnColor.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.07f), RoundedCornerShape(10.dp))
+            .border(1.dp, if (on) OnColor.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.07f), com.example.ui.theme.themedShape(10.dp))
             .combinedClickable(onClick = onTap, onLongClick = onHold)
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -272,9 +272,9 @@ private fun DoorTile(door: CoverControl, area: String, viewModel: HvacViewModel,
     Row(
         modifier = modifier
             .height(54.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(com.example.ui.theme.themedShape(10.dp))
             .background(if (open) OpenColor.copy(alpha = 0.09f) else Color.White.copy(alpha = 0.045f))
-            .border(1.dp, if (open) OpenColor.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.07f), RoundedCornerShape(10.dp))
+            .border(1.dp, if (open) OpenColor.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.07f), com.example.ui.theme.themedShape(10.dp))
             .padding(start = 10.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -292,8 +292,8 @@ private fun DoorTile(door: CoverControl, area: String, viewModel: HvacViewModel,
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .width(56.dp)
-                .clip(RoundedCornerShape(7.dp))
-                .border(1.dp, if (open) OpenColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.2f), RoundedCornerShape(7.dp))
+                .clip(com.example.ui.theme.themedShape(7.dp))
+                .border(1.dp, if (open) OpenColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.2f), com.example.ui.theme.themedShape(7.dp))
                 .clickable {
                     viewModel.controlCover(door.entityId, if (open) "close" else "open", door.name)
                 }

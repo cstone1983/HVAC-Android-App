@@ -688,7 +688,7 @@ private fun CommandZoneCard(
                     if (zone.overrideOn) {
                         Box(
                             modifier = Modifier
-                                .background(theme.boostColor.copy(alpha = 0.14f), RoundedCornerShape(4.dp))
+                                .background(theme.boostColor.copy(alpha = 0.14f), com.example.ui.theme.themedShape(4.dp))
                                 .padding(horizontal = 3.dp, vertical = 2.dp)
                         ) {
                             Icon(
@@ -779,7 +779,7 @@ private fun CommandZoneCard(
 private fun FlagChip(text: String, color: Color) {
     Box(
         modifier = Modifier
-            .background(color.copy(alpha = 0.14f), RoundedCornerShape(4.dp))
+            .background(color.copy(alpha = 0.14f), com.example.ui.theme.themedShape(4.dp))
             .padding(horizontal = 4.dp, vertical = 1.dp)
     ) {
         Text(text = text, fontSize = 7.5.sp, fontWeight = FontWeight.Black, color = color, letterSpacing = 0.2.sp)
@@ -1008,7 +1008,7 @@ private fun PersonChip(name: String, home: Boolean, homeColor: Color) {
         modifier = Modifier
             .background(
                 if (home) homeColor.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.04f),
-                RoundedCornerShape(10.dp)
+                com.example.ui.theme.themedShape(10.dp)
             )
             .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {

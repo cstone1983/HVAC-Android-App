@@ -1,5 +1,7 @@
 package com.example.ui.theme
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.dp
@@ -89,6 +91,27 @@ val LocalHvacTheme = staticCompositionLocalOf {
         cardCornerStyle = "rounded",
         cardOpacity = 0.03f
     )
+}
+
+/**
+ * The corner style, for everything that is not a card: buttons, chips, tiles, fields, pop-ups.
+ *
+ * Snapshot state rather than a CompositionLocal so it can be read anywhere a shape is built —
+ * inside modifier chains, in plain helpers — and still recompose whatever drew with it when it
+ * changes. The dashboard keeps it in step with the Appearance setting.
+ */
+object HvacCorners {
+    var style by androidx.compose.runtime.mutableStateOf("rounded")
+}
+
+/**
+ * A corner of [dp] in the current style: square for Sharp, as designed for Soft, about twice as
+ * round for Round. Replaces every hard-coded RoundedCornerShape in the app (2026-10-18).
+ */
+fun themedShape(dp: androidx.compose.ui.unit.Dp): RoundedCornerShape = when (HvacCorners.style) {
+    "sharp" -> RoundedCornerShape(0.dp)
+    "ultra_rounded" -> RoundedCornerShape((dp * 2.2f).coerceAtMost(40.dp))
+    else -> RoundedCornerShape(dp)
 }
 
 @Composable

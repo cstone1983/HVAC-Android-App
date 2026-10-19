@@ -365,6 +365,8 @@ fun HvacDashboard(
         )
     }
 
+    androidx.compose.runtime.SideEffect { com.example.ui.theme.HvacCorners.style = cardCornerStyle }
+
     CompositionLocalProvider(LocalHvacTheme provides hvacThemeColors) {
         if (showSettingsDialog) {
             HvacSettingsDialog(
@@ -384,261 +386,7 @@ fun HvacDashboard(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(bgGradient)
-                    .drawBehind {
-                        // 1. Core Background Styles
-                        when (backgroundDesign) {
-                            "grid" -> {
-                                val gridSpacing = 44.dp.toPx()
-                                val lineColor = hvacThemeColors.coolColor.copy(alpha = 0.05f)
-                                var x = 0f
-                                while (x < size.width) {
-                                    drawLine(color = lineColor, start = androidx.compose.ui.geometry.Offset(x, 0f), end = androidx.compose.ui.geometry.Offset(x, size.height), strokeWidth = 1.dp.toPx())
-                                    x += gridSpacing
-                                }
-                                var y = 0f
-                                while (y < size.height) {
-                                    drawLine(color = lineColor, start = androidx.compose.ui.geometry.Offset(0f, y), end = androidx.compose.ui.geometry.Offset(size.width, y), strokeWidth = 1.dp.toPx())
-                                    y += gridSpacing
-                                }
-                            }
-                            "nebula" -> {
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(hvacThemeColors.heatColor.copy(alpha = 0.08f), Color.Transparent),
-                                        center = androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.25f),
-                                        radius = size.width * 0.7f
-                                    ),
-                                    radius = size.width * 0.7f,
-                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.25f)
-                                )
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(hvacThemeColors.coolColor.copy(alpha = 0.1f), Color.Transparent),
-                                        center = androidx.compose.ui.geometry.Offset(size.width * 0.85f, size.height * 0.75f),
-                                        radius = size.width * 0.7f
-                                    ),
-                                    radius = size.width * 0.7f,
-                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.85f, size.height * 0.75f)
-                                )
-                            }
-                            "aurora" -> {
-                                val waveColor1 = hvacThemeColors.coolColor.copy(alpha = 0.08f)
-                                val waveColor2 = hvacThemeColors.ecoColor.copy(alpha = 0.08f)
-                                
-                                val path1 = androidx.compose.ui.graphics.Path().apply {
-                                    moveTo(0f, size.height * 0.45f)
-                                    cubicTo(
-                                        size.width * 0.25f, size.height * 0.25f,
-                                        size.width * 0.75f, size.height * 0.65f,
-                                        size.width, size.height * 0.35f
-                                    )
-                                    lineTo(size.width, size.height)
-                                    lineTo(0f, size.height)
-                                    close()
-                                }
-                                drawPath(
-                                    path = path1,
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(waveColor1, Color.Transparent),
-                                        startY = size.height * 0.35f,
-                                        endY = size.height
-                                    )
-                                )
-                                
-                                val path2 = androidx.compose.ui.graphics.Path().apply {
-                                    moveTo(0f, size.height * 0.25f)
-                                    cubicTo(
-                                        size.width * 0.35f, size.height * 0.55f,
-                                        size.width * 0.65f, size.height * 0.15f,
-                                        size.width, size.height * 0.55f
-                                    )
-                                    lineTo(size.width, size.height)
-                                    lineTo(0f, size.height)
-                                    close()
-                                }
-                                drawPath(
-                                    path = path2,
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(waveColor2, Color.Transparent),
-                                        startY = size.height * 0.15f,
-                                        endY = size.height
-                                    )
-                                )
-                            }
-                            "minimal" -> {
-                                // Strictly dual-tone minimal gradient, do not draw secondary items
-                            }
-                            else -> {
-                                // radial_glow (Default)
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(glowColor, Color.Transparent),
-                                        center = center,
-                                        radius = size.width * 0.85f
-                                    ),
-                                    radius = size.width * 0.85f,
-                                    center = center
-                                )
-                            }
-                        }
-
-                        // 2. High-Resolution Immersive Vector Art based on Active Theme Preset
-                        when (activeThemePreset) {
-                            "classic", "dynamic" -> {
-                                // Haven Metallic - solar crown flares & precision concentric rings
-                                drawCircle(
-                                    color = hvacThemeColors.heatColor.copy(alpha = 0.04f),
-                                    radius = size.width * 0.45f,
-                                    center = androidx.compose.ui.geometry.Offset(size.width, 0f),
-                                    style = Stroke(width = 1.dp.toPx())
-                                )
-                                drawCircle(
-                                    color = hvacThemeColors.heatColor.copy(alpha = 0.02f),
-                                    radius = size.width * 0.70f,
-                                    center = androidx.compose.ui.geometry.Offset(size.width, 0f),
-                                    style = Stroke(width = 2.dp.toPx())
-                                )
-                            }
-                            "nordic" -> {
-                                // Nordic Frost - deep glacier crystal vectors and coordinates
-                                val crystalColor = hvacThemeColors.coolColor.copy(alpha = 0.04f)
-                                drawCircle(
-                                    color = crystalColor,
-                                    radius = size.width * 0.3f,
-                                    center = androidx.compose.ui.geometry.Offset(0f, size.height * 0.5f),
-                                    style = Stroke(width = 1.dp.toPx())
-                                )
-                                drawLine(crystalColor, androidx.compose.ui.geometry.Offset(0f, size.height * 0.5f), androidx.compose.ui.geometry.Offset(size.width * 0.3f, size.height * 0.5f), strokeWidth = 1.dp.toPx())
-                                drawLine(crystalColor, androidx.compose.ui.geometry.Offset(0f, size.height * 0.2f), androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.35f), strokeWidth = 1.dp.toPx())
-                                drawLine(crystalColor, androidx.compose.ui.geometry.Offset(0f, size.height * 0.8f), androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.65f), strokeWidth = 1.dp.toPx())
-                            }
-                            "emerald" -> {
-                                // Emerald Nebula - orbital cosmic lanes and sweeping planetary systems
-                                val orbitColor = hvacThemeColors.ecoColor.copy(alpha = 0.04f)
-                                drawCircle(
-                                    color = orbitColor,
-                                    radius = size.width * 0.45f,
-                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.5f),
-                                    style = Stroke(width = 1.dp.toPx())
-                                )
-                                drawCircle(
-                                    color = orbitColor.copy(alpha = 0.02f),
-                                    radius = size.width * 0.65f,
-                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.5f),
-                                    style = Stroke(width = 1.5.dp.toPx())
-                                )
-                                drawOval(
-                                    color = orbitColor,
-                                    topLeft = androidx.compose.ui.geometry.Offset(-size.width * 0.1f, size.height * 0.2f),
-                                    size = androidx.compose.ui.geometry.Size(size.width * 1.2f, size.height * 0.6f),
-                                    style = Stroke(width = 1.3.dp.toPx())
-                                )
-                            }
-                            "cyber" -> {
-                                // Cyber Sunset - retro cyber perspective grids & wireframe horizon sun
-                                val gridColor = hvacThemeColors.heatColor.copy(alpha = 0.08f)
-                                val horizonY = size.height * 0.65f
-                                
-                                drawCircle(
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(hvacThemeColors.heatColor.copy(alpha = 0.22f), Color.Transparent)
-                                    ),
-                                    radius = size.width * 0.28f,
-                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, horizonY - size.width * 0.12f)
-                                )
-                                
-                                var lineY = horizonY - size.width * 0.4f
-                                while (lineY < horizonY) {
-                                    drawLine(
-                                        color = hvacThemeColors.bgStart.copy(alpha = 0.9f),
-                                        start = androidx.compose.ui.geometry.Offset(0f, lineY),
-                                        end = androidx.compose.ui.geometry.Offset(size.width, lineY),
-                                        strokeWidth = 6.dp.toPx()
-                                    )
-                                    lineY += 16.dp.toPx()
-                                }
-
-                                val gridLineCount = 12
-                                for (i in 0..gridLineCount) {
-                                    val startX = (size.width / gridLineCount) * i
-                                    val vanishX = size.width / 2f
-                                    drawLine(
-                                        color = gridColor.copy(alpha = 0.12f),
-                                        start = androidx.compose.ui.geometry.Offset(vanishX, horizonY),
-                                        end = androidx.compose.ui.geometry.Offset(startX, size.height),
-                                        strokeWidth = 1.5.dp.toPx()
-                                    )
-                                }
-                                
-                                var hY = horizonY
-                                var spacing = 10.dp.toPx()
-                                while (hY < size.height) {
-                                    drawLine(
-                                        color = gridColor.copy(alpha = 0.08f),
-                                        start = androidx.compose.ui.geometry.Offset(0f, hY),
-                                        end = androidx.compose.ui.geometry.Offset(size.width, hY),
-                                        strokeWidth = 1.dp.toPx()
-                                    )
-                                    hY += spacing
-                                    spacing = (spacing * 1.35f).coerceAtMost(80.dp.toPx())
-                                }
-                            }
-                            "volcanic" -> {
-                                // Volcanic Obsidian - rising warm thermal sparks & dynamic magma channels
-                                val magmaColor = hvacThemeColors.heatColor.copy(alpha = 0.12f)
-                                val sparks = listOf(
-                                    androidx.compose.ui.geometry.Offset(size.width * 0.15f, size.height * 0.4f),
-                                    androidx.compose.ui.geometry.Offset(size.width * 0.22f, size.height * 0.75f),
-                                    androidx.compose.ui.geometry.Offset(size.width * 0.45f, size.height * 0.25f),
-                                    androidx.compose.ui.geometry.Offset(size.width * 0.58f, size.height * 0.85f),
-                                    androidx.compose.ui.geometry.Offset(size.width * 0.78f, size.height * 0.35f),
-                                    androidx.compose.ui.geometry.Offset(size.width * 0.88f, size.height * 0.7f)
-                                )
-                                sparks.forEachIndexed { idx, pos ->
-                                    val sizeFactor = (1.5f + (idx % 3) * 1.2f)
-                                    drawCircle(
-                                        color = magmaColor,
-                                        radius = sizeFactor.dp.toPx(),
-                                        center = pos
-                                    )
-                                    drawCircle(
-                                        color = magmaColor.copy(alpha = 0.025f),
-                                        radius = (sizeFactor * 4).dp.toPx(),
-                                        center = pos
-                                    )
-                                }
-                                val path = Path().apply {
-                                    moveTo(0f, size.height * 0.8f)
-                                    cubicTo(size.width * 0.3f, size.height * 0.75f, size.width * 0.7f, size.height * 0.9f, size.width, size.height * 0.85f)
-                                }
-                                drawPath(path, color = magmaColor.copy(alpha = 0.03f), style = Stroke(width = 12.dp.toPx()))
-                            }
-                            "monochrome" -> {
-                                // Monochrome Slate - high-precision engineered aerospace layout markups
-                                val tickColor = Color.White.copy(alpha = 0.05f)
-                                val sizeL = 16.dp.toPx()
-                                val inset = 12.dp.toPx()
-                                
-                                drawLine(tickColor, androidx.compose.ui.geometry.Offset(inset, inset), androidx.compose.ui.geometry.Offset(inset + sizeL, inset), strokeWidth = 1.dp.toPx())
-                                drawLine(tickColor, androidx.compose.ui.geometry.Offset(inset, inset), androidx.compose.ui.geometry.Offset(inset, inset + sizeL), strokeWidth = 1.dp.toPx())
-                                drawLine(tickColor, androidx.compose.ui.geometry.Offset(size.width - inset, inset), androidx.compose.ui.geometry.Offset(size.width - inset - sizeL, inset), strokeWidth = 1.dp.toPx())
-                                drawLine(tickColor, androidx.compose.ui.geometry.Offset(size.width - inset, inset), androidx.compose.ui.geometry.Offset(size.width - inset, inset + sizeL), strokeWidth = 1.dp.toPx())
-                                
-                                drawCircle(
-                                    color = tickColor,
-                                    radius = size.width * 0.15f,
-                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.5f),
-                                    style = Stroke(width = 1.dp.toPx())
-                                )
-                                drawCircle(
-                                    color = tickColor.copy(alpha = 0.02f),
-                                    radius = size.width * 0.3f,
-                                    center = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.5f),
-                                    style = Stroke(width = 1.dp.toPx())
-                                )
-                            }
-                        }
-                    }
+                    .drawBehind { drawHvacBackground(backgroundDesign, hvacThemeColors, glowColor, activeThemePreset) }
             ) {
         Scaffold(
             containerColor = Color.Transparent,
@@ -714,7 +462,7 @@ fun HvacDashboard(
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(18.dp))
+                                        .clip(com.example.ui.theme.themedShape(18.dp))
                                         .background(Color.White.copy(alpha = 0.06f))
                                         .clickable {
                                             scope.launch { viewModel.fetchStates() }
@@ -781,7 +529,7 @@ fun HvacDashboard(
                             Card(
                                 colors = CardDefaults.cardColors(containerColor = Color.Red.copy(alpha = 0.1f)),
                                 border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.4f)),
-                                shape = RoundedCornerShape(16.dp)
+                                shape = com.example.ui.theme.themedShape(16.dp)
                             ) {
                                 Column(
                                     modifier = Modifier.padding(24.dp),
@@ -843,7 +591,7 @@ fun HvacDashboard(
                                         containerColor = Color(0xFF1E293B)
                                     ),
                                     border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-                                    shape = RoundedCornerShape(20.dp)
+                                    shape = com.example.ui.theme.themedShape(20.dp)
                                 ) {
                                     Column(
                                         modifier = Modifier
@@ -1410,7 +1158,7 @@ fun DynamicTabContent(
                                             Button(
                                                 onClick = { viewModel.controlCover(cover.entityId, "open", cover.name) },
                                                 colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)),
-                                                shape = RoundedCornerShape(8.dp),
+                                                shape = com.example.ui.theme.themedShape(8.dp),
                                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                             ) {
                                                 Text("OPEN", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -1418,7 +1166,7 @@ fun DynamicTabContent(
                                             Button(
                                                 onClick = { viewModel.controlCover(cover.entityId, "close", cover.name) },
                                                 colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.06f)),
-                                                shape = RoundedCornerShape(8.dp),
+                                                shape = com.example.ui.theme.themedShape(8.dp),
                                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                             ) {
                                                 Text("CLOSE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
@@ -1625,8 +1373,8 @@ fun HvacDashboardContent(
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(sidePanelWidth)
-                    .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(16.dp))
-                    .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.02f), com.example.ui.theme.themedShape(16.dp))
+                    .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), com.example.ui.theme.themedShape(16.dp))
                     .padding(if (isMenuExpanded) 14.dp else 8.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -1698,14 +1446,14 @@ fun HvacDashboardContent(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("nav_tab_$index")
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(com.example.ui.theme.themedShape(10.dp))
                                     .background(if (isSelected) activeColor.copy(alpha = 0.15f) else Color.Transparent)
                                     .border(
                                         BorderStroke(
                                             1.dp,
                                             if (isSelected) activeColor.copy(alpha = 0.4f) else Color.Transparent
                                         ),
-                                        RoundedCornerShape(10.dp)
+                                        com.example.ui.theme.themedShape(10.dp)
                                     )
                                     .clickable { selectedTab = index }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1767,7 +1515,7 @@ fun HvacDashboardContent(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.05f), com.example.ui.theme.themedShape(12.dp))
                                 .clickable {
                                     scope.launch { viewModel.fetchStates() }
                                 }
@@ -1779,7 +1527,7 @@ fun HvacDashboardContent(
                                 Box(
                                     modifier = Modifier
                                         .size(8.dp)
-                                        .background(connectionColor, RoundedCornerShape(4.dp))
+                                        .background(connectionColor, com.example.ui.theme.themedShape(4.dp))
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
@@ -1839,8 +1587,8 @@ fun HvacDashboardContent(
                             onClick = { scope.launch { viewModel.fetchStates() } },
                             modifier = Modifier
                                 .size(36.dp)
-                                .background(connectionColor.copy(alpha = 0.15f), RoundedCornerShape(18.dp))
-                                .border(BorderStroke(1.dp, connectionColor.copy(alpha = 0.4f)), RoundedCornerShape(18.dp))
+                                .background(connectionColor.copy(alpha = 0.15f), com.example.ui.theme.themedShape(18.dp))
+                                .border(BorderStroke(1.dp, connectionColor.copy(alpha = 0.4f)), com.example.ui.theme.themedShape(18.dp))
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
@@ -2175,7 +1923,7 @@ fun HvacDashboardContent(
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 52.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(com.example.ui.theme.themedShape(10.dp))
                             .clickable { selectedTab = index }
                             .padding(vertical = 6.dp, horizontal = 2.dp)
                             .testTag("nav_tab_$index"),
@@ -2224,7 +1972,7 @@ fun UpdateAlertBanner(
                 containerColor = theme.coolColor.copy(alpha = 0.12f)
             ),
             border = BorderStroke(1.dp, theme.coolColor.copy(alpha = 0.35f)),
-            shape = RoundedCornerShape(12.dp),
+            shape = com.example.ui.theme.themedShape(12.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 12.dp, start = 4.dp, end = 4.dp)
@@ -2604,7 +2352,7 @@ internal fun HotWaterGroup(
                                 1.dp,
                                 if (isSelected) color else Color.White.copy(alpha = 0.05f)
                             ),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = com.example.ui.theme.themedShape(8.dp)
                         ) {
                             Column(
                                 modifier = Modifier
@@ -2642,12 +2390,12 @@ internal fun HotWaterGroup(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(com.example.ui.theme.themedShape(8.dp))
                             .background(Color.White.copy(alpha = 0.03f))
                             .border(
                                 1.dp,
                                 if (fullness != null) tankColor.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.05f),
-                                RoundedCornerShape(8.dp)
+                                com.example.ui.theme.themedShape(8.dp)
                             )
                             .drawWithContent {
                                 if (fillFraction > 0.01f) {
@@ -2851,7 +2599,7 @@ fun ConsolidatedZoneCard(
                         modifier = Modifier
                             .background(
                                 theme.coolColor.copy(alpha = 0.14f),
-                                RoundedCornerShape(5.dp)
+                                com.example.ui.theme.themedShape(5.dp)
                             )
                             .padding(horizontal = 5.dp, vertical = 3.dp)
                     ) {
@@ -2869,7 +2617,7 @@ fun ConsolidatedZoneCard(
                         modifier = Modifier
                             .background(
                                 if (zone.autoOn) Color(0xFF10B981).copy(alpha = 0.14f) else Color(0xFFEF4444).copy(alpha = 0.14f),
-                                RoundedCornerShape(5.dp)
+                                com.example.ui.theme.themedShape(5.dp)
                             )
                             .padding(horizontal = 5.dp, vertical = 3.dp)
                     ) {
@@ -2886,7 +2634,7 @@ fun ConsolidatedZoneCard(
                     if (zone.overrideOn) {
                         Box(
                             modifier = Modifier
-                                .background(theme.boostColor.copy(alpha = 0.14f), RoundedCornerShape(5.dp))
+                                .background(theme.boostColor.copy(alpha = 0.14f), com.example.ui.theme.themedShape(5.dp))
                                 .padding(horizontal = 4.dp, vertical = 3.dp)
                         ) {
                             Icon(
@@ -2972,7 +2720,7 @@ fun LightingControlPopup(
                 containerColor = Color(0xFF1E293B)
             ),
             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-            shape = RoundedCornerShape(20.dp)
+            shape = com.example.ui.theme.themedShape(20.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -2990,7 +2738,7 @@ fun LightingControlPopup(
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .background(activeColor.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                                .background(activeColor.copy(alpha = 0.15f), com.example.ui.theme.themedShape(10.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -3036,7 +2784,7 @@ fun LightingControlPopup(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.03f), com.example.ui.theme.themedShape(12.dp))
                         .padding(12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -3072,7 +2820,7 @@ fun LightingControlPopup(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.03f), com.example.ui.theme.themedShape(12.dp))
                             .padding(12.dp)
                     ) {
                         var sliderValue by remember(brightness) {
@@ -3255,7 +3003,7 @@ fun ZoneDetailPopup(
                 containerColor = Color(0xFF1E293B) // slate dark background
             ),
             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-            shape = RoundedCornerShape(20.dp)
+            shape = com.example.ui.theme.themedShape(20.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -3273,7 +3021,7 @@ fun ZoneDetailPopup(
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
-                                .background(activeColor.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                                .background(activeColor.copy(alpha = 0.15f), com.example.ui.theme.themedShape(10.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -3307,7 +3055,7 @@ fun ZoneDetailPopup(
                                     letterSpacing = 0.5.sp
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Box(modifier = Modifier.size(3.dp).background(Color.White.copy(alpha = 0.4f), RoundedCornerShape(2.dp)))
+                                Box(modifier = Modifier.size(3.dp).background(Color.White.copy(alpha = 0.4f), com.example.ui.theme.themedShape(2.dp)))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = zone.currentHvacMode.uppercase(),
@@ -3324,7 +3072,7 @@ fun ZoneDetailPopup(
                         onClick = onDismiss,
                         modifier = Modifier
                             .size(32.dp)
-                            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.05f), com.example.ui.theme.themedShape(8.dp))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Close,
@@ -3341,8 +3089,8 @@ fun ZoneDetailPopup(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.02f), RoundedCornerShape(14.dp))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(14.dp))
+                        .background(Color.White.copy(alpha = 0.02f), com.example.ui.theme.themedShape(14.dp))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), com.example.ui.theme.themedShape(14.dp))
                         .drawBehind {
                             if (zone.currentHvacMode.lowercase() != "off") {
                                 // Left Current Temp Aura Pool
@@ -3421,7 +3169,7 @@ fun ZoneDetailPopup(
                                 } else {
                                     Color.White.copy(alpha = 0.04f)
                                 },
-                                RoundedCornerShape(10.dp)
+                                com.example.ui.theme.themedShape(10.dp)
                             )
                             .testTag("zone_power_button_${zone.key}")
                     ) {
@@ -3504,7 +3252,7 @@ fun ZoneDetailPopup(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(com.example.ui.theme.themedShape(8.dp))
                             .background(Color(0xFFF59E0B).copy(alpha = 0.10f))
                             .padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -3601,7 +3349,7 @@ fun ZoneDetailPopup(
                             1.dp,
                             if (isActive) activeColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.06f)
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = com.example.ui.theme.themedShape(12.dp)
                     ) {
                         Row(
                             modifier = Modifier
@@ -3623,7 +3371,7 @@ fun ZoneDetailPopup(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Box(
                                             modifier = Modifier
-                                                .background(activeColor.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                                .background(activeColor.copy(alpha = 0.15f), com.example.ui.theme.themedShape(4.dp))
                                                 .padding(horizontal = 5.dp, vertical = 2.dp)
                                         ) {
                                             Text(
@@ -3650,7 +3398,7 @@ fun ZoneDetailPopup(
                                 Box(
                                     modifier = Modifier
                                         .size(28.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .clip(com.example.ui.theme.themedShape(8.dp))
                                         .background(Color.White.copy(alpha = 0.05f))
                                         .clickable {
                                             value?.let { currentVal ->
@@ -3691,7 +3439,7 @@ fun ZoneDetailPopup(
                                 Box(
                                     modifier = Modifier
                                         .size(28.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .clip(com.example.ui.theme.themedShape(8.dp))
                                         .background(Color.White.copy(alpha = 0.05f))
                                         .clickable {
                                             value?.let { currentVal ->
@@ -3739,7 +3487,7 @@ fun ZoneDetailPopup(
                             1.dp,
                             if (isDebouncing) activeColor.copy(alpha = 0.6f) else Color(0xFF10B981).copy(alpha = 0.6f)
                         ),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = com.example.ui.theme.themedShape(12.dp),
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -3895,7 +3643,7 @@ fun ZoneDetailPopup(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.04f), com.example.ui.theme.themedShape(8.dp))
                                 .padding(4.dp)
                                 .horizontalScroll(vaneScrollState),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -3904,7 +3652,7 @@ fun ZoneDetailPopup(
                                 val isSelected = zone.vaneMode.lowercase() == mode.lowercase()
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .clip(com.example.ui.theme.themedShape(6.dp))
                                         .background(if (isSelected) activeColor else Color.Transparent)
                                         .clickable {
                                             viewModel.selectVaneMode(zone.tiltEntityId, mode, zone.name)
@@ -3930,7 +3678,7 @@ fun ZoneDetailPopup(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.04f), com.example.ui.theme.themedShape(8.dp))
                                 .padding(4.dp)
                                 .horizontalScroll(fanScrollState),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -3939,7 +3687,7 @@ fun ZoneDetailPopup(
                                 val isSelected = zone.fanMode.lowercase() == speed.lowercase()
                                 Box(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .clip(com.example.ui.theme.themedShape(6.dp))
                                         .background(if (isSelected) activeColor else Color.Transparent)
                                         .clickable {
                                             viewModel.selectFanMode(zone.fanEntityId, speed, zone.name)
@@ -3968,7 +3716,7 @@ fun ZoneDetailPopup(
                         containerColor = Color.White.copy(alpha = 0.08f),
                         contentColor = Color.White
                     ),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = com.example.ui.theme.themedShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(
@@ -4095,7 +3843,7 @@ fun UpdatesTab(
                                     color = theme.ecoColor,
                                     modifier = Modifier
                                         .width(64.dp)
-                                        .background(theme.ecoColor.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                        .background(theme.ecoColor.copy(alpha = 0.12f), com.example.ui.theme.themedShape(4.dp))
                                         .padding(vertical = 3.dp),
                                     textAlign = TextAlign.Center
                                 )
@@ -4110,8 +3858,8 @@ fun UpdatesTab(
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier
                                         .width(64.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                                        .clip(com.example.ui.theme.themedShape(4.dp))
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), com.example.ui.theme.themedShape(4.dp))
                                         .clickable {
                                             viewModel.downloadUpdateAndInstall(
                                                 context,
@@ -4238,7 +3986,7 @@ private fun UpdateStatusCard(
                         Button(
                             onClick = { if (isApk) onDownloadApk(state.downloadUrl, state.version) else onApplyLayout(state.downloadUrl) },
                             colors = ButtonDefaults.buttonColors(containerColor = theme.ecoColor, contentColor = Color.Black),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = com.example.ui.theme.themedShape(10.dp)
                         ) {
                             Text(if (isApk) "DOWNLOAD" else "UPDATE", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color.Black)
                         }
@@ -4246,7 +3994,7 @@ private fun UpdateStatusCard(
                     is UpdateState.Success -> Button(
                         onClick = { onInstallApk(state.apkPath) },
                         colors = ButtonDefaults.buttonColors(containerColor = theme.ecoColor, contentColor = Color.Black),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = com.example.ui.theme.themedShape(10.dp)
                     ) {
                         Text("INSTALL", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color.Black)
                     }
@@ -4254,7 +4002,7 @@ private fun UpdateStatusCard(
                     else -> OutlinedButton(
                         onClick = onCheck,
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = com.example.ui.theme.themedShape(10.dp)
                     ) {
                         Text("CHECK", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
@@ -4298,7 +4046,7 @@ private fun UpdateStatusCard(
                         .padding(start = 38.dp)
                         .fillMaxWidth()
                         .height(4.dp)
-                        .clip(RoundedCornerShape(2.dp))
+                        .clip(com.example.ui.theme.themedShape(2.dp))
                         .background(Color.White.copy(alpha = 0.08f))
                 ) {
                     Box(
@@ -4321,7 +4069,7 @@ private fun FooterLink(label: String, color: Color = Color.White.copy(alpha = 0.
         fontWeight = FontWeight.Bold,
         color = color,
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(com.example.ui.theme.themedShape(6.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 6.dp)
     )
@@ -4387,7 +4135,7 @@ fun HvacLoginScreen(
             Box(
                 modifier = Modifier
                     .size(64.dp)
-                    .background(Color(0xFF10B981).copy(alpha = 0.15f), RoundedCornerShape(20.dp)),
+                    .background(Color(0xFF10B981).copy(alpha = 0.15f), com.example.ui.theme.themedShape(20.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -4422,7 +4170,7 @@ fun HvacLoginScreen(
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.06f)),
-                shape = RoundedCornerShape(20.dp),
+                shape = com.example.ui.theme.themedShape(20.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -4475,7 +4223,7 @@ fun HvacLoginScreen(
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.04f)),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = com.example.ui.theme.themedShape(10.dp)
                     ) {
                         Row(
                             modifier = Modifier.padding(10.dp),
@@ -4504,7 +4252,7 @@ fun HvacLoginScreen(
                         Card(
                             colors = CardDefaults.cardColors(containerColor = Color.Red.copy(alpha = 0.1f)),
                             border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.3f)),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = com.example.ui.theme.themedShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
@@ -4524,7 +4272,7 @@ fun HvacLoginScreen(
                         onClick = { viewModel.login(token) },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
                         modifier = Modifier.fillMaxWidth().testTag("login_button"),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = com.example.ui.theme.themedShape(10.dp)
                     ) {
                         if (isConnecting) {
                             CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
@@ -4550,7 +4298,7 @@ fun HvacLoginScreen(
                         ),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
                         modifier = Modifier.fillMaxWidth().testTag("clear_sessions_button"),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = com.example.ui.theme.themedShape(10.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
@@ -4682,7 +4430,7 @@ fun HvacLoginScreen(
                                         contentColor = Color(0xFF10B981)
                                     ),
                                     border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.3f)),
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = com.example.ui.theme.themedShape(10.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Text("SAVE URL", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
@@ -4701,7 +4449,7 @@ fun HvacLoginScreen(
                                             contentColor = Color(0xFFEF5350)
                                         ),
                                         border = BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.3f)),
-                                        shape = RoundedCornerShape(10.dp)
+                                        shape = com.example.ui.theme.themedShape(10.dp)
                                     ) {
                                         Text("RESTORE DEFAULT", fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                                     }
@@ -4767,7 +4515,7 @@ fun ThreeDayWeatherCard(
                     )
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(com.example.ui.theme.themedShape(4.dp))
                             .background(theme.ecoColor.copy(alpha = 0.15f))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
@@ -4916,7 +4664,7 @@ fun WeatherForecastDayColumn(
     modifier: Modifier = Modifier
 ) {
     Card(
-        shape = RoundedCornerShape(8.dp),
+        shape = com.example.ui.theme.themedShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.02f)),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.04f)),
         modifier = modifier
@@ -5095,8 +4843,8 @@ fun FirstTimeSetupDialog(
                 .widthIn(max = 500.dp)
                 .fillMaxWidth()
                 .padding(16.dp)
-                .border(BorderStroke(2.dp, Color(0xFF2196F3).copy(alpha = 0.5f)), RoundedCornerShape(28.dp)),
-            shape = RoundedCornerShape(28.dp),
+                .border(BorderStroke(2.dp, Color(0xFF2196F3).copy(alpha = 0.5f)), com.example.ui.theme.themedShape(28.dp)),
+            shape = com.example.ui.theme.themedShape(28.dp),
             colors = CardDefaults.cardColors(
                 containerColor = Color(0xFF0F172A)
             )
@@ -5142,8 +4890,8 @@ fun FirstTimeSetupDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(16.dp))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.03f), com.example.ui.theme.themedShape(16.dp))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), com.example.ui.theme.themedShape(16.dp))
                         .padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -5181,7 +4929,7 @@ fun FirstTimeSetupDialog(
                                 contentColor = Color(0xFF2196F3)
                             ),
                             border = BorderStroke(1.dp, Color(0xFF2196F3).copy(alpha = 0.3f)),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = com.example.ui.theme.themedShape(10.dp)
                         ) {
                             Text("GRANT", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
@@ -5199,8 +4947,8 @@ fun FirstTimeSetupDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(16.dp))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.03f), com.example.ui.theme.themedShape(16.dp))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)), com.example.ui.theme.themedShape(16.dp))
                         .padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -5247,7 +4995,7 @@ fun FirstTimeSetupDialog(
                                 contentColor = Color(0xFF2196F3)
                             ),
                             border = BorderStroke(1.dp, Color(0xFF2196F3).copy(alpha = 0.3f)),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = com.example.ui.theme.themedShape(10.dp)
                         ) {
                             Text("OPTIMIZE", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
@@ -5274,7 +5022,7 @@ fun FirstTimeSetupDialog(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF2196F3)
                     ),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = com.example.ui.theme.themedShape(12.dp)
                 ) {
                     Text("DONE & CONTINUE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }

@@ -221,9 +221,9 @@ fun HomeAlertStrip(
             androidx.compose.foundation.layout.BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(com.example.ui.theme.themedShape(8.dp))
                     .background(tint.copy(alpha = 0.13f))
-                    .border(BorderStroke(1.dp, tint.copy(alpha = 0.45f)), RoundedCornerShape(8.dp))
+                    .border(BorderStroke(1.dp, tint.copy(alpha = 0.45f)), com.example.ui.theme.themedShape(8.dp))
                     .padding(horizontal = 8.dp, vertical = 2.dp)
                     .testTag("home_alert_strip"),
                 contentAlignment = Alignment.CenterStart
@@ -259,9 +259,9 @@ fun HomeAlertStrip(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(com.example.ui.theme.themedShape(12.dp))
                 .background(tint.copy(alpha = 0.11f))
-                .border(BorderStroke(1.dp, tint.copy(alpha = 0.40f)), RoundedCornerShape(12.dp))
+                .border(BorderStroke(1.dp, tint.copy(alpha = 0.40f)), com.example.ui.theme.themedShape(12.dp))
                 .padding(horizontal = 14.dp, vertical = 11.dp)
                 .testTag("home_alert_strip"),
             verticalAlignment = Alignment.CenterVertically,
@@ -520,7 +520,7 @@ private fun PresenceDetailDialog(
                 .testTag("presence_detail_dialog"),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
             border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
-            shape = RoundedCornerShape(18.dp)
+            shape = com.example.ui.theme.themedShape(18.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -542,7 +542,7 @@ private fun PresenceDetailDialog(
                     Box(
                         modifier = Modifier
                             .size(34.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(com.example.ui.theme.themedShape(10.dp))
                             .background(Color.White.copy(alpha = 0.06f))
                             .clickable(onClick = onDismiss),
                         contentAlignment = Alignment.Center
@@ -688,7 +688,7 @@ fun ModeConflictDialog(
                 .testTag("mode_conflict_dialog"),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
             border = BorderStroke(1.dp, AlertRed.copy(alpha = 0.45f)),
-            shape = RoundedCornerShape(18.dp)
+            shape = com.example.ui.theme.themedShape(18.dp)
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -737,7 +737,7 @@ fun ModeConflictDialog(
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 48.dp)
-                            .clip(RoundedCornerShape(11.dp))
+                            .clip(com.example.ui.theme.themedShape(11.dp))
                             .background(Color.White.copy(alpha = 0.06f))
                             .clickable(onClick = onDismiss)
                             .testTag("mode_conflict_cancel"),
@@ -755,9 +755,9 @@ fun ModeConflictDialog(
                         modifier = Modifier
                             .weight(1.5f)
                             .heightIn(min = 48.dp)
-                            .clip(RoundedCornerShape(11.dp))
+                            .clip(com.example.ui.theme.themedShape(11.dp))
                             .background(AlertRed.copy(alpha = 0.22f))
-                            .border(BorderStroke(1.dp, AlertRed.copy(alpha = 0.6f)), RoundedCornerShape(11.dp))
+                            .border(BorderStroke(1.dp, AlertRed.copy(alpha = 0.6f)), com.example.ui.theme.themedShape(11.dp))
                             .clickable(onClick = onOverride)
                             .testTag("mode_conflict_override"),
                         contentAlignment = Alignment.Center
@@ -808,9 +808,9 @@ fun QuickActionsCard(
                         .fillMaxWidth()
                         .heightIn(min = 44.dp)
                         .padding(vertical = 3.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(com.example.ui.theme.themedShape(10.dp))
                         .background(Color.White.copy(alpha = 0.03f))
-                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(10.dp))
+                        .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), com.example.ui.theme.themedShape(10.dp))
                         .clickable {
                             viewModel.callDynamicEntityService(
                                 domain = action.domain,
@@ -864,9 +864,9 @@ fun SecondaryRoomChips(
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 34.dp)
-                    .clip(RoundedCornerShape(999.dp))
+                    .clip(com.example.ui.theme.themedShape(999.dp))
                     .background(Color.White.copy(alpha = 0.03f))
-                    .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), RoundedCornerShape(999.dp))
+                    .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), com.example.ui.theme.themedShape(999.dp))
                     .padding(horizontal = 8.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
@@ -922,11 +922,11 @@ fun RowScope.SegmentedControlButton(
         modifier = Modifier
             .weight(weight)
             .heightIn(min = if (compact) 42.dp else 48.dp)
-            .clip(RoundedCornerShape(11.dp))
+            .clip(com.example.ui.theme.themedShape(11.dp))
             .background(if (isSelected) color.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.03f))
             .border(
                 BorderStroke(1.dp, if (isSelected) color.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.05f)),
-                RoundedCornerShape(11.dp)
+                com.example.ui.theme.themedShape(11.dp)
             )
             .clickable(onClick = onClick)
             .padding(horizontal = 3.dp, vertical = if (compact) 4.dp else 7.dp)
@@ -970,9 +970,9 @@ fun OutdoorReadingChip(
     if (compact) {
         Row(
             modifier = modifier
-                .clip(RoundedCornerShape(999.dp))
+                .clip(com.example.ui.theme.themedShape(999.dp))
                 .background(hvacCardBgColor())
-                .border(BorderStroke(1.dp, hvacBorderAlphaColor()), RoundedCornerShape(999.dp))
+                .border(BorderStroke(1.dp, hvacBorderAlphaColor()), com.example.ui.theme.themedShape(999.dp))
                 .padding(horizontal = 12.dp, vertical = 9.dp)
                 .testTag("outdoor_chip"),
             verticalAlignment = Alignment.CenterVertically,

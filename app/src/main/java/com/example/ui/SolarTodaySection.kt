@@ -135,7 +135,7 @@ fun DuoStatTile(
         modifier = modifier.testTag("solar_tile_${tile.id ?: "unknown"}"),
         colors = CardDefaults.cardColors(containerColor = palette.panel),
         border = BorderStroke(1.dp, palette.line),
-        shape = RoundedCornerShape(12.dp)
+        shape = com.example.ui.theme.themedShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 15.dp)) {
             Text(
@@ -683,7 +683,7 @@ fun SolarCalcTodaySection(
                     Card(
                         colors = CardDefaults.cardColors(containerColor = palette.panel),
                         border = BorderStroke(1.dp, palette.line),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = com.example.ui.theme.themedShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 15.dp)) {
@@ -714,7 +714,7 @@ private fun SolarNotice(text: String, color: Color, palette: SolarPalette) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(palette.panel, RoundedCornerShape(10.dp))
+            .background(palette.panel, com.example.ui.theme.themedShape(10.dp))
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)

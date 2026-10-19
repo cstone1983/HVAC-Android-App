@@ -141,9 +141,9 @@ fun PlaceholderCard(card: DynamicCardConfig, theme: HvacThemeColors) {
             .height(200.dp)
             .background(
                 color = Color.White.copy(alpha = theme.cardOpacity),
-                shape = RoundedCornerShape(12.dp)
+                shape = com.example.ui.theme.themedShape(12.dp)
             )
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp)),
+            .border(1.dp, Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(12.dp)),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -173,7 +173,7 @@ fun PlaceholderCard(card: DynamicCardConfig, theme: HvacThemeColors) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Box(
                     modifier = Modifier
-                        .background(accentColor.copy(alpha = 0.12f), RoundedCornerShape(4.dp))
+                        .background(accentColor.copy(alpha = 0.12f), com.example.ui.theme.themedShape(4.dp))
                         .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(
@@ -230,9 +230,9 @@ fun StatsRowCard(card: DynamicCardConfig, theme: HvacThemeColors, viewModel: Hva
                         .height(88.dp)
                         .background(
                             color = Color.White.copy(alpha = theme.cardOpacity),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = com.example.ui.theme.themedShape(10.dp)
                         )
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp)),
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(10.dp)),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Row(
@@ -244,7 +244,7 @@ fun StatsRowCard(card: DynamicCardConfig, theme: HvacThemeColors, viewModel: Hva
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
-                                    .background(statAccent.copy(alpha = 0.1f), RoundedCornerShape(8.dp)),
+                                    .background(statAccent.copy(alpha = 0.1f), com.example.ui.theme.themedShape(8.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -286,9 +286,9 @@ fun ChartCard(card: DynamicCardConfig, theme: HvacThemeColors) {
             .height(150.dp)
             .background(
                 color = Color.White.copy(alpha = theme.cardOpacity),
-                shape = RoundedCornerShape(12.dp)
+                shape = com.example.ui.theme.themedShape(12.dp)
             )
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(12.dp))
     ) {
         Column(
             modifier = Modifier.padding(16.dp).fillMaxSize(),
@@ -428,8 +428,8 @@ fun LiveChartCard(card: DynamicCardConfig, theme: HvacThemeColors) {
         modifier = Modifier
             .fillMaxWidth()
             .height(150.dp)
-            .background(color = Color.White.copy(alpha = theme.cardOpacity), shape = RoundedCornerShape(12.dp))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+            .background(color = Color.White.copy(alpha = theme.cardOpacity), shape = com.example.ui.theme.themedShape(12.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(12.dp))
     ) {
         Column(modifier = Modifier.padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
@@ -534,7 +534,7 @@ fun EntityToggleCard(card: DynamicCardConfig, theme: HvacThemeColors, viewModel:
             containerColor = if (isOn) accentColor.copy(alpha = (theme.cardOpacity * 3f).coerceIn(0.04f, 0.4f)) else Color.White.copy(alpha = theme.cardOpacity)
         ),
         border = BorderStroke(1.dp, if (isOn) accentColor.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.08f)),
-        shape = RoundedCornerShape(12.dp)
+        shape = com.example.ui.theme.themedShape(12.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -591,7 +591,7 @@ fun ActionButtonCard(card: DynamicCardConfig, theme: HvacThemeColors, viewModel:
             },
         colors = CardDefaults.cardColors(containerColor = accentColor.copy(alpha = 0.12f)),
         border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f)),
-        shape = RoundedCornerShape(12.dp)
+        shape = com.example.ui.theme.themedShape(12.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
@@ -628,9 +628,9 @@ fun SimpleGenericCard(card: DynamicCardConfig, theme: HvacThemeColors) {
             .fillMaxWidth()
             .background(
                 color = Color.White.copy(alpha = theme.cardOpacity),
-                shape = RoundedCornerShape(10.dp)
+                shape = com.example.ui.theme.themedShape(10.dp)
             )
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), com.example.ui.theme.themedShape(10.dp))
             .padding(12.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

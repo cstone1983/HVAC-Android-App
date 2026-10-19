@@ -256,9 +256,9 @@ fun PoolDashboardView(
                         poolState.waterStatus?.let { status ->
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(com.example.ui.theme.themedShape(8.dp))
                                     .background(theme.ecoColor.copy(alpha = 0.15f))
-                                    .border(1.dp, theme.ecoColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                    .border(1.dp, theme.ecoColor.copy(alpha = 0.3f), com.example.ui.theme.themedShape(8.dp))
                                     .padding(horizontal = 8.dp, vertical = 2.dp)
                             ) {
                                 Text(
@@ -276,9 +276,9 @@ fun PoolDashboardView(
                         if (pendingCount > 0) {
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(com.example.ui.theme.themedShape(8.dp))
                                     .background(theme.heatColor.copy(alpha = 0.15f))
-                                    .border(1.dp, theme.heatColor.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                    .border(1.dp, theme.heatColor.copy(alpha = 0.3f), com.example.ui.theme.themedShape(8.dp))
                                     .padding(horizontal = 8.dp, vertical = 2.dp)
                             ) {
                                 Text(
@@ -322,9 +322,9 @@ fun PoolDashboardView(
                     Box(
                         modifier = Modifier
                             .size(68.dp)
-                            .clip(RoundedCornerShape(20.dp))
+                            .clip(com.example.ui.theme.themedShape(20.dp))
                             .background(theme.coolColor.copy(alpha = 0.08f))
-                            .border(1.dp, theme.coolColor.copy(alpha = 0.2f), RoundedCornerShape(20.dp)),
+                            .border(1.dp, theme.coolColor.copy(alpha = 0.2f), com.example.ui.theme.themedShape(20.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -499,12 +499,12 @@ fun PoolDashboardView(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(com.example.ui.theme.themedShape(8.dp))
                             .background(if (isSel) color.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.02f))
                             .border(
                                 1.dp,
                                 if (isSel) color.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.07f),
-                                RoundedCornerShape(8.dp)
+                                com.example.ui.theme.themedShape(8.dp)
                             )
                             .clickable { activeTrendTab = index }
                             .padding(vertical = 8.dp),
@@ -539,12 +539,12 @@ fun PoolDashboardView(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(com.example.ui.theme.themedShape(6.dp))
                             .background(if (isSel) Color.White.copy(alpha = 0.1f) else Color.Transparent)
                             .border(
                                 1.dp,
                                 if (isSel) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.05f),
-                                RoundedCornerShape(6.dp)
+                                com.example.ui.theme.themedShape(6.dp)
                             )
                             .clickable { activeTimeFrame = index }
                             .padding(vertical = 4.dp),
@@ -589,7 +589,7 @@ fun PoolDashboardView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(130.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(com.example.ui.theme.themedShape(8.dp))
                     .background(Color.Black.copy(alpha = 0.2f))
                     .padding(horizontal = 8.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -854,8 +854,8 @@ fun PoolDashboardView(
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopCenter)
-                                    .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-                                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                    .background(Color.Black.copy(alpha = 0.85f), com.example.ui.theme.themedShape(8.dp))
+                                    .border(1.dp, Color.White.copy(alpha = 0.15f), com.example.ui.theme.themedShape(8.dp))
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1190,7 +1190,7 @@ fun PoolDashboardView(
                                 containerColor = theme.ecoColor,
                                 contentColor = Color.Black
                             ),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = com.example.ui.theme.themedShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Black)
@@ -1263,7 +1263,7 @@ private fun DiagnosticItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(com.example.ui.theme.themedShape(8.dp))
             .background(Color.White.copy(alpha = 0.02f))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,

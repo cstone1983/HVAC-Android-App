@@ -140,7 +140,7 @@ private fun WeekAheadCard(
     Card(
         colors = CardDefaults.cardColors(containerColor = palette.panel),
         border = BorderStroke(1.dp, palette.line),
-        shape = RoundedCornerShape(12.dp),
+        shape = com.example.ui.theme.themedShape(12.dp),
         modifier = Modifier.fillMaxWidth().testTag("solar_week_card")
     ) {
         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 15.dp)) {
@@ -180,7 +180,7 @@ private fun WeekAheadCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(palette.line.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                        .background(palette.line.copy(alpha = 0.45f), com.example.ui.theme.themedShape(8.dp))
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
@@ -461,7 +461,7 @@ private fun WeekCostsCard(costs: SolarWeekCosts?, palette: SolarPalette, narrow:
     Card(
         colors = CardDefaults.cardColors(containerColor = palette.panel),
         border = BorderStroke(1.dp, palette.line),
-        shape = RoundedCornerShape(12.dp),
+        shape = com.example.ui.theme.themedShape(12.dp),
         modifier = Modifier.fillMaxWidth().testTag("solar_week_costs_card")
     ) {
         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 15.dp)) {
