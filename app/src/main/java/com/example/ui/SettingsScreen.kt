@@ -71,6 +71,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import com.example.ui.theme.hvacActiveBorderAlphaColor
+import com.example.ui.theme.hvacActiveCardBgColor
+import com.example.ui.theme.hvacBorderAlphaColor
+import com.example.ui.theme.hvacCardBgColor
+import com.example.ui.theme.hvacCardShape
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -505,6 +511,10 @@ private fun AppearancePage(viewModel: HvacViewModel) {
     val background by viewModel.backgroundDesign.collectAsStateWithLifecycle()
     val presetId by viewModel.selectedThemePreset.collectAsStateWithLifecycle()
 
+    // The settings window covers most of the screen, so the app behind it is no use for judging
+    // a change. This is: it redraws with every tap and every slider movement.
+    AppearancePreview(background)
+
     SettingsGroup {
         val preset = HvacThemePresetsList.firstOrNull { it.id == presetId }
         ValueRow("Theme", preset?.name ?: "Custom", action = "Change", leading = {
@@ -565,6 +575,9 @@ private fun ThemePickerDialog(viewModel: HvacViewModel, onDismiss: () -> Unit) {
                 }
                 Text("Changes apply as you tap.", fontSize = 12.sp, color = Color.White.copy(alpha = 0.5f))
                 Spacer(Modifier.height(10.dp))
+                val background by viewModel.backgroundDesign.collectAsStateWithLifecycle()
+                AppearancePreview(background, height = 120.dp)
+                Spacer(Modifier.height(10.dp))
                 Column(
                     modifier = Modifier
                         .heightIn(max = 460.dp)
@@ -596,6 +609,89 @@ private fun ThemePickerDialog(viewModel: HvacViewModel, onDismiss: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/**
+ * A miniature of the home screen in the current look: the theme's background and glow, one
+ * heat pump running and one off, and a row of buttons — all through the same card colour, glass,
+ * border and corner helpers the real screens use, so what it shows is what the panels will show.
+ */
+@Composable
+private fun AppearancePreview(background: String, height: Dp = 150.dp) {
+    val theme = LocalHvacTheme.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .clip(RoundedCornerShape(12.dp))
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(theme.bgStart, theme.bgEnd)))
+            .drawBehind {
+                drawCircle(
+                    brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                        listOf(theme.glowColor.copy(alpha = theme.glowAlpha * 2.5f), Color.Transparent),
+                        center = androidx.compose.ui.geometry.Offset(size.width * 0.8f, size.height * 0.1f),
+                        radius = size.width * 0.6f
+                    ),
+                    radius = size.width * 0.6f,
+                    center = androidx.compose.ui.geometry.Offset(size.width * 0.8f, size.height * 0.1f)
+                )
+                if (background == "grid") {
+                    val step = 22.dp.toPx()
+                    val line = theme.coolColor.copy(alpha = 0.06f)
+                    var x = 0f
+                    while (x < size.width) { drawLine(line, androidx.compose.ui.geometry.Offset(x, 0f), androidx.compose.ui.geometry.Offset(x, size.height)); x += step }
+                    var y = 0f
+                    while (y < size.height) { drawLine(line, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Offset(size.width, y)); y += step }
+                }
+            }
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            PreviewZone("Main Level", "RUNNING", "66°", "SET 70°", theme.heatColor, Modifier.weight(1f))
+            PreviewZone("Anthony", "OFF", "67°", "SET 70°", null, Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            listOf("DAY" to true, "NIGHT" to false, "AWAY" to false).forEach { (label, on) ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(26.dp)
+                        .clip(hvacCardShape(8))
+                        .background(if (on) theme.heatColor.copy(alpha = 0.15f) else hvacCardBgColor())
+                        .border(1.dp, if (on) theme.heatColor else hvacBorderAlphaColor(), hvacCardShape(8)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(label, fontSize = 9.sp, fontWeight = FontWeight.Black, color = if (on) Color.White else Color.White.copy(alpha = 0.5f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviewZone(name: String, status: String, temp: String, target: String, tint: Color?, modifier: Modifier) {
+    val shape = hvacCardShape(12)
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(shape)
+            .background(tint?.let { hvacActiveCardBgColor(it) } ?: hvacCardBgColor())
+            .border(1.dp, tint?.let { hvacActiveBorderAlphaColor(it) } ?: hvacBorderAlphaColor(), shape)
+            .padding(horizontal = 9.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(name, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f), maxLines = 1)
+            Text(status, fontSize = 7.sp, fontWeight = FontWeight.Black, color = tint ?: Color.White.copy(alpha = 0.45f))
+        }
+        Text(temp, fontSize = 24.sp, fontWeight = FontWeight.Light, color = Color.White)
+        Text(target, fontSize = 8.sp, fontWeight = FontWeight.Black, color = tint ?: Color.White.copy(alpha = 0.6f))
     }
 }
 
