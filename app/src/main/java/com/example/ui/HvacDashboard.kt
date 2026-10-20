@@ -223,7 +223,14 @@ fun getIconByName(name: String?): ImageVector {
         "cloud_download", "download", "update" -> Icons.Default.CloudDownload
         "settings", "gear" -> Icons.Default.Settings
         "home" -> Icons.Default.Home
-        "flashlight", "flash", "power" -> Icons.Default.FlashlightOn
+        "flashlight", "flash" -> Icons.Default.FlashlightOn
+        "power", "power_off" -> Icons.Default.PowerSettingsNew
+        // The solar and pool tabs, and Goodnight, all fell through to the Home icon before.
+        "solar_power", "solarpower", "solar" -> Icons.Default.SolarPower
+        "pool" -> Icons.Default.Pool
+        "bedtime", "goodnight", "night" -> Icons.Default.Bedtime
+        "timer", "sleep_timer" -> Icons.Default.Timer
+        "tv" -> Icons.Default.Tv
         "thermostat", "temp", "temperature" -> Icons.Default.Thermostat
         "weekend", "couch" -> Icons.Default.Weekend
         "bed", "bedroom" -> Icons.Default.Bed

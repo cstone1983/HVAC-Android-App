@@ -86,6 +86,9 @@ fun PowerPage(
             else -> 2
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            layoutConfig.powerQuickActions?.takeIf { it.isNotEmpty() }?.let { actions ->
+                PowerQuickActions(actions, columns = if (perRow == 2) 6 else columns, viewModel = viewModel)
+            }
             areas.chunked(perRow).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     row.forEach { (area, items) ->
@@ -102,6 +105,63 @@ fun PowerPage(
                     repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The QUICK row: whole-house scripts such as Goodnight and the TV sleep timer. A script that is
+ * running (the sleep timer counting down its 20 minutes) says so, and tapping it again stops it.
+ */
+@Composable
+private fun PowerQuickActions(
+    actions: List<com.example.model.QuickActionConfig>,
+    columns: Int,
+    viewModel: HvacViewModel
+) {
+    val states by viewModel.entityStates.collectAsStateWithLifecycle()
+    var pending by remember { mutableStateOf<com.example.model.QuickActionConfig?>(null) }
+    pending?.let { action ->
+        ConfirmDialog(
+            title = "${action.label}?",
+            message = "This runs ${action.label} for the whole house.",
+            confirmLabel = action.label,
+            destructive = false,
+            onConfirm = {
+                viewModel.callDynamicEntityService(action.domain, action.service, action.entityId ?: "", feedbackMessage = action.label)
+            },
+            onDismiss = { pending = null }
+        )
+    }
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp).height(24.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("QUICK", fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp, color = Color.White.copy(alpha = 0.55f))
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            actions.take(columns).forEach { action ->
+                val running = action.entityId?.startsWith("script.") == true &&
+                    states[action.entityId]?.state == "on"
+                PowerTile(
+                    name = action.label,
+                    icon = getIconByName(action.icon),
+                    on = running,
+                    status = if (running) "Running · tap to stop" else "Tap to start",
+                    onTap = {
+                        when {
+                            running -> viewModel.callDynamicEntityService("script", "turn_off", action.entityId!!, feedbackMessage = "${action.label} stopped")
+                            action.confirm == true -> pending = action
+                            else -> viewModel.callDynamicEntityService(action.domain, action.service, action.entityId ?: "", feedbackMessage = action.label)
+                        }
+                    },
+                    onHold = {},
+                    modifier = Modifier.weight(1f).testTag("power_quick_${action.label.lowercase().replace(' ', '_')}")
+                )
+            }
+            repeat((columns - actions.size).coerceAtLeast(0)) { Spacer(Modifier.weight(1f)) }
         }
     }
 }

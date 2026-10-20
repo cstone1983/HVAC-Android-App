@@ -1,5 +1,5 @@
 {
-  "version": "6.23.0",
+  "version": "6.24.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
@@ -607,5 +607,23 @@
   ],
   "waterHeaterHeatingText": "HEATING",
   "waterHeaterIdleText": "NOT HEATING",
-  "waterHeaterUnknownText": "UNKNOWN"
+  "waterHeaterUnknownText": "UNKNOWN",
+  "powerQuickActions": [
+    {
+      "label": "Goodnight",
+      "icon": "bedtime",
+      "domain": "script",
+      "service": "turn_on",
+      "entityId": "script.nightly_shutdown",
+      "confirm": true
+    },
+    {
+      "label": "TV sleep 20 min",
+      "icon": "timer",
+      "domain": "script",
+      "service": "turn_on",
+      "entityId": "script.sleep_20min",
+      "confirm": false
+    }
+  ]
 }

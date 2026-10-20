@@ -284,6 +284,9 @@ data class HvacLayoutConfig(
     val covers: List<CoverControlConfig>,
     // The power tab's groups, in order. Devices name theirs with `area`.
     val powerAreas: List<String>? = null,
+    // One-tap scripts at the top of the power tab (Goodnight, the TV sleep timer). `confirm`
+    // asks first; a running script shows as running and a second tap stops it.
+    val powerQuickActions: List<QuickActionConfig>? = null,
     val appTitle: String? = "Home Control",
     val appSubtitle: String? = "HVAC SYSTEM CONTROLLER",
     val theme: HvacThemeConfig? = HvacThemeConfig(),
