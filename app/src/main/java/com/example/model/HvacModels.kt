@@ -297,6 +297,12 @@ data class HvacLayoutConfig(
     // Binary sensor that reports whether the tank is actually heating right now, so the card
     // can explain itself instead of appearing to change mode on its own.
     val waterHeaterRunningEntityId: String? = "binary_sensor.heat_pump_water_heater_running",
+    // The words beside HOT WATER for the running sensor's on and off. Always one or the other, so
+    // a full tank that is still topping up reads as heating rather than as nothing.
+    val waterHeaterHeatingText: String? = "HEATING",
+    val waterHeaterIdleText: String? = "NOT HEATING",
+    // When the sensor reports neither (offline, unavailable) — said plainly rather than hidden.
+    val waterHeaterUnknownText: String? = "UNKNOWN",
     val poolSensors: PoolSensorConfig? = PoolSensorConfig(),
     val solarSensors: SolarSensorConfig? = SolarSensorConfig(),
     val solarCalc: SolarCalcConfig? = SolarCalcConfig(),

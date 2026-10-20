@@ -2288,21 +2288,30 @@ internal fun HotWaterGroup(
                         overflow = TextOverflow.Ellipsis
                     )
                     val wsStatesHw by viewModel.entityStates.collectAsStateWithLifecycle()
-                    val runningId = viewModel.getActiveLayoutConfig().waterHeaterRunningEntityId
-                    val isHeatingNow = runningId?.let { wsStatesHw[it]?.state?.equals("on", true) } == true
-                    if (isHeatingNow) {
+                    val hwCfg = viewModel.getActiveLayoutConfig()
+                    // Heating or not, always shown — the tank can read 100% and still be heating to
+                    // its target — and UNKNOWN when the sensor is not reporting either way.
+                    val heating = hwCfg.waterHeaterRunningEntityId
+                        ?.let { wsStatesHw[it]?.state?.lowercase() }
+                        ?.let { if (it == "on") true else if (it == "off") false else null }
+                    if (hwCfg.waterHeaterRunningEntityId != null) {
+                        val statusColor = if (heating == true) Color(0xFF10B981) else Color.White.copy(alpha = 0.35f)
                         Spacer(modifier = Modifier.width(9.dp))
                         Box(
                             modifier = Modifier
                                 .size(6.dp)
-                                .background(Color(0xFF10B981), CircleShape)
+                                .background(statusColor, CircleShape)
                         )
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            "HEATING NOW",
+                            when (heating) {
+                                true -> hwCfg.waterHeaterHeatingText ?: "HEATING"
+                                false -> hwCfg.waterHeaterIdleText ?: "NOT HEATING"
+                                null -> hwCfg.waterHeaterUnknownText ?: "UNKNOWN"
+                            },
                             fontSize = 8.5.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFF10B981),
+                            color = statusColor,
                             letterSpacing = 1.sp,
                             maxLines = 1
                         )
