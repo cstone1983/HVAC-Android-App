@@ -2248,16 +2248,27 @@ internal fun HouseModeGroup(
             // Whole-house Off is set apart from the running modes so it is never the
             // button you hit while aiming for Cool.
             Spacer(modifier = Modifier.width(9.dp))
+            var confirmOff by remember { mutableStateOf(false) }
+            val alreadyOff = state.globalSettings.globalHvacMode.lowercase() == "off"
             SegmentedControlButton(
                 label = "off",
                 icon = Icons.Default.PowerSettingsNew,
                 color = Color(0xFFEF4444),
-                isSelected = state.globalSettings.globalHvacMode.lowercase() == "off",
+                isSelected = alreadyOff,
                 contentDescription = "Turn the whole house off",
                 testTagId = "main_hvac_mode_btn_off",
                 weight = 0.85f,
-                onClick = { viewModel.requestGlobalHvacMode("off") }
+                onClick = { if (!alreadyOff) confirmOff = true }
             )
+            if (confirmOff) {
+                ConfirmDialog(
+                    title = "Turn the whole house off?",
+                    message = "Every heat pump stops until Heat, Cool or Dry is chosen again.",
+                    confirmLabel = "Turn off",
+                    onConfirm = { viewModel.requestGlobalHvacMode("off") },
+                    onDismiss = { confirmOff = false }
+                )
+            }
         }
     }
 }
@@ -3771,6 +3782,18 @@ fun UpdatesTab(
     val githubBranch by viewModel.githubBranch.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val recentCommits by viewModel.recentCommits.collectAsStateWithLifecycle()
+    // Rolling back or restoring replaces the layout this panel runs on; ask first.
+    var pendingConfirm by remember { mutableStateOf<Triple<String, String, () -> Unit>?>(null) }
+    pendingConfirm?.let { (title, message, action) ->
+        ConfirmDialog(
+            title = title,
+            message = message,
+            confirmLabel = "Replace layout",
+            destructive = false,
+            onConfirm = action,
+            onDismiss = { pendingConfirm = null }
+        )
+    }
     val latestPush by viewModel.latestPush.collectAsStateWithLifecycle()
 
     LaunchedEffect(activeVersion) {
@@ -3870,10 +3893,16 @@ fun UpdatesTab(
                                         .clip(com.example.ui.theme.themedShape(4.dp))
                                         .border(1.dp, Color.White.copy(alpha = 0.12f), com.example.ui.theme.themedShape(4.dp))
                                         .clickable {
-                                            viewModel.downloadUpdateAndInstall(
-                                                context,
-                                                "https://raw.githubusercontent.com/$githubRepo/${commit.sha}/layout_config.json",
-                                                commitSha = commit.sha
+                                            pendingConfirm = Triple(
+                                                "Use the layout from $shortSha?",
+                                                "This panel switches to the layout as it was at that push. Newer layout changes stop applying here until you update again.",
+                                                {
+                                                    viewModel.downloadUpdateAndInstall(
+                                                        context,
+                                                        "https://raw.githubusercontent.com/$githubRepo/${commit.sha}/layout_config.json",
+                                                        commitSha = commit.sha
+                                                    )
+                                                }
                                             )
                                         }
                                         .padding(vertical = 3.dp)
@@ -3930,12 +3959,18 @@ fun UpdatesTab(
                 )
             }
             FooterLink("Restore built-in", theme.coolColor) {
-                viewModel.resetLayoutToDefault()
-                android.widget.Toast.makeText(
-                    context,
-                    "Layout reset to the built-in ${viewModel.layoutVersion.value}",
-                    android.widget.Toast.LENGTH_LONG
-                ).show()
+                pendingConfirm = Triple(
+                    "Restore the built-in layout?",
+                    "This panel drops the layout pulled from GitHub and goes back to the one that came with the app.",
+                    {
+                        viewModel.resetLayoutToDefault()
+                        android.widget.Toast.makeText(
+                            context,
+                            "Layout reset to the built-in ${viewModel.layoutVersion.value}",
+                            android.widget.Toast.LENGTH_LONG
+                        ).show()
+                    }
+                )
             }
         }
     }

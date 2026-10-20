@@ -768,37 +768,44 @@ private fun ConnectionPage(viewModel: HvacViewModel) {
 }
 
 /**
- * Which Wi-Fi counts as home. On it the app uses the home (local) address directly.
+ * Which Wi-Fi counts as home. On it the app talks to Home Assistant directly at the home address.
  *
- * "Use this Wi-Fi" asks for location access first, because Android will not tell any app the
- * network's name without it. Without a name the app still recognises home by its network
- * address, so the setting is a refinement, not a requirement.
+ * "Find Wi-Fi networks" lists what is in range, strongest first; tapping one saves it. Android
+ * shows Wi-Fi names only to apps with location access, so the first search asks for it.
+ *
+ * On a phone the saved name is the only way home is recognised — a network elsewhere can share
+ * home's address range, and would otherwise get the token over plain HTTP. A wall panel without a
+ * saved name still recognises home by its network address.
  */
 @Composable
 private fun HomeWifiSection(viewModel: HvacViewModel) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val homeSsid by viewModel.homeWifiSsid.collectAsStateWithLifecycle()
     val onHome by viewModel.onHomeNetwork.collectAsStateWithLifecycle()
     val usingBackup by viewModel.usingBackupUrl.collectAsStateWithLifecycle()
-    var ssidText by remember(homeSsid) { mutableStateOf(homeSsid) }
+    val deviceMode by viewModel.deviceMode.collectAsStateWithLifecycle()
     var current by remember { mutableStateOf(viewModel.currentWifiSsid()) }
+    var networks by remember { mutableStateOf<List<String>>(emptyList()) }
+    var searching by remember { mutableStateOf(false) }
 
-    fun useCurrent() {
-        current = viewModel.currentWifiSsid()
-        val ssid = current
-        if (ssid == null) {
-            Toast.makeText(context, "Android didn't give the Wi-Fi name — check location is on", Toast.LENGTH_LONG).show()
-        } else {
-            ssidText = ssid
-            viewModel.setHomeWifiSsid(ssid)
-            Toast.makeText(context, "Home Wi-Fi set to $ssid", Toast.LENGTH_SHORT).show()
+    fun search() {
+        if (searching) return
+        searching = true
+        scope.launch {
+            networks = viewModel.scanWifiNetworks()
+            current = viewModel.currentWifiSsid()
+            searching = false
+            if (networks.isEmpty()) {
+                Toast.makeText(context, "No Wi-Fi networks found — check that location is turned on", Toast.LENGTH_LONG).show()
+            }
         }
     }
     val askLocation = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) useCurrent()
-        else Toast.makeText(context, "Without location access the app can't read the Wi-Fi name", Toast.LENGTH_LONG).show()
+        if (granted) search()
+        else Toast.makeText(context, "Without location access Android won't show Wi-Fi names", Toast.LENGTH_LONG).show()
     }
 
     SettingsGroup {
@@ -810,24 +817,46 @@ private fun HomeWifiSection(viewModel: HvacViewModel) {
                 null -> "Can't tell right now"
             }
         )
+        ValueRow(
+            "Home Wi-Fi",
+            homeSsid.ifBlank {
+                if (deviceMode == com.example.model.DeviceMode.PHONE) "Not set — this phone always uses the main address"
+                else "Not set — recognised by network address"
+            },
+            action = if (homeSsid.isNotBlank()) "Clear" else null,
+            onClick = if (homeSsid.isNotBlank()) ({ viewModel.setHomeWifiSsid("") }) else null
+        )
         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            SettingsField("Home Wi-Fi name (optional)", ssidText, { ssidText = it })
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PillButton("Use this Wi-Fi" + (current?.let { " ($it)" } ?: ""), primary = true) {
-                    val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                        context, android.Manifest.permission.ACCESS_FINE_LOCATION
-                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                    if (granted) useCurrent() else askLocation.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                }
-                PillButton("Save name") { viewModel.setHomeWifiSsid(ssidText) }
+            PillButton(if (searching) "Searching…" else "Find Wi-Fi networks", primary = true) {
+                val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (granted) search() else askLocation.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Left blank, home is recognised by the network address instead, which needs no permission.",
-                fontSize = 11.sp,
-                color = Color.White.copy(alpha = 0.4f)
-            )
+            if (networks.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text("Tap your home network to save it.", fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+            }
+        }
+        networks.forEach { name ->
+            val isHome = name == homeSsid
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        viewModel.setHomeWifiSsid(name)
+                        Toast.makeText(context, "Home Wi-Fi set to $name", Toast.LENGTH_SHORT).show()
+                    }
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(Icons.Default.Wifi, contentDescription = null, tint = Color.White.copy(alpha = 0.55f), modifier = Modifier.size(17.dp))
+                Text(name, fontSize = 14.sp, color = Color.White, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (name == current) Text("connected", fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f))
+                if (isHome) Text("HOME", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3CCF91))
+            }
+            RowDivider()
         }
     }
 }

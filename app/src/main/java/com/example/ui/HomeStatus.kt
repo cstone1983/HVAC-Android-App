@@ -802,6 +802,26 @@ fun QuickActionsCard(
                 modifier = Modifier.padding(start = 2.dp)
             )
             Spacer(Modifier.height(7.dp))
+            // Each of these acts on the whole house (Goodnight, House off), so one stray touch on
+            // a panel someone brushes past should not be enough.
+            var pendingAction by remember { mutableStateOf<String?>(null) }
+            actions.firstOrNull { it.label == pendingAction }?.let { action ->
+                ConfirmDialog(
+                    title = "${action.label}?",
+                    message = "This runs ${action.label} for the whole house.",
+                    confirmLabel = action.label,
+                    destructive = false,
+                    onConfirm = {
+                        viewModel.callDynamicEntityService(
+                            domain = action.domain,
+                            service = action.service,
+                            entityId = action.entityId ?: "",
+                            feedbackMessage = action.label
+                        )
+                    },
+                    onDismiss = { pendingAction = null }
+                )
+            }
             actions.forEach { action ->
                 Row(
                     modifier = Modifier
@@ -811,14 +831,7 @@ fun QuickActionsCard(
                         .clip(com.example.ui.theme.themedShape(10.dp))
                         .background(Color.White.copy(alpha = 0.03f))
                         .border(BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)), com.example.ui.theme.themedShape(10.dp))
-                        .clickable {
-                            viewModel.callDynamicEntityService(
-                                domain = action.domain,
-                                service = action.service,
-                                entityId = action.entityId ?: "",
-                                feedbackMessage = action.label
-                            )
-                        }
+                        .clickable { pendingAction = action.label }
                         .padding(horizontal = 10.dp, vertical = 9.dp)
                         .testTag("quick_action_${action.label.lowercase().replace(' ', '_')}"),
                     verticalAlignment = Alignment.CenterVertically,

@@ -24,6 +24,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -268,6 +271,19 @@ private fun DoorTile(door: CoverControl, area: String, viewModel: HvacViewModel,
         open -> "Close"
         else -> "Open"
     }
+    // Opening, or pressing a button whose result the app cannot see, asks first. Closing does
+    // not: it is the safe direction, and the opener's own sensors guard the doorway.
+    var confirm by remember { mutableStateOf(false) }
+    if (confirm) {
+        ConfirmDialog(
+            title = if (relay) "Press the ${door.name} button?" else "Open ${door.name}?",
+            message = if (relay) "The app can't see whether this door is open or closed, so check it after pressing."
+                else "The door opens straight away.",
+            confirmLabel = action,
+            onConfirm = { viewModel.controlCover(door.entityId, "open", door.name) },
+            onDismiss = { confirm = false }
+        )
+    }
 
     Row(
         modifier = modifier
@@ -295,7 +311,7 @@ private fun DoorTile(door: CoverControl, area: String, viewModel: HvacViewModel,
                 .clip(com.example.ui.theme.themedShape(7.dp))
                 .border(1.dp, if (open) OpenColor.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.2f), com.example.ui.theme.themedShape(7.dp))
                 .clickable {
-                    viewModel.controlCover(door.entityId, if (open) "close" else "open", door.name)
+                    if (open) viewModel.controlCover(door.entityId, "close", door.name) else confirm = true
                 }
                 .padding(vertical = 6.dp)
         )

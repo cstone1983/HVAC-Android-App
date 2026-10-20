@@ -1,12 +1,12 @@
 {
-  "version": "6.22.0",
+  "version": "6.23.0",
   "appTitle": "Home Control",
   "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
   "weatherLatitude": 44.422164,
   "weatherLongitude": -69.587659,
   "limits": {
-    "minCoolingTemp": 64.0,
+    "minCoolingTemp": 64.5,
     "maxHeatingTemp": 80.0
   },
   "waterHeaterEntityId": "input_select.water_heater_mode",
@@ -604,5 +604,8 @@
       "icon": "fire",
       "color": "#EF4444"
     }
-  ]
+  ],
+  "waterHeaterHeatingText": "HEATING",
+  "waterHeaterIdleText": "NOT HEATING",
+  "waterHeaterUnknownText": "UNKNOWN"
 }

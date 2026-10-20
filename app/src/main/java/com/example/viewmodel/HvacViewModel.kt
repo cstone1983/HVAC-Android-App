@@ -684,7 +684,39 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val home = _homeWifiSsid.value
         val ssid = currentWifiSsid()
         if (home.isNotBlank() && ssid != null) return ssid.equals(home, ignoreCase = false)
+        // A phone travels, and another network can use the same address range as home — on it,
+        // the subnet test would hand the Home Assistant token, in the clear, to whatever answered
+        // at the local address. So a phone is home only by its saved Wi-Fi name. The wall panels
+        // never leave the house, and keep the permission-free subnet test.
+        if (_deviceMode.value == com.example.model.DeviceMode.PHONE) return false
         return onLocalSubnet()
+    }
+
+    /**
+     * Wi-Fi networks in range, strongest first, by name — for picking the home network in
+     * Settings. Needs location access, which is Android's rule for any app that sees Wi-Fi names.
+     */
+    suspend fun scanWifiNetworks(): List<String> {
+        val wm = getApplication<Application>().applicationContext
+            .getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+        try {
+            @Suppress("DEPRECATION")
+            wm.startScan()
+        } catch (e: Exception) {
+            // Throttled or refused: the last results are still there to read.
+        }
+        delay(3_000L)
+        return try {
+            wm.scanResults
+                .sortedByDescending { it.level }
+                .mapNotNull {
+                    @Suppress("DEPRECATION")
+                    it.SSID?.trim('"')?.takeIf { s -> s.isNotBlank() }
+                }
+                .distinct()
+        } catch (e: SecurityException) {
+            emptyList()
+        }
     }
 
     /**
@@ -1884,17 +1916,15 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             
             // Apply dynamic limits based on mode and configuration (OTA updatable)
             val limits = _layoutConfig.value?.limits
-            if (mode.lowercase() == "cool") {
-                val minCool = limits?.minCoolingTemp ?: 64.0
-                if (finalTemperature < minCool) {
-                    finalTemperature = minCool
-                }
-            } else if (mode.lowercase() == "heat") {
-                val maxHeat = limits?.maxHeatingTemp ?: 80.0
-                if (finalTemperature > maxHeat) {
-                    finalTemperature = maxHeat
-                }
+            val m = mode.lowercase()
+            if (m == "cool" || m == "dry") {
+                finalTemperature = maxOf(finalTemperature, limits?.minCoolingTemp ?: com.example.model.COOL_FLOOR_F)
+            } else if (m == "heat") {
+                finalTemperature = minOf(finalTemperature, limits?.maxHeatingTemp ?: 80.0)
             }
+            // The heads' own floors (64.5 cool, 61 heat) win over the config: below them Home
+            // Assistant clamps or rejects the value, and the zone drifts into an override.
+            finalTemperature = com.example.model.clampToHardwareFloor(finalTemperature, m)
 
             val updatedZones = current.zones.map { z ->
                 if (z.climateEntityId == climateEntityId) {
@@ -1942,11 +1972,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             }
             
             if (isCoolPreset) {
-                val minCool = limits?.minCoolingTemp ?: 64.0
-                if (finalValue < minCool) finalValue = minCool
+                finalValue = maxOf(finalValue, limits?.minCoolingTemp ?: com.example.model.COOL_FLOOR_F)
+                finalValue = com.example.model.clampToHardwareFloor(finalValue, "cool")
             } else if (isHeatPreset) {
-                val maxHeat = limits?.maxHeatingTemp ?: 80.0
-                if (finalValue > maxHeat) finalValue = maxHeat
+                finalValue = minOf(finalValue, limits?.maxHeatingTemp ?: 80.0)
+                finalValue = com.example.model.clampToHardwareFloor(finalValue, "heat")
             }
 
             val updatedZones = current.zones.map { zone ->
@@ -4606,6 +4636,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         updateSyncJob?.cancel()
         stateProcessingJob?.cancel()
         offlineDebounceJob?.cancel()
+        // The service looks the view model up through getInstance(). Left pointing at this one,
+        // it kept using a view model whose scope was cancelled: the notification's Heat / Cool /
+        // Off did nothing and its temperatures froze. Cleared, the service takes its own path.
+        synchronized(HvacViewModel) { if (instance === this) instance = null }
         super.onCleared()
     }
 

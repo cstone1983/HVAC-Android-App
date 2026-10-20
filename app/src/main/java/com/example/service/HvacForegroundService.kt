@@ -506,7 +506,10 @@ class HvacForegroundService : Service() {
             launch {
                 var lastState: String? = null
                 var beepJob: Job? = null
-                wsManager.states.collect { statesMap ->
+                // The WebSocket, plus a REST check every ten seconds while the socket is down. The
+                // siren used to listen to the socket alone, so during a connection drop — exactly
+                // when the app falls back to polling — a triggered alarm never sounded the panels.
+                kotlinx.coroutines.flow.merge(wsManager.states, alarmFallbackFeed()).collect { statesMap ->
                     val alarmCfg = HvacViewModel.getInstance()?.getActiveLayoutConfig()?.alarm
                     val alarmId = alarmCfg?.entityId ?: "alarm_control_panel.alarmo"
                     // One decision, read once: wall panel or phone. Everything below follows from it
@@ -784,6 +787,28 @@ class HvacForegroundService : Service() {
         return url to token
     }
 
+    /**
+     * The alarm entity over REST, every ten seconds, but only while the WebSocket is down — the
+     * socket carries it the rest of the time. Fed into the same watcher as the socket, so the
+     * siren, notifications and beeps behave identically whichever path the state arrived by.
+     */
+    private fun alarmFallbackFeed(): kotlinx.coroutines.flow.Flow<Map<String, com.example.api.EntityState>> =
+        kotlinx.coroutines.flow.flow {
+            val ws = HomeAssistantWebSocketManager.getInstance(applicationContext)
+            while (true) {
+                delay(10_000L)
+                if (ws.connectionState.value.isConnected) continue
+                val alarmId = HvacViewModel.getInstance()?.getActiveLayoutConfig()?.alarm?.entityId
+                    ?: "alarm_control_panel.alarmo"
+                val node = try {
+                    HomeAssistantClient.service.getState(alarmId)
+                } catch (e: Exception) {
+                    null
+                }
+                if (node != null) emit(mapOf(alarmId to node))
+            }
+        }
+
     private fun scheduleRestartInFiveMinutes() {
         try {
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -797,8 +822,15 @@ class HvacForegroundService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val triggerTime = System.currentTimeMillis() + 5 * 60 * 1000 // 5 minutes
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            // An exact alarm is the only kind allowed to start a foreground service from the
+            // background. Without USE_EXACT_ALARM this call threw, the catch below logged it, and
+            // a swiped-away notification meant no service — and no alarm alerts — until the app
+            // was next opened.
+            val exactAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && exactAllowed) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
             } else {
                 alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
             }

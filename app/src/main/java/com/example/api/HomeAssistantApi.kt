@@ -71,6 +71,10 @@ interface HomeAssistantApi {
     @GET("api/states")
     suspend fun getStates(): List<EntityState>
 
+    /** One entity, for the service's alarm watch while the WebSocket is down. */
+    @GET("api/states/{entity_id}")
+    suspend fun getState(@Path("entity_id") entityId: String): EntityState
+
     @GET("api/history/period/{timestamp}")
     suspend fun getHistory(
         @Path("timestamp") timestamp: String,
