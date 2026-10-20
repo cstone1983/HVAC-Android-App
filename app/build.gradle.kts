@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.hvac_controller.krnyzs"
     minSdk = 24
     targetSdk = 36
-    versionCode = 59
-    versionName = "59.0"
+    versionCode = 60
+    versionName = "60.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -42,6 +42,19 @@ android {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
+    }
+    // What the three devices run (2026-10-20). A debug build is debuggable, which turns off much of
+    // ART's optimisation, and Compose is noticeably slower for it on the A8 and A9. This is the
+    // same app made non-debuggable, signed with the same key as the debug builds already on the
+    // devices so it installs over them in place. R8 stays off: Moshi's reflection adapters would
+    // need keep rules first. Build with assemblePanel.
+    create("panel") {
+      initWith(getByName("debug"))
+      isDebuggable = false
+      isJniDebuggable = false
+      isMinifyEnabled = false
+      signingConfig = signingConfigs.getByName("debug")
+      matchingFallbacks += listOf("release")
     }
     debug {
       // No project-local debug.keystore exists (it's gitignored and was never generated on this

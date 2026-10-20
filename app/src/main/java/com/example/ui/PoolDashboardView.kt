@@ -120,6 +120,11 @@ fun PoolDashboardView(
     viewModel: HvacViewModel,
     modifier: Modifier = Modifier
 ) {
+    // History downloads only while this tab is on screen.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        viewModel.setPoolHistoryVisible(true)
+        onDispose { viewModel.setPoolHistoryVisible(false) }
+    }
     val theme = LocalHvacTheme.current
     val poolState by viewModel.poolState.collectAsStateWithLifecycle()
     val poolHistory by viewModel.poolHistory.collectAsStateWithLifecycle()

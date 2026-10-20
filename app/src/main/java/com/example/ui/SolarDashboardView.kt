@@ -48,6 +48,11 @@ fun SolarDashboardView(
     theme: HvacThemeColors,
     modifier: Modifier = Modifier
 ) {
+    // History downloads only while this tab is on screen.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        viewModel.setSolarHistoryVisible(true)
+        onDispose { viewModel.setSolarHistoryVisible(false) }
+    }
     val liveState by viewModel.solarLiveState.collectAsStateWithLifecycle()
     val solar6HourHistory by viewModel.solar6HourHistory.collectAsStateWithLifecycle()
     val history24h by viewModel.solar24HourHistory.collectAsStateWithLifecycle()

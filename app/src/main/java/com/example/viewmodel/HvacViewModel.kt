@@ -1662,8 +1662,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 _poolState.value = newPool
 
-                // Fetch actual historical data from Home Assistant if logged in
-                if (_isLoggedIn.value) {
+                // Refresh the history only while the pool tab is on screen.
+                if (_isLoggedIn.value && poolHistoryViewers.get() > 0) {
                     viewModelScope.launch {
                         try {
                             fetchPoolHistoryFromHA()
@@ -1775,7 +1775,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         cmpBankBalanceUnit = cmpBankBalanceUnit
                     )
 
-                    viewModelScope.launch {
+                    if (solarHistoryViewers.get() > 0) viewModelScope.launch {
                         try {
                             fetchSolarHistoryFromHA()
                         } catch (e: Exception) {
@@ -3707,6 +3707,43 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var lastHistoryFetchTime = 0L
 
     /**
+     * How many screens are showing each history right now. The pool's 30 days and the solar
+     * tab's week used to be downloaded on every state batch (throttled to a minute and five
+     * minutes) on all three devices, whether or not anyone had the tab open. Now only while one
+     * is on screen; opening the tab fetches straight away if the last copy is stale.
+     */
+    private val poolHistoryViewers = java.util.concurrent.atomic.AtomicInteger(0)
+    private val solarHistoryViewers = java.util.concurrent.atomic.AtomicInteger(0)
+
+    fun setPoolHistoryVisible(visible: Boolean) {
+        if (visible) {
+            if (poolHistoryViewers.incrementAndGet() == 1) {
+                viewModelScope.launch {
+                    try { fetchPoolHistoryFromHA() } catch (e: Exception) {
+                        android.util.Log.e("HvacViewModel", "Pool history fetch failed", e)
+                    }
+                }
+            }
+        } else {
+            poolHistoryViewers.updateAndGet { (it - 1).coerceAtLeast(0) }
+        }
+    }
+
+    fun setSolarHistoryVisible(visible: Boolean) {
+        if (visible) {
+            if (solarHistoryViewers.incrementAndGet() == 1) {
+                viewModelScope.launch {
+                    try { fetchSolarHistoryFromHA() } catch (e: Exception) {
+                        android.util.Log.e("HvacViewModel", "Solar history fetch failed", e)
+                    }
+                }
+            }
+        } else {
+            solarHistoryViewers.updateAndGet { (it - 1).coerceAtLeast(0) }
+        }
+    }
+
+    /**
      * Stops a second pool-history fetch starting while the first is still running.
      *
      * The throttle below used to be the only guard, and it was stamped *after* the fetch
@@ -3719,8 +3756,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun fetchPoolHistoryFromHA() {
         val now = System.currentTimeMillis()
-        if (now - lastHistoryFetchTime < 60000L) {
-            // Fetch once per minute at most to avoid performance/network overhead
+        if (now - lastHistoryFetchTime < 300_000L) {
+            // Every five minutes at most: the monitor itself reports far less often than that
             return
         }
         if (!poolHistoryInFlight.compareAndSet(false, true)) return
@@ -3773,21 +3810,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                val sdfParser = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX", java.util.Locale.US)
-                val sdfParserAlternative = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", java.util.Locale.US)
-                val parseTime: (String?) -> Long = { str ->
-                    if (str == null) 0L else {
-                        try {
-                            sdfParser.parse(str)?.time ?: 0L
-                        } catch (e: Exception) {
-                            try {
-                                sdfParserAlternative.parse(str)?.time ?: 0L
-                            } catch (ex: Exception) {
-                                0L
-                            }
-                        }
-                    }
-                }
+                // Home Assistant sends microseconds; the old "SSSSSS" pattern read them as
+                // milliseconds and put points up to ~16 minutes late.
+                val parseTime: (String?) -> Long = { str -> com.example.ui.parseHaTimestamp(str) ?: 0L }
 
                 // Index by timestamp instead of scanning.
                 //

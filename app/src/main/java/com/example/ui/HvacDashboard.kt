@@ -680,7 +680,6 @@ fun DynamicTabContent(
     state: HvacUiState.Success,
     viewModel: HvacViewModel,
     listState: LazyListState,
-    lastInteractionTime: Long = 0L,
     onInteraction: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -701,12 +700,19 @@ fun DynamicTabContent(
     var activeSwitchPopupId by remember { mutableStateOf<String?>(null) }
 
     val popupTimeoutMillis = (layoutConfig.popupTimeoutSeconds ?: 20).coerceAtLeast(5) * 1000L
-    LaunchedEffect(lastInteractionTime) {
-        if (lastInteractionTime > 0) {
-            kotlinx.coroutines.delay(popupTimeoutMillis)
-            activeZoneDetail = null
-            activeLightPopupId = null
-            activeSwitchPopupId = null
+    val interaction = LocalInteractionClock.current
+    val popupOpen = activeZoneDetail != null || activeLightPopupId != null || activeSwitchPopupId != null
+    LaunchedEffect(popupOpen) {
+        if (!popupOpen) return@LaunchedEffect
+        interaction.touch()
+        while (true) {
+            kotlinx.coroutines.delay(1_000L)
+            if (interaction.idleMillis() >= popupTimeoutMillis) {
+                activeZoneDetail = null
+                activeLightPopupId = null
+                activeSwitchPopupId = null
+                break
+            }
         }
     }
     
@@ -720,7 +726,8 @@ fun DynamicTabContent(
             brightness = currentLightPopupState.brightness,
             isLight = true,
             onDismiss = { activeLightPopupId = null },
-            viewModel = viewModel
+            viewModel = viewModel,
+            onInteraction = { interaction.touch() }
         )
     }
 
@@ -1251,7 +1258,7 @@ fun HvacDashboardContent(
 
     // Keep track of scroll states for each tab to reset back to top on inactivity
     val listStates = remember { List(10) { LazyListState() } }
-    var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val interaction = remember { InteractionClock() }
 
     // Revert to Main Tab and Top of Page after a period of inactivity. Dialogs live in their
     // own windows, so their touches never reached the root pointerInput below — which meant
@@ -1275,27 +1282,31 @@ fun HvacDashboardContent(
         if (zoneFromNotification == null) return@LaunchedEffect
         val zonesTab = activeTabs.indexOfFirst { it.id == "zones" }
         if (zonesTab >= 0) selectedTab = zonesTab
-        lastInteractionTime = System.currentTimeMillis()
+        interaction.touch()
     }
     val modeFromNotification by LaunchRequests.confirmMode.collectAsStateWithLifecycle()
     LaunchedEffect(modeFromNotification) {
         val mode = modeFromNotification ?: return@LaunchedEffect
         viewModel.requestGlobalHvacMode(mode)
         LaunchRequests.confirmMode.value = null
-        lastInteractionTime = System.currentTimeMillis()
+        interaction.touch()
     }
 
-    LaunchedEffect(lastInteractionTime, alarmKeypadVisible, deviceMode) {
+    LaunchedEffect(alarmKeypadVisible, deviceMode) {
         if (alarmKeypadVisible) return@LaunchedEffect
         // Wall panels only; a phone stays on whatever page it was left on.
         if (!deviceMode.returnsHomeWhenIdle) return@LaunchedEffect
-        kotlinx.coroutines.delay(idleReturnMillis)
-        selectedTab = 0
-        if (listStates.isNotEmpty()) {
-            try {
-                listStates[0].scrollToItem(0)
-            } catch (e: Exception) {
-                // Safeguard against scroll interruptions
+        while (true) {
+            kotlinx.coroutines.delay(1_000L)
+            if (interaction.idleMillis() < idleReturnMillis) continue
+            interaction.touch()
+            selectedTab = 0
+            if (listStates.isNotEmpty()) {
+                try {
+                    listStates[0].scrollToItem(0)
+                } catch (e: Exception) {
+                    // Safeguard against scroll interruptions
+                }
             }
         }
     }
@@ -1309,7 +1320,7 @@ fun HvacDashboardContent(
         if (alarmKeypadVisible) {
             if (alarmTabIndex >= 0) selectedTab = alarmTabIndex
         } else {
-            lastInteractionTime = System.currentTimeMillis()
+            interaction.touch()
         }
     }
 
@@ -1335,7 +1346,7 @@ fun HvacDashboardContent(
             // not fire on the way out of the door — only on the way back in.
             if (alarmState.phase == com.example.model.AlarmPhase.DISARMED) {
                 selectedTab = 0
-                lastInteractionTime = System.currentTimeMillis()
+                interaction.touch()
                 if (listStates.isNotEmpty()) {
                     try {
                         listStates[0].scrollToItem(0)
@@ -1350,6 +1361,7 @@ fun HvacDashboardContent(
     var isMenuExpanded by remember { mutableStateOf(!isLandscape) }
     val sidePanelWidth by animateDpAsState(targetValue = if (isMenuExpanded) 260.dp else 72.dp, label = "side_panel_width")
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalInteractionClock provides interaction) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1357,7 +1369,7 @@ fun HvacDashboardContent(
                 awaitPointerEventScope {
                     while (true) {
                         awaitPointerEvent(PointerEventPass.Initial)
-                        lastInteractionTime = System.currentTimeMillis()
+                        interaction.touch()
                     }
                 }
             }
@@ -1660,8 +1672,7 @@ fun HvacDashboardContent(
                                     state = state,
                                     viewModel = viewModel,
                                     listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)],
-                                    lastInteractionTime = lastInteractionTime,
-                                    onInteraction = { lastInteractionTime = System.currentTimeMillis() }
+                                    onInteraction = { interaction.touch() }
                                 )
                             }
                         }
@@ -1762,9 +1773,8 @@ fun HvacDashboardContent(
                             presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),
                             modifier = Modifier.fillMaxWidth(),
                             historyWindowDays = homeStatusCfg?.presenceHistoryDays ?: 30,
-                            lastInteractionTime = lastInteractionTime,
                             popupTimeoutMillis = popupTimeoutMillis,
-                            onInteraction = { lastInteractionTime = System.currentTimeMillis() }
+                            onInteraction = { interaction.touch() }
                         )
 
                         QuickActionsCard(
@@ -1846,9 +1856,8 @@ fun HvacDashboardContent(
                     presenceEntityIds = homeStatusCfg?.presenceEntityIds.orEmpty(),
                     modifier = Modifier.weight(1f),
                     historyWindowDays = homeStatusCfg?.presenceHistoryDays ?: 30,
-                    lastInteractionTime = lastInteractionTime,
                     popupTimeoutMillis = popupTimeoutMillis,
-                    onInteraction = { lastInteractionTime = System.currentTimeMillis() }
+                    onInteraction = { interaction.touch() }
                 )
             }
 
@@ -1897,8 +1906,7 @@ fun HvacDashboardContent(
                             state = state,
                             viewModel = viewModel,
                             listState = listStates[currentTabIdx.coerceIn(0, listStates.lastIndex)],
-                            lastInteractionTime = lastInteractionTime,
-                            onInteraction = { lastInteractionTime = System.currentTimeMillis() }
+                            onInteraction = { interaction.touch() }
                         )
                     }
                 }
@@ -1953,6 +1961,7 @@ fun HvacDashboardContent(
             }
         }
     }
+}
 }
 }
 

@@ -110,6 +110,22 @@ private fun formatRounded(raw: String?): String? =
  * those six digits as milliseconds and land ~13 minutes late. Fractional seconds are
  * therefore truncated to three digits and the offset normalised before parsing.
  */
+/**
+ * When the screen was last touched — kept outside Compose state on purpose.
+ *
+ * It used to be a mutableLongState written on every pointer event, including every movement of a
+ * scroll or a setpoint drag. Each write recomposed the whole dashboard and the open tab, and
+ * restarted the idle and popup timers: on the A8 and A9 that was most of the lag felt in the
+ * hand. Now a touch is a plain atomic store, and the timers look at it once a second.
+ */
+class InteractionClock {
+    private val last = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
+    fun touch() = last.set(System.currentTimeMillis())
+    fun idleMillis(): Long = System.currentTimeMillis() - last.get()
+}
+
+val LocalInteractionClock = androidx.compose.runtime.staticCompositionLocalOf { InteractionClock() }
+
 internal fun parseHaTimestamp(raw: String?): Long? {
     if (raw.isNullOrBlank()) return null
     return try {
@@ -359,7 +375,6 @@ fun PresenceCard(
     // Matches Home Assistant's recorder purge_keep_days; looking further back than the
     // recorder retains just returns "no change recorded" for everyone.
     historyWindowDays: Int = 30,
-    lastInteractionTime: Long = 0L,
     popupTimeoutMillis: Long = 20_000L,
     onInteraction: () -> Unit = {}
 ) {
@@ -383,10 +398,16 @@ fun PresenceCard(
 
     // The kiosk idle timer has to reach this popup too, otherwise it is the one thing left
     // open on the wall after everything else has returned to the dashboard.
-    LaunchedEffect(lastInteractionTime, showDetails) {
-        if (showDetails && lastInteractionTime > 0) {
-            kotlinx.coroutines.delay(popupTimeoutMillis)
-            showDetails = false
+    val interaction = LocalInteractionClock.current
+    LaunchedEffect(showDetails) {
+        if (!showDetails) return@LaunchedEffect
+        interaction.touch()
+        while (true) {
+            kotlinx.coroutines.delay(1_000L)
+            if (interaction.idleMillis() >= popupTimeoutMillis) {
+                showDetails = false
+                break
+            }
         }
     }
 
