@@ -287,6 +287,9 @@ data class HvacLayoutConfig(
     // One-tap scripts at the top of the power tab (Goodnight, the TV sleep timer). `confirm`
     // asks first; a running script shows as running and a second tap stops it.
     val powerQuickActions: List<QuickActionConfig>? = null,
+    // A quiet line on the power tab saying that holding a tile opens its pop-up, which nothing
+    // else on screen tells you. Blank hides it.
+    val powerHoldHint: String? = null,
     val appTitle: String? = "Home Control",
     val appSubtitle: String? = "HVAC SYSTEM CONTROLLER",
     val theme: HvacThemeConfig? = HvacThemeConfig(),

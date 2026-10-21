@@ -1,5 +1,5 @@
 {
-  "version": "6.25.0",
+  "version": "6.26.0",
   "appTitle": "Home Control",
   "showWeatherCard": true,
   "weatherLatitude": 44.422164,
@@ -550,5 +550,6 @@
       "entityId": "script.sleep_20min",
       "confirm": false
     }
-  ]
+  ],
+  "powerHoldHint": "Hold a light to dim it"
 }

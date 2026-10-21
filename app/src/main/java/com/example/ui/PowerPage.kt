@@ -87,7 +87,12 @@ fun PowerPage(
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             layoutConfig.powerQuickActions?.takeIf { it.isNotEmpty() }?.let { actions ->
-                PowerQuickActions(actions, columns = if (perRow == 2) 6 else columns, viewModel = viewModel)
+                PowerQuickActions(
+                    actions,
+                    columns = if (perRow == 2) 6 else columns,
+                    hint = layoutConfig.powerHoldHint ?: "Hold a light to dim it",
+                    viewModel = viewModel
+                )
             }
             areas.chunked(perRow).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -117,6 +122,7 @@ fun PowerPage(
 private fun PowerQuickActions(
     actions: List<com.example.model.QuickActionConfig>,
     columns: Int,
+    hint: String,
     viewModel: HvacViewModel
 ) {
     val states by viewModel.entityStates.collectAsStateWithLifecycle()
@@ -139,6 +145,10 @@ private fun PowerQuickActions(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("QUICK", fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp, color = Color.White.copy(alpha = 0.55f))
+            if (hint.isNotBlank()) {
+                Spacer(Modifier.weight(1f))
+                Text(hint, fontSize = 12.sp, color = Color.White.copy(alpha = 0.4f))
+            }
         }
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
