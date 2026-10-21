@@ -1,7 +1,6 @@
 {
-  "version": "6.24.0",
+  "version": "6.25.0",
   "appTitle": "Home Control",
-  "appSubtitle": "DYNAMIC SYSTEM DECK",
   "showWeatherCard": true,
   "weatherLatitude": 44.422164,
   "weatherLongitude": -69.587659,
@@ -69,7 +68,7 @@
   "tabs": [
     {
       "id": "zones",
-      "title": "HOME & CLIMATE",
+      "title": "Home",
       "icon": "layers",
       "sections": [
         "sensors",
@@ -79,7 +78,7 @@
     },
     {
       "id": "aux",
-      "title": "POWER CONTROL",
+      "title": "Power",
       "icon": "lightbulb",
       "sections": [
         "condensed_power"
@@ -88,7 +87,7 @@
     },
     {
       "id": "solar",
-      "title": "SOLAR & ENERGY",
+      "title": "Solar",
       "icon": "solar_power",
       "sections": [
         "solar"
@@ -97,7 +96,7 @@
     },
     {
       "id": "pool",
-      "title": "POOL DATA",
+      "title": "Pool",
       "icon": "pool",
       "sections": [
         "pool"
@@ -106,7 +105,7 @@
     },
     {
       "id": "alarm",
-      "title": "SECURITY",
+      "title": "Alarm",
       "icon": "shield",
       "sections": [
         "alarm"
@@ -116,39 +115,39 @@
     },
     {
       "id": "updates",
-      "title": "SYSTEM DISPATCH",
+      "title": "Updates",
       "icon": "cloud_download",
       "sections": [
         "updates"
       ],
-      "shortTitle": "SYSTEM"
+      "shortTitle": "UPDATES"
     }
   ],
   "roomSensors": [
     {
       "id": "living_room",
-      "name": "LIVING",
+      "name": "Living",
       "stateId": "sensor.living_room_temperature"
     },
     {
       "id": "dining_room",
-      "name": "DINING",
+      "name": "Dining",
       "stateId": "sensor.dining_room_temperature"
     },
     {
       "id": "upstairs",
-      "name": "STAIRWAY",
+      "name": "Stairway",
       "stateId": "climate.upstairs",
       "attributeName": "current_temperature"
     },
     {
       "id": "bedroom",
-      "name": "BEDROOM",
+      "name": "Bedroom",
       "stateId": "sensor.bedroom_temperature"
     },
     {
       "id": "basement",
-      "name": "BASEMENT",
+      "name": "Basement",
       "stateId": "climate.basement_thermostat",
       "attributeName": "current_temperature"
     }
@@ -355,84 +354,6 @@
       "allOff": false
     }
   ],
-  "dynamicSections": [
-    {
-      "id": "solar",
-      "title": "Solar Energy Dashboard",
-      "cards": [
-        {
-          "type": "placeholder",
-          "title": "INTEGRATION PENDING",
-          "subtitle": "Solar Array & Inverter Telemetry",
-          "icon": "solar_power",
-          "tintColor": "eco",
-          "statusText": "Awaiting local inverter connection"
-        },
-        {
-          "type": "stats_row",
-          "title": "Current Production & Grid Flow",
-          "stats": [
-            {
-              "label": "CURRENT PRODUCTION",
-              "value": "Pending API Setup",
-              "icon": "wb_sunny",
-              "tintColor": "eco"
-            },
-            {
-              "label": "GRID STATUS",
-              "value": "Monitoring Offline",
-              "icon": "bolt",
-              "tintColor": "cool"
-            }
-          ]
-        },
-        {
-          "type": "chart",
-          "title": "HISTORICAL TRENDS (COMING SOON)",
-          "subtitle": "Daily solar yields and consumption patterns across seasons",
-          "icon": "trending_up"
-        }
-      ]
-    },
-    {
-      "id": "pool",
-      "title": "Pool Automation Dashboard",
-      "cards": [
-        {
-          "type": "placeholder",
-          "title": "INTEGRATION PENDING",
-          "subtitle": "Pool Automation & Chemistry Hub",
-          "icon": "pool",
-          "tintColor": "cool",
-          "statusText": "Connecting to local Automation adapter"
-        },
-        {
-          "type": "stats_row",
-          "title": "Chemistry & Equipment Status",
-          "stats": [
-            {
-              "label": "PH & CHLORINE",
-              "value": "pH: -- / Cl: -- ppm",
-              "icon": "science",
-              "tintColor": "accent"
-            },
-            {
-              "label": "PUMP & HEATER STATUS",
-              "value": "Pump: Off / Heater: Standby",
-              "icon": "settings",
-              "tintColor": "eco"
-            }
-          ]
-        },
-        {
-          "type": "chart",
-          "title": "TEMPERATURE HISTORICAL TRENDS",
-          "subtitle": "Pool temperature patterns and active heater runtime metrics",
-          "icon": "show_chart"
-        }
-      ]
-    }
-  ],
   "covers": [
     {
       "entityId": "cover.konnected_d332ec_garage_door",
@@ -521,7 +442,11 @@
     ],
     "phoneCommandCenter": true,
     "housePanelHiddenTabs": [
-      "aux"
+      "aux",
+      "solar",
+      "pool",
+      "alarm",
+      "updates"
     ]
   },
   "solarCalc": {
