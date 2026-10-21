@@ -868,21 +868,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _isOffline = MutableStateFlow(false)
     val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
 
-    private val _poolState = MutableStateFlow(
-        PoolState(
-            waterTemperature = 79.0,
-            ph = 7.35,
-            orp = 561.0,
-            battery = 4536.0,
-            lastSynced = "3 minutes ago",
-            lastUpdated = "15 minutes ago",
-            monitorSerial = "020F5F12",
-            sensorSerial = "2515-0608P",
-            wifiSignal = -57,
-            waterStatus = "Balanced",
-            actionsPending = 1
-        )
-    )
+    // Starts empty. It used to start from a demo reading (79.0 °F, pH 7.35, ORP 561, Wi-Fi -57,
+    // two serial numbers), which the pool tab showed as current whenever the monitor was silent.
+    private val _poolState = MutableStateFlow(PoolState())
     val poolState: StateFlow<PoolState> = _poolState.asStateFlow()
 
     private val _poolHistory = MutableStateFlow<List<PoolHistoryPoint>>(emptyList())
