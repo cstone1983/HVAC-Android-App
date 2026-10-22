@@ -202,8 +202,7 @@ fun HomeAlertStrip(
     // data was stale. It also outranked command feedback, so a failed write showed nothing at all
     // while the control sat lit on a mode that never applied.
     val feedbackText = feedback
-    val feedbackFailed = !feedbackText.isNullOrBlank() &&
-        (feedbackText.contains("fail", true) || feedbackText.contains("error", true))
+    val feedbackFailed = !feedbackText.isNullOrBlank() && isFailureFeedback(feedbackText)
 
     val alert: Triple<String, Color, androidx.compose.ui.graphics.vector.ImageVector>? = when {
         // Offline outranks every entity-derived claim. While the socket is down we cannot know
@@ -1048,3 +1047,7 @@ fun OutdoorReadingChip(
         }
     }
 }
+
+/** The plain-word failure messages ("Couldn't…", "…didn't accept…", "…isn't reporting…"), shown in red. */
+internal fun isFailureFeedback(text: String): Boolean = listOf("couldn't", "didn't", "isn't reporting", "fail", "error")
+    .any { text.contains(it, ignoreCase = true) }

@@ -1817,7 +1817,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         callServiceWithOptimisticFeedback("input_select", "select_option", mapOf(
             "entity_id" to "input_select.house_schedule_state",
             "option" to option
-        ), "Applying schedule: $option")
+        ), "House schedule: $option")
     }
 
     fun selectWaterHeaterMode(option: String) {
@@ -1825,7 +1825,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         callServiceWithOptimisticFeedback("input_select", "select_option", mapOf(
             "entity_id" to entityId,
             "option" to option
-        ), "Applying hot water mode: $option")
+        ), "Hot water: ${getActiveLayoutConfig().waterHeaterModes?.find { it.option == option }?.label ?: option}")
     }
 
     fun requestGlobalHvacMode(label: String) {
@@ -1869,28 +1869,28 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         callServiceWithOptimisticFeedback("input_select", "select_option", mapOf(
             "entity_id" to "input_select.global_hvac_mode",
             "option" to option
-        ), "Applying active season: $option")
+        ), "House mode: ${option.lowercase()}")
     }
 
     fun toggleInputBoolean(entityId: String, currentOn: Boolean, name: String) {
         val service = if (currentOn) "turn_off" else "turn_on"
         callServiceWithOptimisticFeedback("input_boolean", service, mapOf(
             "entity_id" to entityId
-        ), "$name: ${if (currentOn) "OFF" else "ON"}")
+        ), "$name ${if (currentOn) "off" else "on"}")
     }
 
     fun selectVaneMode(entityId: String, option: String, name: String) {
         callServiceWithOptimisticFeedback("input_select", "select_option", mapOf(
             "entity_id" to entityId,
             "option" to option
-        ), "$name Vane: $option")
+        ), "$name vane: ${option.lowercase()}")
     }
 
     fun selectFanMode(entityId: String, option: String, name: String) {
         callServiceWithOptimisticFeedback("input_select", "select_option", mapOf(
             "entity_id" to entityId,
             "option" to option
-        ), "$name Fan: $option")
+        ), "$name fan: ${option.lowercase()}")
     }
 
     fun setTargetTemperature(climateEntityId: String, temperature: Double, name: String) {
@@ -1930,7 +1930,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             _isDebouncing.value = true
             delay(2000L)
             try {
-                val currentFeedback = "$name setpoint updated to ${finalTemperature.toInt()}°F"
+                val currentFeedback = "$name set to ${finalTemperature.toInt()}°"
                 callServiceWithOptimisticFeedback("climate", "set_temperature", mapOf(
                     "entity_id" to climateEntityId,
                     "temperature" to finalTemperature
@@ -1987,7 +1987,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             _isDebouncing.value = true
             delay(2000L)
             try {
-                val currentFeedback = "Adjusting preset $name to ${finalValue.toInt()}°F"
+                val currentFeedback = "$name target: ${finalValue.toInt()}°"
                 callServiceWithOptimisticFeedback("input_number", "set_value", mapOf(
                     "entity_id" to numberEntityId,
                     "value" to finalValue
@@ -2025,12 +2025,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         // Nothing sensible to toggle toward when we cannot hear from the head, and sending
         // turn_off to a head that is merely unreachable is a command with no meaning.
         if (mode == "unavailable" || mode == "unknown" || mode.isBlank()) {
-            _actionFeedback.value = "$name is not reporting — not changed"
+            _actionFeedback.value = "$name isn't reporting, so nothing was changed"
             return
         }
         if (mode != "off") {
             callServiceWithOptimisticFeedback(
-                "climate", "turn_off", mapOf("entity_id" to climateEntityId), "$name power: OFF"
+                "climate", "turn_off", mapOf("entity_id" to climateEntityId), "$name turned off"
             )
             return
         }
@@ -2208,7 +2208,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 "input_select", "select_option", mapOf(
                     "entity_id" to "input_select.global_hvac_mode",
                     "option" to target
-                ), "House switched to ${target.uppercase()}"
+                ), "House switched to $target"
             )
         }
 
@@ -2309,7 +2309,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val target = mode.lowercase()
         // Recorded before queuing so a later tap can supersede this one while it waits.
         latestRequestedMode[climateEntityId] = target
-        _actionFeedback.value = "$name → ${target.uppercase()}…"
+        _actionFeedback.value = "Switching $name to $target…"
         val lock = zoneCommandLocks.getOrPut(climateEntityId) { kotlinx.coroutines.sync.Mutex() }
         viewModelScope.launch {
             lock.withLock {
@@ -2332,7 +2332,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     // unavailable head skipped turn_on and was then sent two commands it could
                     // not act on, while the banner reported success.
                     if (com.example.model.isNotReporting(current)) {
-                        _actionFeedback.value = "$name is not reporting — mode unchanged"
+                        _actionFeedback.value = "$name isn't reporting, so its mode wasn't changed"
                         return@withLock
                     }
 
@@ -2353,7 +2353,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                             performServiceCall("climate", "turn_on", mapOf("entity_id" to climateEntityId))
                         }
                         if (!powered) {
-                            _actionFeedback.value = "Could not power $name on"
+                            _actionFeedback.value = "Couldn't turn $name on. Try again."
                             return@withLock
                         }
                         // Wait for the head to actually report itself on rather than assuming a
@@ -2368,7 +2368,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         mapOf("entity_id" to climateEntityId, "hvac_mode" to target)
                     )
                     if (!ok) {
-                        _actionFeedback.value = "Failed to set $name to ${target.uppercase()}"
+                        _actionFeedback.value = "Couldn't switch $name to $target. Try again."
                         return@withLock
                     }
 
@@ -2389,7 +2389,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         // target. Say so instead of guessing.
                         if (!awaitHeadState(climateEntityId) { it == target }) {
                             _actionFeedback.value =
-                                "$name did not confirm ${target.uppercase()} — setpoint left alone"
+                                "$name didn't confirm $target, so its temperature was left alone"
                             return@withLock
                         }
                         val now = _entityStates.value[climateEntityId]
@@ -2403,10 +2403,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
 
-                    _actionFeedback.value = "$name mode: ${target.uppercase()}"
+                    _actionFeedback.value = "$name is on $target"
                     if (!wsManager.connectionState.value.isConnected) fetchStates()
                 } catch (e: Exception) {
-                    _actionFeedback.value = "Failed to sync action: ${e.localizedMessage}"
+                    _actionFeedback.value = "Couldn't reach Home Assistant. Try again."
                 }
             }
         }
@@ -2416,7 +2416,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val service = if (currentOn) "turn_off" else "turn_on"
         callServiceWithOptimisticFeedback("light", service, mapOf(
             "entity_id" to entityId
-        ), "$name Light toggled")
+        ), "$name ${if (currentOn) "off" else "on"}")
     }
 
     fun setLightBrightness(entityId: String, brightness: Int, name: String) {
@@ -2438,7 +2438,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val service = if (currentOn) "turn_off" else "turn_on"
         callServiceWithOptimisticFeedback("switch", service, mapOf(
             "entity_id" to entityId
-        ), "$name Switch toggled")
+        ), "$name ${if (currentOn) "off" else "on"}")
     }
 
     /** A power group's "All off": one call per domain for everything in it that is on. */
@@ -2450,12 +2450,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         if (lights.isNotEmpty()) {
             callServiceWithOptimisticFeedback("light", "turn_off", mapOf(
                 "entity_id" to lights.map { it.entityId }
-            ), "$area: lights off")
+            ), "$area lights off")
         }
         if (switches.isNotEmpty()) {
             callServiceWithOptimisticFeedback("switch", "turn_off", mapOf(
                 "entity_id" to switches.map { it.entityId }
-            ), "$area: all off")
+            ), "$area: everything off")
         }
     }
 
@@ -2463,12 +2463,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         if (entityId.startsWith("switch.")) {
             callServiceWithOptimisticFeedback("switch", "toggle", mapOf(
                 "entity_id" to entityId
-            ), "$name $state command dispatch")
+            ), "Pressed the $name button")
         } else {
             val service = if (state == "open" || state == "opening") "open_cover" else "close_cover"
             callServiceWithOptimisticFeedback("cover", service, mapOf(
                 "entity_id" to entityId
-            ), "$name $state command dispatch")
+            ), if (service == "open_cover") "Opening $name" else "Closing $name")
         }
     }
 
@@ -2488,10 +2488,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         fetchStates() // fallback sync if WS is not live
                     }
                 } else {
-                    _actionFeedback.value = "Failed to apply state (API returned error)"
+                    _actionFeedback.value = "Home Assistant didn't accept that. Try again."
                 }
             } catch (e: Exception) {
-                _actionFeedback.value = "Failed to sync action: ${e.localizedMessage}"
+                _actionFeedback.value = "Couldn't reach Home Assistant. Try again."
             }
         }
     }
@@ -2580,7 +2580,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         serviceData.forEach { (key, value) ->
             payload[key] = value.toDoubleOrNull() ?: value.toBooleanStrictOrNull() ?: value
         }
-        callServiceWithOptimisticFeedback(domain, service, payload, feedbackMessage ?: "$entityId: $service")
+        callServiceWithOptimisticFeedback(domain, service, payload, feedbackMessage ?: "Done")
     }
 
     // ======================== GITHUB UPDATER FUNCTIONALITY ========================
@@ -2804,7 +2804,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     val remoteConfig = ensureSolarAndPoolTabs(parsed)
 
                     _updateState.value = UpdateState.Downloading(100, 100, 100)
-                    _actionFeedback.value = "New design payload downloaded from GitHub successfully."
+                    _actionFeedback.value = "Downloaded the new layout from GitHub"
                     kotlinx.coroutines.delay(400)
 
                     _updateState.value = UpdateState.Installing(60, "Applying layout configuration")
@@ -2826,8 +2826,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     _appliedLayoutCommit.value = sha
 
                     _updateState.value = UpdateState.UpToDate(sha.take(7), url, remoteJson.length.toLong())
-                    _actionFeedback.value = "System layout updated dynamically to v${remoteConfig.version} (${sha.take(7)})!"
-                    android.widget.Toast.makeText(context, "System Update Applied OTA: ${remoteConfig.version} (${sha.take(7)})", android.widget.Toast.LENGTH_LONG).show()
+                    _actionFeedback.value = "Layout updated to ${remoteConfig.version}"
+                    android.widget.Toast.makeText(context, "Layout updated to ${remoteConfig.version}", android.widget.Toast.LENGTH_LONG).show()
                     
                     fetchStates()
                 } else {
@@ -3322,7 +3322,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         invalidateLayoutConfigCache()
         _layoutVersion.value = defaultVersion
         _layoutConfig.value = getBuiltInDefaultLayoutConfig()
-        _actionFeedback.value = "Layout restored to factory default configuration (v$defaultVersion)"
+        _actionFeedback.value = "Back to the built-in layout ($defaultVersion)"
         viewModelScope.launch {
             fetchStates()
         }

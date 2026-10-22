@@ -126,6 +126,10 @@ private fun PowerQuickActions(
     viewModel: HvacViewModel
 ) {
     val states by viewModel.entityStates.collectAsStateWithLifecycle()
+    // This tab had no feedback at all: a tap either visibly changed a tile or seemed to do
+    // nothing. The latest message ("Kitchen on", "Couldn't reach Home Assistant…") now takes the
+    // hint's place on the QUICK line for the few seconds it lasts.
+    val feedback by viewModel.actionFeedback.collectAsStateWithLifecycle()
     var pending by remember { mutableStateOf<com.example.model.QuickActionConfig?>(null) }
     pending?.let { action ->
         ConfirmDialog(
@@ -145,7 +149,17 @@ private fun PowerQuickActions(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("QUICK", fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.2.sp, color = Color.White.copy(alpha = 0.55f))
-            if (hint.isNotBlank()) {
+            val message = feedback
+            if (!message.isNullOrBlank()) {
+                Spacer(Modifier.weight(1f))
+                Text(
+                    message,
+                    fontSize = 14.sp,
+                    color = if (isFailureFeedback(message)) Color(0xFFEF4444) else Color(0xFF10B981),
+                    maxLines = 1,
+                    modifier = Modifier.testTag("power_feedback")
+                )
+            } else if (hint.isNotBlank()) {
                 Spacer(Modifier.weight(1f))
                 Text(hint, fontSize = 12.sp, color = Color.White.copy(alpha = 0.4f))
             }

@@ -3444,7 +3444,7 @@ fun HvacLoginScreen(
                                     onClick = {
                                         if (urlText.isNotBlank()) {
                                             viewModel.updateHaUrl(urlText)
-                                            Toast.makeText(context, "Server address updated successfully!", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Server address saved", Toast.LENGTH_SHORT).show()
                                             showServerConfig = false
                                         } else {
                                             Toast.makeText(context, "URL cannot be empty", Toast.LENGTH_SHORT).show()
