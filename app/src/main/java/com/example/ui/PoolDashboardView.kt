@@ -212,7 +212,7 @@ fun PoolDashboardView(
 }
 
 /** "4:29 PM" today, "Sat 5:19 PM" this week, "Oct 3, 5:19 PM" before that. */
-private fun friendlyWhen(epochMs: Long): String {
+internal fun friendlyWhen(epochMs: Long): String {
     val ageMs = System.currentTimeMillis() - epochMs
     val today = java.util.Calendar.getInstance()
     val then = java.util.Calendar.getInstance().apply { timeInMillis = epochMs }

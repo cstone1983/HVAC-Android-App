@@ -49,6 +49,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
@@ -240,88 +241,114 @@ private fun SummaryCard(
 // Tab content
 // -------------------------------------------------------------------------------------------
 
+/**
+ * The alarm tab, rebuilt 2026-10-22 (review step 4: option A with B's activity list).
+ *
+ * The status says itself once, in words, with who changed it and when. Disarmed, the two arming
+ * modes are the buttons — the KEYPAD button beside them opened a dialog offering the same two
+ * modes again. Armed or counting down, one large button opens the keypad. Sensors are tiles with
+ * when each last changed, anything open or detecting first. Underneath, the last week of
+ * changes: who armed and disarmed it, entry delays with what opened, and triggers.
+ */
 @Composable
 fun AlarmSection(viewModel: HvacViewModel, modifier: Modifier = Modifier) {
     val alarm by viewModel.alarmState.collectAsStateWithLifecycle()
     val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
     val entityStates by viewModel.entityStates.collectAsStateWithLifecycle()
+    val history by viewModel.alarmHistory.collectAsStateWithLifecycle()
     val accent = phaseColor(alarm.phase)
+    val sensors = layoutConfig.alarm?.sensors.orEmpty()
+    val names = sensors.associate { it.entityId to it.name }
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    // Re-read the activity whenever the alarm moves, so the list never lags the status above it.
+    LaunchedEffect(alarm.rawState) { viewModel.refreshAlarmHistory() }
+
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AlarmStatusCard(
             alarm = alarm,
             accent = accent,
+            changedAt = com.example.ui.parseHaTimestamp(entityStates[alarm.entityId]?.last_changed),
             onShowKeypad = { viewModel.openAlarmKeypad() },
             // Only reachable when the panel wants no code; submitAlarmCommand omits the code
             // field entirely when it is blank, which is what Alarmo expects.
             onDirectCommand = { service -> viewModel.submitAlarmCommand(service, "") }
         )
 
-        Spacer(Modifier.height(14.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
-            border = BorderStroke(1.dp, hvacBorderAlphaColor()),
-            shape = hvacCardShape(14)
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                SectionHeader("SENSORS")
-                Spacer(Modifier.height(9.dp))
-
-                val sensors = layoutConfig.alarm?.sensors.orEmpty()
-                if (sensors.isEmpty()) {
-                    Text(
-                        "No sensors configured yet. They are added in layout_config.json once " +
-                            "the alarm is set up in Home Assistant.",
-                        fontSize = 11.sp,
-                        color = Color.White.copy(alpha = 0.4f)
-                    )
-                } else {
-                    sensors.forEach { sensor ->
-                        val node = entityStates[sensor.entityId]
-                        val kind = com.example.model.alarmSensorKind(
-                            deviceClass = node?.getStringAttribute("device_class"),
-                            configuredType = sensor.type
-                        )
-                        val label = com.example.model.alarmSensorStatusLabel(kind, node?.state)
-                        AlarmSensorRow(
-                            name = sensor.name,
-                            kind = kind,
-                            statusText = label,
-                            statusColor = when (label) {
-                                "UNKNOWN" -> Color.White.copy(alpha = 0.35f)
-                                // Amber means "something is happening here", not "something is
-                                // wrong" — an occupied room is perfectly normal while disarmed.
-                                "OPEN", "DETECTED" -> Color(0xFFF59E0B)
-                                else -> LocalHvacTheme.current.ecoColor
-                            }
-                        )
+        if (sensors.isEmpty()) {
+            Text(
+                "No sensors configured yet. They are added in layout_config.json once the alarm " +
+                    "is set up in Home Assistant.",
+                fontSize = 13.sp,
+                color = Color.White.copy(alpha = 0.45f)
+            )
+        } else {
+            val tiles = sensors.map { sensor ->
+                val node = entityStates[sensor.entityId]
+                val kind = com.example.model.alarmSensorKind(
+                    deviceClass = node?.getStringAttribute("device_class"),
+                    configuredType = sensor.type
+                )
+                SensorTileState(
+                    name = sensor.name,
+                    kind = kind,
+                    label = com.example.model.alarmSensorStatusLabel(kind, node?.state),
+                    since = com.example.ui.parseHaTimestamp(node?.last_changed)
+                )
+            }
+            val active = tiles.count { it.label == "OPEN" || it.label == "DETECTED" }
+            Text(
+                if (active == 0) "Sensors · all closed or clear" else "Sensors · $active open or detecting",
+                fontSize = 13.sp,
+                color = if (active == 0) Color.White.copy(alpha = 0.55f) else Color(0xFFF59E0B),
+                modifier = Modifier.padding(start = 2.dp)
+            )
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val perRow = if (maxWidth < 560.dp) 2 else 3
+                // Open doors and detected motion first; otherwise the configured order.
+                val ordered = tiles.sortedBy { if (it.label == "OPEN" || it.label == "DETECTED") 0 else 1 }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ordered.chunked(perRow).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { SensorTile(it, Modifier.weight(1f)) }
+                            repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
                     }
-                }
-
-                if (alarm.openSensors.isNotEmpty()) {
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "Blocking arming: " + alarm.openSensors.joinToString(", "),
-                        fontSize = 11.sp,
-                        color = Color(0xFFF59E0B)
-                    )
                 }
             }
         }
+
+        if (alarm.openSensors.isNotEmpty()) {
+            Text(
+                "Blocking arming: " + alarm.openSensors.joinToString(", "),
+                fontSize = 13.sp,
+                color = Color(0xFFF59E0B)
+            )
+        }
+
+        AlarmActivityCard(
+            events = history,
+            sensorNames = names,
+            lastTriggered = entityStates[alarm.entityId]?.getStringAttribute("last_triggered")
+        )
     }
 }
+
+private data class SensorTileState(
+    val name: String,
+    val kind: com.example.model.AlarmSensorKind,
+    val label: String,
+    val since: Long?
+)
 
 @Composable
 private fun AlarmStatusCard(
     alarm: AlarmState,
     accent: Color,
+    changedAt: Long?,
     onShowKeypad: () -> Unit,
     onDirectCommand: (String) -> Unit
 ) {
     val remaining = rememberSecondsRemaining(alarm)
-
     Card(
         modifier = Modifier.fillMaxWidth().testTag("alarm_status_card"),
         colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
@@ -329,9 +356,6 @@ private fun AlarmStatusCard(
         shape = hvacCardShape(14)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            SectionHeader("ALARM STATUS")
-            Spacer(Modifier.height(10.dp))
-
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = when (alarm.phase) {
@@ -342,134 +366,221 @@ private fun AlarmStatusCard(
                     },
                     contentDescription = null,
                     tint = accent,
-                    modifier = Modifier.size(30.dp)
+                    modifier = Modifier.size(36.dp)
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(14.dp))
                 Column {
                     Text(
-                        alarm.headline,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
+                        alarmHeadline(alarm),
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = accent
                     )
-                    if (remaining != null) {
-                        Text(
-                            "$remaining seconds remaining",
-                            fontSize = 12.sp,
-                            color = Color.White.copy(alpha = 0.6f)
-                        )
-                    } else if (alarm.phase == AlarmPhase.UNAVAILABLE) {
-                        Text(
-                            if (alarm.entityId.isEmpty()) "No alarm entity configured"
-                            else "Cannot reach ${alarm.entityId}",
-                            fontSize = 11.sp,
-                            color = Color.White.copy(alpha = 0.4f)
-                        )
-                    } else if (!alarm.changedBy.isNullOrBlank()) {
-                        Text(
-                            "Last changed by ${alarm.changedBy}",
-                            fontSize = 11.sp,
-                            color = Color.White.copy(alpha = 0.4f)
-                        )
+                    val sub = when {
+                        remaining != null -> "$remaining seconds left"
+                        alarm.phase == AlarmPhase.UNAVAILABLE ->
+                            if (alarm.entityId.isEmpty()) "No alarm entity configured" else "Can't reach ${alarm.entityId}"
+                        else -> listOfNotNull(
+                            alarm.changedBy?.takeIf { it.isNotBlank() }?.let { "by ${friendlyName(it)}" },
+                            changedAt?.let { "at ${com.example.ui.friendlyWhen(it)}" }
+                        ).joinToString(" ").ifBlank { null }
                     }
+                    sub?.let { Text(it, fontSize = 14.sp, color = Color.White.copy(alpha = 0.55f)) }
                 }
             }
 
             Spacer(Modifier.height(14.dp))
 
-            // Arming and disarming are treated separately, because this panel treats them
-            // separately: arming needs no code, disarming needs the numeric one.
-            //
-            // So arming is offered here as one tap per supported mode, and disarming always goes
-            // to the keypad — there is nowhere else to type a code, and routing it here would
-            // only produce a call the panel rejects. If the panel is ever reconfigured to demand
-            // a code for arming too, requiresCodeToArm flips and arming joins it on the keypad.
-            val canArmDirectly = alarm.isPresent &&
-                alarm.phase == AlarmPhase.DISARMED &&
-                !alarm.requiresCodeToArm
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (canArmDirectly) {
-                    // Exactly the modes the panel reports it supports — Alarmo reports
-                    // supported_features 14 here, which is away and night only.
-                    alarm.armOptions.forEach { option ->
-                        SegmentedControlButton(
-                            label = option.label,
-                            icon = Icons.Default.Lock,
-                            color = accent,
-                            isSelected = false,
-                            contentDescription = "Arm ${option.label.lowercase()}",
-                            testTagId = "alarm_arm_${option.label.lowercase()}_btn",
-                            onClick = { onDirectCommand(option.service) }
-                        )
+            // Arming needs no code on this panel and disarming needs the numeric one, so arming is
+            // one tap per supported mode and disarming always goes to the keypad. If the panel is
+            // ever set to demand a code for arming too, requiresCodeToArm flips and arming moves
+            // onto the keypad with it.
+            val canArmDirectly = alarm.isPresent && alarm.phase == AlarmPhase.DISARMED && !alarm.requiresCodeToArm
+            val counting = alarm.phase == AlarmPhase.ARMING || alarm.phase == AlarmPhase.PENDING
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                when {
+                    canArmDirectly -> alarm.armOptions.forEach { option ->
+                        AlarmBigButton(
+                            label = "Arm ${option.label.lowercase()}",
+                            icon = if (option.label.equals("night", true)) Icons.Default.NightsStay else Icons.Default.Shield,
+                            color = phaseColor(AlarmPhase.ARMED),
+                            tag = "alarm_arm_${option.label.lowercase()}_btn",
+                            modifier = Modifier.weight(1f)
+                        ) { onDirectCommand(option.service) }
                     }
+                    alarm.isPresent -> AlarmBigButton(
+                        // "Cancel" is what you're looking for with ten seconds on the clock; it
+                        // is still a disarm, so it still goes through the keypad and the code.
+                        label = when {
+                            counting -> "Cancel"
+                            alarm.phase == AlarmPhase.DISARMED -> "Open keypad"
+                            else -> "Disarm"
+                        },
+                        icon = Icons.Default.LockOpen,
+                        color = accent,
+                        tag = "alarm_show_keypad_btn",
+                        modifier = Modifier.weight(1f)
+                    ) { onShowKeypad() }
                 }
-                // Cancelling a countdown *is* disarming, so it goes to the keypad like any
-                // other disarm and the code is still required. Only the wording changes:
-                // "DISARM" is what you want on an armed house, "CANCEL" is what you are
-                // looking for when the clock is running and you have ten seconds to find it.
-                val counting = alarm.phase == AlarmPhase.ARMING ||
-                    alarm.phase == AlarmPhase.PENDING
-                SegmentedControlButton(
-                    label = when {
-                        counting -> "CANCEL"
-                        canArmDirectly -> "KEYPAD"
-                        else -> "DISARM"
-                    },
-                    icon = if (canArmDirectly) Icons.Default.Lock else Icons.Default.LockOpen,
-                    color = accent,
-                    isSelected = !canArmDirectly,
-                    contentDescription = when {
-                        counting -> "Open the keypad to cancel the countdown"
-                        canArmDirectly -> "Open the alarm keypad"
-                        else -> "Open the keypad to disarm"
-                    },
-                    testTagId = "alarm_show_keypad_btn",
-                    onClick = onShowKeypad
-                )
             }
         }
     }
 }
 
+/** "Disarmed", "Armed night", "Entry delay"… in words rather than the panel's capitals. */
+private fun alarmHeadline(alarm: AlarmState): String = when (alarm.phase) {
+    AlarmPhase.DISARMED -> "Disarmed"
+    AlarmPhase.ARMED -> alarm.armMode?.removePrefix("armed_")?.replace('_', ' ')
+        ?.let { "Armed $it" } ?: "Armed"
+    AlarmPhase.ARMING -> "Arming"
+    AlarmPhase.PENDING -> "Entry delay"
+    AlarmPhase.TRIGGERED -> "Alarm triggered"
+    AlarmPhase.UNAVAILABLE -> "Not available"
+}
+
+/** Home Assistant reports the n8n user as "N8n". */
+private fun friendlyName(who: String): String = if (who.equals("n8n", ignoreCase = true)) "n8n" else who
+
 @Composable
-private fun AlarmSensorRow(
-    name: String,
-    kind: com.example.model.AlarmSensorKind,
-    statusText: String,
-    statusColor: Color
+private fun AlarmBigButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    color: Color,
+    tag: String,
+    modifier: Modifier,
+    onClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+        modifier = modifier
+            .height(56.dp)
+            .clip(com.example.ui.theme.themedShape(12.dp))
+            .background(color.copy(alpha = 0.16f))
+            .border(BorderStroke(1.dp, color.copy(alpha = 0.6f)), com.example.ui.theme.themedShape(12.dp))
+            .clickable(onClick = onClick)
+            .testTag(tag),
+        horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = when (kind) {
-                com.example.model.AlarmSensorKind.MOTION -> Icons.Default.DirectionsRun
-                com.example.model.AlarmSensorKind.OCCUPANCY -> Icons.Default.Person
-                com.example.model.AlarmSensorKind.CONTACT -> Icons.Default.DoorFront
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+    }
+}
+
+@Composable
+private fun SensorTile(s: SensorTileState, modifier: Modifier) {
+    val active = s.label == "OPEN" || s.label == "DETECTED"
+    val statusColor = when (s.label) {
+        "UNKNOWN" -> Color.White.copy(alpha = 0.4f)
+        // Amber means "something is happening here", not "something is wrong" — an occupied
+        // room is normal while disarmed.
+        "OPEN", "DETECTED" -> Color(0xFFF59E0B)
+        else -> LocalHvacTheme.current.ecoColor
+    }
+    val motion = s.kind != com.example.model.AlarmSensorKind.CONTACT
+    val whenText = s.since?.let { t ->
+        val at = com.example.ui.friendlyWhen(t)
+        when {
+            s.label == "OPEN" -> "open since $at"
+            s.label == "DETECTED" -> "since $at"
+            motion -> "last motion $at"
+            s.label == "CLOSED" -> "closed at $at"
+            else -> at
+        }
+    }
+    Column(
+        modifier = modifier
+            .clip(com.example.ui.theme.themedShape(12.dp))
+            .background(if (active) Color(0xFFF59E0B).copy(alpha = 0.08f) else hvacCardBgColor())
+            .border(
+                BorderStroke(1.dp, if (active) Color(0xFFF59E0B).copy(alpha = 0.5f) else hvacBorderAlphaColor()),
+                com.example.ui.theme.themedShape(12.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = when (s.kind) {
+                    com.example.model.AlarmSensorKind.MOTION -> Icons.Default.DirectionsRun
+                    com.example.model.AlarmSensorKind.OCCUPANCY -> Icons.Default.Person
+                    com.example.model.AlarmSensorKind.CONTACT -> Icons.Default.DoorFront
+                },
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.45f),
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(s.name, fontSize = 15.sp, color = Color.White, maxLines = 1)
+        }
+        Text(
+            when (s.label) {
+                "OPEN" -> "Open"
+                "CLOSED" -> "Closed"
+                "DETECTED" -> "Motion"
+                "CLEAR" -> "Clear"
+                else -> "Unknown"
             },
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.3f),
-            modifier = Modifier.size(15.dp)
-        )
-        Spacer(Modifier.width(9.dp))
-        Text(
-            name.uppercase(),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color.White.copy(alpha = 0.75f),
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            statusText,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = 0.8.sp,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
             color = statusColor
         )
+        whenText?.let { Text(it, fontSize = 12.sp, color = Color.White.copy(alpha = 0.45f), maxLines = 1) }
+    }
+}
+
+/**
+ * The last week of changes. "Arming" is left out — it is always followed a minute later by the
+ * armed state it was heading for, and listing both doubled every entry.
+ */
+@Composable
+private fun AlarmActivityCard(events: List<com.example.model.AlarmEvent>, sensorNames: Map<String, String>, lastTriggered: String?) {
+    val theme = LocalHvacTheme.current
+    val shown = events.filter { it.state != "arming" && it.state != "unavailable" && it.state != "unknown" }.take(8)
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("alarm_activity"),
+        colors = CardDefaults.cardColors(containerColor = hvacCardBgColor()),
+        border = BorderStroke(1.dp, hvacBorderAlphaColor()),
+        shape = hvacCardShape(14)
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text("Recent activity", fontSize = 13.sp, color = Color.White.copy(alpha = 0.55f))
+            Spacer(Modifier.height(4.dp))
+            if (shown.isEmpty()) {
+                Text("Nothing in the last week.", fontSize = 14.sp, color = Color.White.copy(alpha = 0.45f))
+            }
+            shown.forEach { e ->
+                val by = e.changedBy?.takeIf { it.isNotBlank() }?.let { " by ${friendlyName(it)}" } ?: ""
+                val opened = e.openSensors.joinToString(", ") { sensorNames[it] ?: it }
+                val (text, dot) = when {
+                    e.state == "disarmed" -> "Disarmed$by" to theme.ecoColor
+                    e.state.startsWith("armed_") -> "Armed ${e.state.removePrefix("armed_").replace('_', ' ')}$by" to theme.coolColor
+                    e.state == "pending" -> (if (opened.isNotEmpty()) "Entry delay: $opened opened" else "Entry delay") to Color(0xFFF59E0B)
+                    e.state == "triggered" -> (if (opened.isNotEmpty()) "Alarm went off: $opened" else "Alarm went off") to Color(0xFFEF4444)
+                    else -> e.state.replaceFirstChar { it.uppercase() } to Color.White.copy(alpha = 0.4f)
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.size(8.dp).background(dot, CircleShape))
+                    Spacer(Modifier.width(10.dp))
+                    Text(text, fontSize = 14.sp, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.weight(1f))
+                    Text(com.example.ui.friendlyWhen(e.epochMs), fontSize = 13.sp, color = Color.White.copy(alpha = 0.45f))
+                }
+            }
+            // Alarmo's own record of the last trigger, which can be older than the week above.
+            lastTriggered?.takeIf { it.isNotBlank() }?.let { raw ->
+                val t = try {
+                    java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).parse(raw)?.time
+                } catch (e: Exception) { null }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Last went off: ${t?.let { java.text.SimpleDateFormat("MMM d, h:mm a", java.util.Locale.US).format(java.util.Date(it)) } ?: raw}",
+                    fontSize = 13.sp,
+                    color = Color.White.copy(alpha = 0.45f)
+                )
+            }
+        }
     }
 }
 
@@ -649,15 +760,25 @@ fun AlarmKeypadDialog(viewModel: HvacViewModel) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             SectionHeader("ALARM", modifier = Modifier.weight(1f))
+                            // 20 dp used to be the whole target, in the corner of a dialog
+                            // people reach for in a hurry. The icon stays small; the box is 48.
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(com.example.ui.theme.themedShape(12.dp))
+                                    .background(Color.White.copy(alpha = 0.06f))
+                                    .clickable { viewModel.dismissAlarmKeypad() }
+                                    .testTag("alarm_keypad_close"),
+                                contentAlignment = Alignment.Center
+                            ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Close the keypad",
-                                tint = Color.White.copy(alpha = 0.4f),
+                                tint = Color.White.copy(alpha = 0.7f),
                                 modifier = Modifier
-                                    .size(20.dp)
-                                    .clickable { viewModel.dismissAlarmKeypad() }
-                                    .testTag("alarm_keypad_close")
+                                    .size(22.dp)
                             )
+                            }
                         }
 
                         Spacer(Modifier.height(10.dp))

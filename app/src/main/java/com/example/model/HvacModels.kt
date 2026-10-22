@@ -991,6 +991,14 @@ fun alarmSensorStatusLabel(kind: AlarmSensorKind, rawState: String?): String {
     }
 }
 
+/** One change of the alarm's state, for the activity list. [openSensors] are entity ids. */
+data class AlarmEvent(
+    val epochMs: Long,
+    val state: String,
+    val changedBy: String?,
+    val openSensors: List<String>
+)
+
 /** Live alarm state, parsed from the entity. */
 data class AlarmState(
     val entityId: String = "",

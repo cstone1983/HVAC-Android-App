@@ -3717,6 +3717,40 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * The alarm's recent changes for the activity list on the alarm tab: who armed or disarmed
+     * it, entry delays and what opened, and any trigger. Fetched when the tab opens and again
+     * whenever the alarm changes state while it is open — a week of one entity is a few dozen
+     * records, with the attributes kept because `changed_by` and `open_sensors` live there.
+     */
+    private val _alarmHistory = MutableStateFlow<List<com.example.model.AlarmEvent>>(emptyList())
+    val alarmHistory: StateFlow<List<com.example.model.AlarmEvent>> = _alarmHistory.asStateFlow()
+
+    fun refreshAlarmHistory() {
+        val entityId = getActiveLayoutConfig().alarm?.entityId ?: return
+        viewModelScope.launch {
+            try {
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
+                    timeZone = java.util.TimeZone.getTimeZone("UTC")
+                }
+                val now = System.currentTimeMillis()
+                val raw = HomeAssistantClient.service.getHistory(
+                    timestamp = sdf.format(java.util.Date(now - 7L * 24 * 3_600_000L)),
+                    filterEntityId = entityId,
+                    endTime = sdf.format(java.util.Date(now))
+                )
+                _alarmHistory.value = raw.flatten().mapNotNull { s ->
+                    val t = com.example.ui.parseHaTimestamp(s.last_changed ?: s.last_updated) ?: return@mapNotNull null
+                    @Suppress("UNCHECKED_CAST")
+                    val open = (s.attributes?.get("open_sensors") as? Map<String, Any?>)?.keys?.toList().orEmpty()
+                    com.example.model.AlarmEvent(t, s.state, s.getStringAttribute("changed_by"), open)
+                }.sortedByDescending { it.epochMs }
+            } catch (e: Exception) {
+                android.util.Log.w("HvacViewModel", "Alarm history fetch failed", e)
+            }
+        }
+    }
+
     fun setSolarHistoryVisible(visible: Boolean) {
         if (visible) {
             if (solarHistoryViewers.incrementAndGet() == 1) {
