@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -151,12 +152,29 @@ fun DuoStatTile(
 
             // Wrapping rather than a fixed row: By midnight carries three values, and on a narrow
             // phone three of them will not sit side by side.
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(20.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                tile.items.orEmpty().forEach { item -> TileItem(item, palette) }
+            //
+            // A tile that mixes full-size and small items (Right now: Solar and House, then the
+            // bank balance now and at midnight, since 2026-10-23) puts the small ones on a row of
+            // their own beneath, a step larger than By midnight's small figures, so Right now
+            // fills the height the other two tiles already have instead of leaving a gap.
+            // Rows follow the server's order: a change between full-size and small starts a new
+            // row. Small figures that follow full-size ones (Right now's bank) are set a step
+            // larger than By midnight's leading small figures.
+            val rows = mutableListOf<MutableList<SolarTileItem>>()
+            tile.items.orEmpty().forEach { item ->
+                val last = rows.lastOrNull()
+                if (last != null && (last.first().small == true) == (item.small == true)) last.add(item)
+                else rows.add(mutableListOf(item))
+            }
+            rows.forEachIndexed { i, row ->
+                if (i > 0) Spacer(Modifier.height(12.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    row.forEach { item -> TileItem(item, palette, secondRow = i > 0) }
+                }
             }
 
             val lines = tile.lines.orEmpty()
@@ -172,7 +190,7 @@ fun DuoStatTile(
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun TileItem(item: SolarTileItem, palette: SolarPalette) {
+private fun TileItem(item: SolarTileItem, palette: SolarPalette, secondRow: Boolean = false) {
     val toneColor = palette.tone(item.tone)
     Column {
         Row(
@@ -205,7 +223,11 @@ private fun TileItem(item: SolarTileItem, palette: SolarPalette) {
                 text = item.value.orEmpty(),
                 // The By midnight tile shows three figures, so they are set smaller to keep the
                 // three tiles the same height.
-                fontSize = if (item.small == true) 16.sp else 23.sp,
+                fontSize = when {
+                    item.small == true && secondRow -> 19.sp
+                    item.small == true -> 16.sp
+                    else -> 23.sp
+                },
                 fontWeight = if (item.small == true) FontWeight.Medium else FontWeight.SemiBold,
                 color = toneColor,
                 maxLines = 1,
@@ -298,9 +320,13 @@ fun SolarTodayTiles(
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val wideEnough = maxWidth >= 620.dp
         if (wideEnough) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            // One height for all three, the tallest's, so the row reads as a set.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)
+            ) {
                 tiles.forEach { tile ->
-                    DuoStatTile(tile, palette, modifier = Modifier.weight(1f))
+                    DuoStatTile(tile, palette, modifier = Modifier.weight(1f).fillMaxHeight())
                 }
             }
         } else {
