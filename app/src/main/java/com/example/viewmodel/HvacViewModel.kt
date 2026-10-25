@@ -50,6 +50,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
          */
         private const val FEEDBACK_VISIBLE_MS = 6000L
 
+        // The "Setting to" line: Chris's numbers (2026-10-25).
+        private const val SETPOINT_TOLERANCE = 0.26
+        private const val SETPOINT_CONFIRM_TIMEOUT_MS = 60_000L
+        private const val SETPOINT_CONFIRMED_SHOWN_MS = 4_000L
+        private const val SETPOINT_FAILED_SHOWN_MS = 10_000L
+
         @Volatile
         private var instance: HvacViewModel? = null
 
@@ -1893,7 +1899,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         ), "$name fan: ${option.lowercase()}")
     }
 
-    fun setTargetTemperature(climateEntityId: String, temperature: Double, name: String) {
+    fun setTargetTemperature(climateEntityId: String, temperature: Double, name: String): Double {
         // 1. Optimistic state update in memory so the dial / UI updates immediately without lag
         val current = _uiState.value
         var finalTemperature = temperature
@@ -1914,15 +1920,15 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             // Assistant clamps or rejects the value, and the zone drifts into an override.
             finalTemperature = com.example.model.clampToHardwareFloor(finalTemperature, m)
 
-            val updatedZones = current.zones.map { z ->
-                if (z.climateEntityId == climateEntityId) {
-                    z.copy(targetTemp = finalTemperature)
-                } else {
-                    z
-                }
-            }
-            _uiState.value = current.copy(zones = updatedZones)
+            // No optimistic write to targetTemp any more: the next state event from anywhere in the
+            // house overwrote it with the head's old value, so SET jumped back for a few seconds.
+            // SET now always shows the head, and the change in flight is the "Setting to" line.
         }
+        // Main Level's second head gets the same value in the same call, so the zone is set when
+        // both report it rather than whenever the sequencer next mirrors one onto the other.
+        val secondary = (current as? HvacUiState.Success)?.zones
+            ?.find { it.climateEntityId == climateEntityId }?.secondaryClimateEntityId
+        val targets: Any = if (secondary != null) listOf(climateEntityId, secondary) else climateEntityId
 
         // 2. Debounce sending to Home Assistant (wait for 2 second quiet period)
         pendingTemperatureJobs.remove(climateEntityId)?.cancel()
@@ -1932,7 +1938,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val currentFeedback = "$name set to ${finalTemperature.toInt()}°"
                 callServiceWithOptimisticFeedback("climate", "set_temperature", mapOf(
-                    "entity_id" to climateEntityId,
+                    "entity_id" to targets,
                     "temperature" to finalTemperature
                 ), currentFeedback)
             } finally {
@@ -1942,9 +1948,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
         pendingTemperatureJobs[climateEntityId] = job
         updateDebounceStatus()
+        return finalTemperature
     }
 
-    fun setPresetTemperature(numberEntityId: String, value: Double, name: String) {
+    fun setPresetTemperature(numberEntityId: String, value: Double, name: String): Double {
         // 1. Optimistic state update in memory so the dial / UI updates immediately without lag
         val current = _uiState.value
         var finalValue = value
@@ -1999,6 +2006,140 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
         pendingPresetJobs[numberEntityId] = job
         updateDebounceStatus()
+        return finalValue
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // "Setting to": a zone temperature change on its way
+    // ---------------------------------------------------------------------------------------
+
+    private val _pendingSetpoints = MutableStateFlow<Map<String, com.example.model.PendingSetpoint>>(emptyMap())
+    val pendingSetpoints: StateFlow<Map<String, com.example.model.PendingSetpoint>> = _pendingSetpoints.asStateFlow()
+
+    // Here rather than in the init block near the top: properties and init blocks run in the
+    // order they are written, and Dispatchers.Main.immediate starts the collector on the spot,
+    // so a watcher declared above _pendingSetpoints read it while it was still null (69.0
+    // crashed on start).
+    init {
+        // Re-judge whenever Home Assistant reports or the zones are rebuilt, and once a second
+        // for the timeouts.
+        viewModelScope.launch { _entityStates.collect { evaluatePendingSetpoints() } }
+        viewModelScope.launch { _uiState.collect { evaluatePendingSetpoints() } }
+        viewModelScope.launch {
+            while (true) {
+                delay(1000L)
+                if (_pendingSetpoints.value.isNotEmpty()) evaluatePendingSetpoints()
+            }
+        }
+    }
+
+    /**
+     * The pop-up's big stepper. Writes the schedule block in force and, when the zone is running,
+     * the head(s) too, as before. The line appears at once on this device; every other device
+     * picks the same change up from the schedule helper (see [evaluatePendingSetpoints]).
+     */
+    fun changeZoneTarget(zone: ClimateZone, presetEntityId: String, presetLabel: String, newValue: Double, pushToHead: Boolean) {
+        val presetValue = setPresetTemperature(presetEntityId, newValue, presetLabel)
+        val target = if (pushToHead) setTargetTemperature(zone.climateEntityId, newValue, zone.name) else presetValue
+        _pendingSetpoints.value = _pendingSetpoints.value + (zone.key to com.example.model.PendingSetpoint(
+            target = target,
+            status = if (pushToHead) com.example.model.SetpointStatus.SETTING else com.example.model.SetpointStatus.UPDATING,
+            since = System.currentTimeMillis(),
+            watch = listOf(presetEntityId),
+            startValues = emptyMap()
+        ))
+    }
+
+    /** What Home Assistant holds right now: a head's target attribute, or a helper's value. */
+    private fun rawSetpoint(entityId: String): Double? {
+        val s = _entityStates.value[entityId] ?: return null
+        return if (entityId.startsWith("climate.")) s.attributes?.get("temperature")?.toString()?.toDoubleOrNull()
+        else s.state.toDoubleOrNull()
+    }
+
+    /**
+     * The schedule helper the zone is following right now: the house schedule's block (Day,
+     * Night, Away) in the zone's own family while it runs, else the house's. Same rule as the
+     * pop-up's stepper.
+     */
+    private fun activePresetEntity(zone: ClimateZone, settings: com.example.model.GlobalSettings): String {
+        val zoneMode = zone.currentHvacMode.lowercase()
+        val running = !com.example.model.isNotReporting(zoneMode) && zoneMode != "off"
+        val family = when {
+            running -> zoneMode
+            settings.globalHvacMode.lowercase() == "off" -> settings.lastNonOffHvacMode
+            else -> settings.globalHvacMode
+        }.lowercase()
+        val presets = if (family == "cool") zone.presetsCool else zone.presetsHeat
+        return when (settings.houseSchedule.lowercase()) {
+            "night" -> presets.night
+            "away" -> presets.away
+            else -> presets.day
+        }
+    }
+
+    /** Last value seen of each zone's active schedule helper, to notice a change from anywhere. */
+    private val lastSeenPreset = HashMap<String, Pair<String, Double?>>()
+
+    private fun evaluatePendingSetpoints() {
+        val ui = _uiState.value as? HvacUiState.Success ?: return
+        val now = System.currentTimeMillis()
+        val next = HashMap(_pendingSetpoints.value)
+
+        for (zone in ui.zones) {
+            val key = zone.key
+            val running = zone.currentHvacMode.lowercase().let { !com.example.model.isNotReporting(it) && it != "off" }
+
+            // 1. A new target from anywhere — this panel, another one, the phone, the Telegram
+            //    bot — shows up as the zone's schedule helper changing value. A switch of block
+            //    (Day to Night) is not a change of target and is ignored.
+            val entity = activePresetEntity(zone, ui.globalSettings)
+            val value = rawSetpoint(entity)
+            val seen = lastSeenPreset[key]
+            lastSeenPreset[key] = entity to value
+            if (seen != null && seen.first == entity && value != null && seen.second != null &&
+                kotlin.math.abs(value - seen.second!!) >= SETPOINT_TOLERANCE
+            ) {
+                // Running: wait for the head(s). Off: the change is the helper itself, so it has
+                // just been confirmed. A change mid-way re-targets and restarts the clock.
+                next[key] = com.example.model.PendingSetpoint(
+                    target = value,
+                    status = if (running) com.example.model.SetpointStatus.SETTING else com.example.model.SetpointStatus.CONFIRMED,
+                    since = now,
+                    watch = listOf(entity),
+                    startValues = emptyMap()
+                )
+            }
+
+            // 2. Judge what is in flight against what the card shows: SET is zone.targetTemp,
+            //    so confirming on anything fresher showed "Set confirmed" over the old number.
+            val p = next[key] ?: continue
+            val judged: com.example.model.PendingSetpoint? = when (p.status) {
+                com.example.model.SetpointStatus.SETTING -> {
+                    val heads = listOfNotNull(zone.targetTemp, zone.secondaryTargetTemp.takeIf { zone.secondaryClimateEntityId != null })
+                    val needed = if (zone.secondaryClimateEntityId != null) 2 else 1
+                    when {
+                        heads.size == needed && heads.all { kotlin.math.abs(it - p.target) < SETPOINT_TOLERANCE } ->
+                            p.copy(status = com.example.model.SetpointStatus.CONFIRMED, since = now)
+                        now - p.since > SETPOINT_CONFIRM_TIMEOUT_MS -> p.copy(status = com.example.model.SetpointStatus.FAILED, since = now)
+                        else -> p
+                    }
+                }
+                com.example.model.SetpointStatus.UPDATING -> {
+                    val v = p.watch.firstOrNull()?.let { rawSetpoint(it) }
+                    when {
+                        v != null && kotlin.math.abs(v - p.target) < SETPOINT_TOLERANCE ->
+                            p.copy(status = com.example.model.SetpointStatus.CONFIRMED, since = now)
+                        now - p.since > SETPOINT_CONFIRM_TIMEOUT_MS -> p.copy(status = com.example.model.SetpointStatus.FAILED, since = now)
+                        else -> p
+                    }
+                }
+                com.example.model.SetpointStatus.CONFIRMED -> p.takeIf { now - it.since < SETPOINT_CONFIRMED_SHOWN_MS }
+                com.example.model.SetpointStatus.FAILED -> p.takeIf { now - it.since < SETPOINT_FAILED_SHOWN_MS }
+            }
+            if (judged == null) next.remove(key) else next[key] = judged
+        }
+        if (next != _pendingSetpoints.value) _pendingSetpoints.value = next
     }
 
     /**

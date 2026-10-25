@@ -1369,7 +1369,11 @@ fun HvacDashboardContent(
     var isMenuExpanded by remember { mutableStateOf(!isLandscape) }
     val sidePanelWidth by animateDpAsState(targetValue = if (isMenuExpanded) 260.dp else 72.dp, label = "side_panel_width")
 
-    androidx.compose.runtime.CompositionLocalProvider(LocalInteractionClock provides interaction) {
+    val pendingSetpoints by viewModel.pendingSetpoints.collectAsStateWithLifecycle()
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalInteractionClock provides interaction,
+        LocalPendingSetpoints provides pendingSetpoints
+    ) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2701,6 +2705,7 @@ fun ConsolidatedZoneCard(
 
             if (cardHeight == null) Spacer(modifier = Modifier.height(5.dp))
 
+            SetpointStatusLine(zone.key, fontSize = 10.sp)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

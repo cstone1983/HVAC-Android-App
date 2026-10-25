@@ -50,6 +50,8 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
@@ -339,7 +341,14 @@ private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
                 modifier = Modifier.width(44.dp)
             )
             Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(58.dp)) {
-                if (room != null) {
+                if (LocalPendingSetpoints.current.containsKey(zone.key)) {
+                    // Above SET, in place of the head reading, for the few seconds it shows.
+                    SetpointStatusLine(
+                        zone.key,
+                        fontSize = 10.sp,
+                        modifier = Modifier.wrapContentWidth(Alignment.End, unbounded = true)
+                    )
+                } else if (room != null) {
                     Text(
                         text = "head ${zone.headTemp?.toInt()?.let { "$it°" } ?: "--"}",
                         fontSize = 10.sp,
@@ -762,13 +771,24 @@ private fun CommandZoneCard(
                         )
                     }
                     Spacer(Modifier.weight(1f))
-                    Text(
-                        text = "SET ${zone.targetTemp?.toInt() ?: "--"}°",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 0.8.sp,
-                        color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.6f)
-                    )
+                    // The "Setting to" line floats just above SET without taking any height, so
+                    // the card and its big reading stay exactly where they are when it appears.
+                    Box(contentAlignment = Alignment.BottomEnd) {
+                        Text(
+                            text = "SET ${zone.targetTemp?.toInt() ?: "--"}°",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 0.8.sp,
+                            color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.6f)
+                        )
+                        SetpointStatusLine(
+                            zone.key,
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .wrapContentWidth(Alignment.End, unbounded = true)
+                                .offset(y = (-17).dp)
+                        )
+                    }
                 }
             }
         }

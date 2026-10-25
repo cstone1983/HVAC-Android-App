@@ -991,6 +991,23 @@ fun alarmSensorStatusLabel(kind: AlarmSensorKind, rawState: String?): String {
     }
 }
 
+/**
+ * A temperature change on its way, for the "Setting to" line above SET on the zone card and in
+ * the pop-up. [watch] is what has to report [target] before it counts: the head (both heads on
+ * Main Level) when the change was sent to a running zone, or the schedule helper when the zone is
+ * off. [startValues] are those readings when the change began, so a different value appearing
+ * means someone else changed it.
+ */
+enum class SetpointStatus { SETTING, UPDATING, CONFIRMED, FAILED }
+
+data class PendingSetpoint(
+    val target: Double,
+    val status: SetpointStatus,
+    val since: Long,
+    val watch: List<String>,
+    val startValues: Map<String, Double?>
+)
+
 /** One change of the alarm's state, for the activity list. [openSensors] are entity ids. */
 data class AlarmEvent(
     val epochMs: Long,

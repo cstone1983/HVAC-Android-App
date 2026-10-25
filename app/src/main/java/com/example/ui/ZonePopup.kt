@@ -123,12 +123,16 @@ fun ZoneDetailPopup(
     val stepBlock: (ScheduleBlock, Double) -> Unit = { block, delta ->
         block.value?.let { current ->
             val newVal = current + delta
-            viewModel.setPresetTemperature(block.entityId, newVal, "${zone.name} ${block.label} $familyLabel")
-            if (block.active && zoneIsRunning) {
-                viewModel.setTargetTemperature(zone.climateEntityId, newVal, zone.name)
+            if (block.active) {
+                // The zone's own temperature: tracked, so the card and this pop-up show
+                // "Setting to" (or "Updating" when the zone is off) until it is confirmed.
+                viewModel.changeZoneTarget(zone, block.entityId, "${zone.name} ${block.label} $familyLabel", newVal, pushToHead = zoneIsRunning)
+            } else {
+                viewModel.setPresetTemperature(block.entityId, newVal, "${zone.name} ${block.label} $familyLabel")
             }
         }
     }
+    val pendingSetpoints by viewModel.pendingSetpoints.collectAsStateWithLifecycle()
 
     val onModeTap: (String) -> Unit = { mode ->
         if (mode == "off") {
@@ -148,6 +152,7 @@ fun ZoneDetailPopup(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+    CompositionLocalProvider(LocalPendingSetpoints provides pendingSetpoints) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -230,6 +235,7 @@ fun ZoneDetailPopup(
             }
             }
         }
+    }
     }
 }
 
@@ -350,7 +356,9 @@ private fun ReadingAndTarget(
             // The schedule number and what the head is actually holding can differ (a manual
             // change, or a head that is off); say so rather than show one and imply the other.
             val live = zone.targetTemp
-            if (activeBlock?.value != null && live != null && live.toInt() != activeBlock.value.toInt()) {
+            if (LocalPendingSetpoints.current.containsKey(zone.key)) {
+                SetpointStatusLine(zone.key, fontSize = 14.sp)
+            } else if (activeBlock?.value != null && live != null && live.toInt() != activeBlock.value.toInt()) {
                 Text("head set to ${live.toInt()}°", fontSize = 13.sp, color = Color.White.copy(alpha = 0.5f))
             } else if (activeBlock != null) {
                 Text("$familyLabel schedule", fontSize = 13.sp, color = Color.White.copy(alpha = 0.4f))
