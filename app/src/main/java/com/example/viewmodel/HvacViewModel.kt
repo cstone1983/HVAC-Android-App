@@ -2016,6 +2016,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private val _pendingSetpoints = MutableStateFlow<Map<String, com.example.model.PendingSetpoint>>(emptyMap())
     val pendingSetpoints: StateFlow<Map<String, com.example.model.PendingSetpoint>> = _pendingSetpoints.asStateFlow()
 
+    /** Last value seen of each zone's active schedule helper, to notice a change from anywhere.
+     * Declared before the init below, which can call evaluatePendingSetpoints straight away (71.0
+     * declared it after, and crashed on start when the zones were already loaded). */
+    private val lastSeenPreset = HashMap<String, Pair<String, Double?>>()
+
     // Here rather than in the init block near the top: properties and init blocks run in the
     // order they are written, and Dispatchers.Main.immediate starts the collector on the spot,
     // so a watcher declared above _pendingSetpoints read it while it was still null (69.0
@@ -2077,9 +2082,6 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             else -> presets.day
         }
     }
-
-    /** Last value seen of each zone's active schedule helper, to notice a change from anywhere. */
-    private val lastSeenPreset = HashMap<String, Pair<String, Double?>>()
 
     private fun evaluatePendingSetpoints() {
         val ui = _uiState.value as? HvacUiState.Success ?: return
