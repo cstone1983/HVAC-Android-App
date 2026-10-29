@@ -166,14 +166,24 @@ fun DuoStatTile(
                 if (last != null && (last.first().small == true) == (item.small == true)) last.add(item)
                 else rows.add(mutableListOf(item))
             }
-            rows.forEachIndexed { i, row ->
-                if (i > 0) Spacer(Modifier.height(12.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    row.forEach { item -> TileItem(item, palette, secondRow = i > 0) }
+            //
+            // Three full-size figures (Solar, House, Heat pumps since 2026-10-29) do not fit across
+            // the kitchen A9's tile at full size: Heat pumps wrapped onto a line of its own. A
+            // narrow tile with three or more in a row sets them a step smaller and closer.
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val narrow = maxWidth < 320.dp
+                Column {
+                    rows.forEachIndexed { i, row ->
+                        if (i > 0) Spacer(Modifier.height(12.dp))
+                        val compact = narrow && row.size >= 3
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 20.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            row.forEach { item -> TileItem(item, palette, secondRow = i > 0, compact = compact) }
+                        }
+                    }
                 }
             }
 
@@ -190,7 +200,7 @@ fun DuoStatTile(
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun TileItem(item: SolarTileItem, palette: SolarPalette, secondRow: Boolean = false) {
+private fun TileItem(item: SolarTileItem, palette: SolarPalette, secondRow: Boolean = false, compact: Boolean = false) {
     val toneColor = palette.tone(item.tone)
     Column {
         Row(
@@ -226,6 +236,7 @@ private fun TileItem(item: SolarTileItem, palette: SolarPalette, secondRow: Bool
                 fontSize = when {
                     item.small == true && secondRow -> 19.sp
                     item.small == true -> 16.sp
+                    compact -> 20.sp
                     else -> 23.sp
                 },
                 fontWeight = if (item.small == true) FontWeight.Medium else FontWeight.SemiBold,
@@ -320,14 +331,11 @@ fun SolarTodayTiles(
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val wideEnough = maxWidth >= 620.dp
         if (wideEnough) {
-            // One height for all three, the tallest's, so the row reads as a set.
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.height(androidx.compose.foundation.layout.IntrinsicSize.Min)
-            ) {
-                tiles.forEach { tile ->
-                    DuoStatTile(tile, palette, modifier = Modifier.weight(1f).fillMaxHeight())
-                }
+            // One height for all three, the tallest's, so the row reads as a set. Measured for real
+            // rather than with IntrinsicSize, which under-counted a tile whose figures wrapped and
+            // cut off its last line (the A9's Right now tile, 2026-10-29).
+            EqualHeightRow(tiles.size, spacing = 12.dp) { i ->
+                DuoStatTile(tiles[i], palette, modifier = Modifier.fillMaxSize())
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -747,5 +755,31 @@ private fun SolarNotice(text: String, color: Color, palette: SolarPalette) {
     ) {
         Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(color))
         Text(text = text, fontSize = 12.sp, color = color, maxLines = 2)
+    }
+}
+
+/**
+ * [count] equal-width cells side by side, all as tall as the tallest. Each cell is composed twice:
+ * once to measure its natural height, once at the shared height.
+ */
+@Composable
+private fun EqualHeightRow(count: Int, spacing: androidx.compose.ui.unit.Dp, cell: @Composable (Int) -> Unit) {
+    androidx.compose.ui.layout.SubcomposeLayout { constraints ->
+        val gap = spacing.roundToPx()
+        val width = ((constraints.maxWidth - gap * (count - 1)) / count).coerceAtLeast(0)
+        val natural = (0 until count).map { i ->
+            subcompose("measure$i") { cell(i) }.map {
+                it.measure(androidx.compose.ui.unit.Constraints(minWidth = width, maxWidth = width))
+            }.maxOfOrNull { p -> p.height } ?: 0
+        }
+        val height = natural.maxOrNull() ?: 0
+        val placed = (0 until count).map { i ->
+            subcompose("place$i") { cell(i) }.map {
+                it.measure(androidx.compose.ui.unit.Constraints.fixed(width, height))
+            }
+        }
+        layout(constraints.maxWidth, height) {
+            placed.forEachIndexed { i, ps -> ps.forEach { it.place(i * (width + gap), 0) } }
+        }
     }
 }
