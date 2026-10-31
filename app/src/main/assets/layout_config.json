@@ -1,5 +1,5 @@
 {
-  "version": "6.26.0",
+  "version": "6.27.0",
   "appTitle": "Home Control",
   "showWeatherCard": true,
   "weatherLatitude": 44.422164,
@@ -452,7 +452,7 @@
   "solarCalc": {
     "enabled": true,
     "baseUrl": "https://solar.stoneyshome.com/",
-    "pollSeconds": 60,
+    "pollSeconds": 20,
     "colors": {
       "panel": "#111823",
       "line": "#222d3d",
