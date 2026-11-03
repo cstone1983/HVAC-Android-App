@@ -1,5 +1,5 @@
 {
-  "version": "6.28.0",
+  "version": "6.29.0",
   "appTitle": "Home Control",
   "showWeatherCard": true,
   "weatherLatitude": 44.422164,
@@ -160,6 +160,17 @@
       "secondaryClimateEntityId": "climate.hp_dining_room",
       "primaryHeadLabel": "L",
       "secondaryHeadLabel": "DR",
+      "headChoice": {
+        "entityId": "input_select.main_level_heads",
+        "allOption": "Both",
+        "switchOption": "Living room only",
+        "pausedHeads": {
+          "Living room only": ["climate.hp_dining_room"],
+          "Dining room only": ["climate.hp_living_room"]
+        },
+        "switchLabel": "LR ONLY",
+        "pausedText": "PAUSED"
+      },
       "roomTemperatureEntityId": "sensor.living_room_temperature",
       "autoEntityId": "input_boolean.zone_enable_main_level",
       "overrideEntityId": "input_boolean.override_main_level",

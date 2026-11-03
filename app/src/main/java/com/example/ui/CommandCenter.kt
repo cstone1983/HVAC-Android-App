@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,12 +26,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.Bed
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Thermostat
@@ -59,6 +62,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -145,6 +149,7 @@ fun CommandCenterHome(
                 ZonesHeader()
                 Spacer(Modifier.height(6.dp))
                 ZoneGrid(
+                    onHeadChoice = { zone, on -> viewModel.setHeadChoice(zone, on) },
                     zones = state.zones,
                     onZoneClick = onZoneClick,
                     modifier = Modifier
@@ -205,7 +210,7 @@ private fun NarrowCommandCenter(
         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
             ZonesHeader()
             state.zones.forEach { zone ->
-                CommandZoneRow(zone = zone, onClick = { onZoneClick(zone) })
+                CommandZoneRow(zone = zone, onClick = { onZoneClick(zone) }, onHeadChoice = { on -> viewModel.setHeadChoice(zone, on) })
             }
             OtherRoomsLine(state, viewModel)
         }
@@ -221,7 +226,7 @@ private fun NarrowCommandCenter(
  * number, the head and target stacked on the right, and HOLD spelled out because there is room.
  */
 @Composable
-private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
+private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit, onHeadChoice: (Boolean) -> Unit) {
     val theme = LocalHvacTheme.current
     val activeColor = theme.colorForMode(zone.currentHvacMode)
     val modeTint = theme.tintForMode(zone.currentHvacMode)
@@ -317,6 +322,27 @@ private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
                     }
                 }
                 heads?.drop(1)?.forEach { HeadStatusLine(it, fontSize = 10.sp, lowercase = true) }
+                }
+            }
+            // The head-choice switch as a pause button: the row has no room for a labelled one.
+            if (zone.headChoice != null) {
+                val on = zone.headChoiceSwitchOn
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .size(30.dp)
+                        .background(if (on) PausedColor.copy(alpha = 0.2f) else Color.Transparent, com.example.ui.theme.themedShape(8.dp))
+                        .border(1.dp, if (on) PausedColor else Color.White.copy(alpha = 0.25f), com.example.ui.theme.themedShape(8.dp))
+                        .clickable { onHeadChoice(!on) }
+                        .testTag("cc_head_choice_${zone.key}")
+                ) {
+                    Icon(
+                        Icons.Default.Pause,
+                        contentDescription = zone.headChoice.switchOption + if (on) " on" else " off",
+                        tint = if (on) PausedColor else Color.White.copy(alpha = 0.6f),
+                        modifier = Modifier.size(15.dp)
+                    )
                 }
             }
             // Fixed widths from here on, so the numbers line up down the list.
@@ -573,6 +599,7 @@ private fun LegendItem(icon: ImageVector, tint: Color, label: String) {
 private fun ZoneGrid(
     zones: List<ClimateZone>,
     onZoneClick: (ClimateZone) -> Unit,
+    onHeadChoice: (ClimateZone, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val rows = zones.chunked(3)
@@ -588,6 +615,7 @@ private fun ZoneGrid(
                     CommandZoneCard(
                         zone = zone,
                         onClick = { onZoneClick(zone) },
+                        onHeadChoice = { on -> onHeadChoice(zone, on) },
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
@@ -611,6 +639,7 @@ private fun ZoneGrid(
 private fun CommandZoneCard(
     zone: ClimateZone,
     onClick: () -> Unit,
+    onHeadChoice: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val theme = LocalHvacTheme.current
@@ -657,6 +686,8 @@ private fun CommandZoneCard(
             // The hero numeral scales with the card, so the A9's shorter cards and the Fold's
             // narrower ones still fit — by height on the tablets, by width on the phone.
             val heroSize = minOf(maxHeight.value * 0.26f, maxWidth.value * 0.24f).coerceIn(26f, 50f).sp
+            // The kitchen tablet with its side menu open: too narrow for the switch's label beside it.
+            val narrowCard = maxWidth < 250.dp
 
             Column(
                 modifier = Modifier
@@ -777,6 +808,15 @@ private fun CommandZoneCard(
                             color = HumidityColor
                         )
                     }
+                    // Just above SET, in the big reading's row rather than a line of its own: the
+                    // kitchen tablet's shorter cards had no height for one and lost SET.
+                    if (zone.headChoice != null) {
+                        Spacer(Modifier.weight(1f))
+                        Column(horizontalAlignment = Alignment.End, modifier = Modifier.align(Alignment.Bottom)) {
+                            SetpointStatusLine(zone.key, fontSize = 13.sp, modifier = Modifier.wrapContentWidth(Alignment.End, unbounded = true))
+                            HeadChoiceSwitch(zone, onHeadChoice, stacked = narrowCard)
+                        }
+                    }
                 }
 
                 // The head and the target.
@@ -796,8 +836,9 @@ private fun CommandZoneCard(
                         )
                     }
                     Spacer(Modifier.weight(1f))
-                    // The "Setting to" line floats just above SET without taking any height, so
-                    // the card and its big reading stay exactly where they are when it appears.
+                    // The "Setting to" line floats just above SET without taking any height, so the
+                    // card and its big reading stay exactly where they are when it appears. With a
+                    // head-choice switch there it sits above the switch instead (see above).
                     Box(contentAlignment = Alignment.BottomEnd) {
                         Text(
                             text = "SET ${zone.targetTemp?.toInt() ?: "--"}°",
@@ -806,7 +847,7 @@ private fun CommandZoneCard(
                             letterSpacing = 0.8.sp,
                             color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.6f)
                         )
-                        SetpointStatusLine(
+                        if (zone.headChoice == null) SetpointStatusLine(
                             zone.key,
                             fontSize = 13.sp,
                             modifier = Modifier
@@ -817,6 +858,60 @@ private fun CommandZoneCard(
                 }
             }
         }
+    }
+}
+
+/** Amber, like the boost colour family: something deliberately not running as usual. */
+private val PausedColor = Color(0xFFF0A24B)
+
+/**
+ * The zone card's head-choice switch ("LR ONLY"). Its own tap target, so flipping it does not
+ * open the zone pop-up; tapping anywhere else on the card still does.
+ */
+@Composable
+private fun HeadChoiceSwitch(zone: ClimateZone, onHeadChoice: (Boolean) -> Unit, stacked: Boolean = false) {
+    val choice = zone.headChoice ?: return
+    val on = zone.headChoiceSwitchOn
+    val tap = Modifier
+        .clip(com.example.ui.theme.themedShape(6.dp))
+        .clickable { onHeadChoice(!on) }
+        .padding(horizontal = 2.dp, vertical = 2.dp)
+        .testTag("cc_head_choice_${zone.key}")
+    val label = @Composable {
+        Text(
+            text = choice.switchLabel?.takeIf { it.isNotBlank() } ?: choice.switchOption.uppercase(),
+            fontSize = if (stacked) 8.sp else 9.5.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = if (stacked) 0.4.sp else 0.6.sp,
+            lineHeight = if (stacked) 10.sp else 12.sp,
+            color = if (on) PausedColor else Color.White.copy(alpha = 0.55f),
+            maxLines = 1
+        )
+    }
+    // Side by side normally; on a narrow card the label sits smaller, over the switch.
+    if (stacked) Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp), modifier = tap) {
+        label()
+        HeadChoiceToggle(on)
+    } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = tap) {
+        label()
+        HeadChoiceToggle(on)
+    }
+}
+
+@Composable
+private fun HeadChoiceToggle(on: Boolean) {
+    Box(
+        modifier = Modifier
+            .size(width = 28.dp, height = 16.dp)
+            .background(if (on) PausedColor else Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+    ) {
+        Box(
+            modifier = Modifier
+                .align(if (on) Alignment.CenterEnd else Alignment.CenterStart)
+                .padding(2.dp)
+                .size(12.dp)
+                .background(if (on) Color.White else Color(0xFFCBD5E1), CircleShape)
+        )
     }
 }
 

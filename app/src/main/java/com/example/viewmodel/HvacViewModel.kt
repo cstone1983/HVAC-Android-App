@@ -1583,6 +1583,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         ?.let { statesMap[it]?.getStringAttribute("hvac_action") },
                     primaryHeadLabel = zone.primaryHeadLabel,
                     secondaryHeadLabel = zone.secondaryHeadLabel,
+                    headChoice = zone.headChoice,
+                    headChoiceValue = zone.headChoice?.let { statesMap[it.entityId]?.state },
                     vaneMode = tilt?.state ?: "Auto",
                     fanMode = fan?.state ?: "Auto",
                     // Fallbacks match the helpers' real option lists. The vane list here used to
@@ -1931,10 +1933,15 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             // SET now always shows the head, and the change in flight is the "Setting to" line.
         }
         // Main Level's second head gets the same value in the same call, so the zone is set when
-        // both report it rather than whenever the sequencer next mirrors one onto the other.
-        val secondary = (current as? HvacUiState.Success)?.zones
-            ?.find { it.climateEntityId == climateEntityId }?.secondaryClimateEntityId
-        val targets: Any = if (secondary != null) listOf(climateEntityId, secondary) else climateEntityId
+        // both report it rather than whenever the sequencer next mirrors one onto the other. A
+        // head paused by the zone's head choice is left out: n8n is holding it off.
+        val inUse = (current as? HvacUiState.Success)?.zones
+            ?.find { it.climateEntityId == climateEntityId }?.headsInUse.orEmpty()
+        val targets: Any = when {
+            inUse.size > 1 -> inUse
+            inUse.size == 1 -> inUse[0]
+            else -> climateEntityId
+        }
 
         // 2. Debounce sending to Home Assistant (wait for 2 second quiet period)
         pendingTemperatureJobs.remove(climateEntityId)?.cancel()
@@ -2124,8 +2131,10 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             val p = next[key] ?: continue
             val judged: com.example.model.PendingSetpoint? = when (p.status) {
                 com.example.model.SetpointStatus.SETTING -> {
-                    val heads = listOfNotNull(zone.targetTemp, zone.secondaryTargetTemp.takeIf { zone.secondaryClimateEntityId != null })
-                    val needed = if (zone.secondaryClimateEntityId != null) 2 else 1
+                    // The heads in use only: a paused head is held off and never takes the value.
+                    val inUse = zone.headsInUse
+                    val heads = inUse.mapNotNull { if (it == zone.climateEntityId) zone.targetTemp else zone.secondaryTargetTemp }
+                    val needed = inUse.size
                     when {
                         heads.size == needed && heads.all { kotlin.math.abs(it - p.target) < SETPOINT_TOLERANCE } ->
                             p.copy(status = com.example.model.SetpointStatus.CONFIRMED, since = now)
@@ -2169,7 +2178,26 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun toggleZonePower(climateEntityId: String, currentHvacMode: String, globalHvacMode: String, name: String) {
+    /**
+     * The head a zone-level command goes to: the zone's primary head, unless the head choice has
+     * paused it, in which case the head that is running. n8n mirrors it to the other while both run.
+     */
+    private fun leadHeadFor(zoneEntityId: String): String =
+        (_uiState.value as? HvacUiState.Success)?.zones
+            ?.find { it.climateEntityId == zoneEntityId }?.headsInUse?.firstOrNull()
+            ?: zoneEntityId
+
+    /** Flips the zone card's head-choice switch ("Living room only") on or off. */
+    fun setHeadChoice(zone: ClimateZone, switchOn: Boolean) {
+        val choice = zone.headChoice ?: return
+        callServiceWithOptimisticFeedback("input_select", "select_option", mapOf(
+            "entity_id" to choice.entityId,
+            "option" to (if (switchOn) choice.switchOption else choice.allOption)
+        ), "${choice.switchOption} ${if (switchOn) "on" else "off"}")
+    }
+
+    fun toggleZonePower(zoneEntityId: String, currentHvacMode: String, globalHvacMode: String, name: String) {
+        val climateEntityId = leadHeadFor(zoneEntityId)
         val mode = currentHvacMode.lowercase()
         // Nothing sensible to toggle toward when we cannot hear from the head, and sending
         // turn_off to a head that is merely unreachable is a command with no meaning.
@@ -2186,7 +2214,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         // Powering on goes through the same path as the mode buttons, so it gets turn_on before
         // the mode and the scheduled setpoint afterwards. It used to send a bare set_hvac_mode,
         // which left the head on the other family's setpoint.
-        setZoneHvacMode(climateEntityId, powerOnModeFor(globalHvacMode), name)
+        setZoneHvacMode(zoneEntityId, powerOnModeFor(globalHvacMode), name)
     }
 
     /**
@@ -2317,17 +2345,23 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             // committed to a family the zone read as neutral and the guard returned "no
             // conflict" — letting a clashing mode through to the other unit, which the watchdog
             // then resolved by switching equipment off a minute or two later.
+            // Each head carries its own outdoor unit, so a paused dining head (off, on unit 2) no
+            // longer makes Main Level block Anthony and Autumn.
             zones = state.zones.flatMap { zone ->
                 listOfNotNull(
-                    com.example.model.ZoneModeSnapshot(zone.key, zone.name, zone.currentHvacMode),
+                    com.example.model.ZoneModeSnapshot(zone.key, zone.name, zone.currentHvacMode, com.example.model.headOutdoorUnit[zone.climateEntityId]?.let { setOf(it) }),
                     zone.secondaryHvacMode?.let {
-                        com.example.model.ZoneModeSnapshot(zone.key, zone.name, it)
+                        com.example.model.ZoneModeSnapshot(zone.key, zone.name, it, zone.secondaryClimateEntityId?.let { id -> com.example.model.headOutdoorUnit[id]?.let { u -> setOf(u) } })
                     }
                 )
             },
             globalHvacMode = state.globalSettings.globalHvacMode,
             targetZoneKey = targetZoneKey,
-            requestedMode = requestedMode
+            requestedMode = requestedMode,
+            targetUnits = state.zones.find { it.key == targetZoneKey }?.headsInUse
+                ?.mapNotNull { com.example.model.headOutdoorUnit[it] }?.toSet()
+                ?.takeIf { it.isNotEmpty() }
+                ?: com.example.model.outdoorUnitsFor(targetZoneKey)
         )
     }
 
@@ -2454,7 +2488,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         return false
     }
 
-    fun setZoneHvacMode(climateEntityId: String, mode: String, name: String) {
+    fun setZoneHvacMode(zoneEntityId: String, mode: String, name: String) {
+        val climateEntityId = leadHeadFor(zoneEntityId)
         val target = mode.lowercase()
         // Recorded before queuing so a later tap can supersede this one while it waits.
         latestRequestedMode[climateEntityId] = target

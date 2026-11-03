@@ -370,6 +370,8 @@ data class ClimateZoneConfig(
      */
     val primaryHeadLabel: String? = null,
     val secondaryHeadLabel: String? = null,
+    /** Which of the zone's heads run ("Living room only"). See [HeadChoiceConfig]. */
+    val headChoice: HeadChoiceConfig? = null,
     /**
      * A sensor that measures the room, used in preference to the head's own reading.
      *
@@ -404,6 +406,29 @@ data class ClimateZoneConfig(
     val fanEntityId: String,
     val presetsHeat: PresetsConfig,
     val presetsCool: PresetsConfig
+)
+
+/**
+ * Which heads of a two-head zone run, picked by an input_select in Home Assistant.
+ *
+ * n8n holds a paused head off and leaves it out of the mirror, the schedule and setpoints (the
+ * same option names and head lists are in the HVAC Controller, Watchdog and Bot). The app shows a
+ * switch on the zone card that flips between [allOption] and [switchOption], sends setpoints and
+ * modes only to the heads in use, and shows a paused head as [pausedText].
+ */
+@JsonClass(generateAdapter = true)
+data class HeadChoiceConfig(
+    val entityId: String,
+    /** The option where every head runs. */
+    val allOption: String = "Both",
+    /** The option the card's switch selects. */
+    val switchOption: String,
+    /** The heads each option pauses, by option name (matched ignoring case, as n8n does). */
+    val pausedHeads: Map<String, List<String>> = emptyMap(),
+    /** Short label beside the card's switch. */
+    val switchLabel: String? = null,
+    /** What a paused head's status line says. */
+    val pausedText: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -477,6 +502,9 @@ data class ClimateZone(
     val secondaryHvacAction: String? = null,
     val primaryHeadLabel: String? = null,
     val secondaryHeadLabel: String? = null,
+    val headChoice: HeadChoiceConfig? = null,
+    /** The head-choice helper's current option, e.g. "Living room only". */
+    val headChoiceValue: String? = null,
     val vaneMode: String = "Auto",
     val fanMode: String = "Auto",
     /**
@@ -502,6 +530,19 @@ data class ClimateZone(
     val isCalling: Boolean
         get() = headIsCalling(currentHvacMode, hvacAction, currentTemp, targetTemp)
 
+    /** Heads n8n is holding off because of [headChoice]. Empty when every head runs. */
+    val pausedHeads: List<String>
+        get() = headChoice?.pausedHeads?.entries
+            ?.firstOrNull { it.key.equals(headChoiceValue, ignoreCase = true) }?.value.orEmpty()
+
+    /** The zone's heads that are running as usual, primary first. */
+    val headsInUse: List<String>
+        get() = listOfNotNull(climateEntityId, secondaryClimateEntityId).filter { it !in pausedHeads }
+
+    /** True while the card's switch is on ("Living room only"). */
+    val headChoiceSwitchOn: Boolean
+        get() = headChoice != null && headChoiceValue.equals(headChoice.switchOption, ignoreCase = true)
+
     /**
      * One line per head for a two-head zone with both labels set; null otherwise. Each head is
      * judged on its own mode, reading and target by the same rule as the zone, so a split shows
@@ -513,13 +554,17 @@ data class ClimateZone(
             val first = primaryHeadLabel?.takeIf { it.isNotBlank() } ?: return null
             val second = secondaryHeadLabel?.takeIf { it.isNotBlank() } ?: return null
             val otherMode = secondaryHvacMode ?: "unavailable"
+            val paused = pausedHeads
+            val pausedText = headChoice?.pausedText?.takeIf { it.isNotBlank() } ?: "PAUSED"
             // Both heads on but in different modes (heating and cooling): RUNNING on each would
             // hide that, so each line says its mode instead.
             val clash = isSplit && currentHvacMode.lowercase() != "off" && otherMode.lowercase() != "off"
             val otherCalling = headIsCalling(otherMode, secondaryHvacAction, secondaryCurrentTemp, secondaryTargetTemp)
             return listOf(
-                HeadStatus(first, currentHvacMode, headStatusText(currentHvacMode, isCalling, currentTemp != null && targetTemp != null, clash), isCalling),
-                HeadStatus(second, otherMode, headStatusText(otherMode, otherCalling, secondaryCurrentTemp != null && secondaryTargetTemp != null, clash), otherCalling)
+                if (climateEntityId in paused) HeadStatus(first, currentHvacMode, pausedText, false)
+                else HeadStatus(first, currentHvacMode, headStatusText(currentHvacMode, isCalling, currentTemp != null && targetTemp != null, clash), isCalling),
+                if (secondaryClimateEntityId in paused) HeadStatus(second, otherMode, pausedText, false)
+                else HeadStatus(second, otherMode, headStatusText(otherMode, otherCalling, secondaryCurrentTemp != null && secondaryTargetTemp != null, clash), otherCalling)
             )
         }
 
@@ -539,6 +584,8 @@ data class ClimateZone(
      */
     val isSplit: Boolean
         get() {
+            // A paused head is meant to differ from the other one.
+            if (pausedHeads.isNotEmpty()) return false
             val other = secondaryHvacMode?.lowercase() ?: return false
             val mine = currentHvacMode.lowercase()
             if (mine in notReportingModes || other in notReportingModes) return false
@@ -720,7 +767,9 @@ fun sharesOutdoorUnit(zoneKeyA: String, zoneKeyB: String): Boolean =
 data class ZoneModeSnapshot(
     val key: String,
     val name: String,
-    val mode: String
+    val mode: String,
+    /** The outdoor unit(s) of the head this snapshot is for; null means the whole zone's. */
+    val units: Set<Int>? = null
 )
 
 /**
@@ -744,7 +793,9 @@ fun findModeConflict(
     zones: List<ZoneModeSnapshot>,
     globalHvacMode: String,
     targetZoneKey: String,
-    requestedMode: String
+    requestedMode: String,
+    /** The units the request would run on: fewer than the zone's when one of its heads is paused. */
+    targetUnits: Set<Int> = outdoorUnitsFor(targetZoneKey)
 ): ModeConflict? {
     val requested = hvacFamilyOf(requestedMode)
     if (requested == HvacFamily.NEUTRAL) return null
@@ -768,7 +819,7 @@ fun findModeConflict(
     val clashing = zones.filter {
         it.key != targetZoneKey &&
             conflicting(it.mode) &&
-            sharesOutdoorUnit(it.key, targetZoneKey)
+            (it.units ?: outdoorUnitsFor(it.key)).any { u -> u in targetUnits }
     }
     val blocker = clashing.firstOrNull { it.key == "main_level" }
         ?: clashing.firstOrNull()
