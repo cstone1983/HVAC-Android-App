@@ -1577,6 +1577,12 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     secondaryHvacMode = zone.secondaryClimateEntityId?.let { statesMap[it]?.state },
                     secondaryTargetTemp = zone.secondaryClimateEntityId
                         ?.let { statesMap[it]?.getDoubleAttribute("temperature") },
+                    secondaryCurrentTemp = zone.secondaryClimateEntityId
+                        ?.let { statesMap[it]?.getDoubleAttribute("current_temperature") },
+                    secondaryHvacAction = zone.secondaryClimateEntityId
+                        ?.let { statesMap[it]?.getStringAttribute("hvac_action") },
+                    primaryHeadLabel = zone.primaryHeadLabel,
+                    secondaryHeadLabel = zone.secondaryHeadLabel,
                     vaneMode = tilt?.state ?: "Auto",
                     fanMode = fan?.state ?: "Auto",
                     // Fallbacks match the helpers' real option lists. The vane list here used to

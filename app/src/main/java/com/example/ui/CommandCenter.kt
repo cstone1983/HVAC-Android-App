@@ -63,6 +63,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.ClimateZone
@@ -275,7 +276,15 @@ private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
                 modifier = Modifier.size(16.dp)
             )
             Spacer(Modifier.width(8.dp))
+            val heads = zone.headStatuses
             Column(modifier = Modifier.weight(1f)) {
+                // Three lines in a 48 dp row (Main Level, one per head) need tighter lines than
+                // the theme's 24 sp.
+                androidx.compose.material3.ProvideTextStyle(
+                    androidx.compose.ui.text.TextStyle(
+                        lineHeight = if (heads != null) 1.2.em else androidx.compose.ui.unit.TextUnit.Unspecified
+                    )
+                ) {
                 Text(
                     text = zone.name,
                     fontSize = 13.sp,
@@ -285,7 +294,9 @@ private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
+                    if (heads != null) {
+                        HeadStatusLine(heads.first(), fontSize = 10.sp, lowercase = true)
+                    } else Text(
                         text = zone.statusLabel.lowercase(),
                         fontSize = 10.sp,
                         color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.5f),
@@ -304,6 +315,8 @@ private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
                             modifier = Modifier.size(10.dp)
                         )
                     }
+                }
+                heads?.drop(1)?.forEach { HeadStatusLine(it, fontSize = 10.sp, lowercase = true) }
                 }
             }
             // Fixed widths from here on, so the numbers line up down the list.
@@ -651,7 +664,11 @@ private fun CommandZoneCard(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Name and what it is doing.
+                // Name and what it is doing. A two-head zone says it per head, one line each,
+                // on the right of the name and flag rows so the card gains no height.
+                val heads = zone.headStatuses
+                Row(verticalAlignment = Alignment.Top) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (heads != null) 4.dp else 0.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = zoneIcon(zone.key),
@@ -676,7 +693,7 @@ private fun CommandZoneCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
-                    Text(
+                    if (heads == null) Text(
                         text = zone.statusLabel,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black,
@@ -708,6 +725,14 @@ private fun CommandZoneCard(
                             )
                         }
                     }
+                }
+                }
+                if (heads != null) {
+                    Spacer(Modifier.width(6.dp))
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        heads.forEach { HeadStatusLine(it, fontSize = 9.sp, lowercase = false) }
+                    }
+                }
                 }
 
                 // The room, big. Falls back to the head with its own icon where a zone has no
@@ -793,6 +818,22 @@ private fun CommandZoneCard(
             }
         }
     }
+}
+
+/** "L: AT TARGET" — one head's label and what it is doing, coloured while it runs. */
+@Composable
+private fun HeadStatusLine(head: com.example.model.HeadStatus, fontSize: androidx.compose.ui.unit.TextUnit, lowercase: Boolean) {
+    val theme = LocalHvacTheme.current
+    val text = if (lowercase) head.text.lowercase() else head.text
+    Text(
+        text = "${head.label}: $text",
+        fontSize = fontSize,
+        fontWeight = if (lowercase) FontWeight.Normal else FontWeight.Black,
+        letterSpacing = if (lowercase) 0.sp else 0.6.sp,
+        lineHeight = fontSize * 1.15f,
+        color = if (head.calling) theme.colorForMode(head.hvacMode) else Color.White.copy(alpha = if (lowercase) 0.5f else 0.45f),
+        maxLines = 1
+    )
 }
 
 @Composable

@@ -364,6 +364,13 @@ data class ClimateZoneConfig(
      */
     val secondaryClimateEntityId: String? = null,
     /**
+     * Short names for the two heads ("L", "DR"). With both set and a second head, the card says
+     * what each head is doing on a line of its own ("L: AT TARGET" / "DR: RUNNING") instead of
+     * one verdict for the zone. Blank or missing keeps the single line.
+     */
+    val primaryHeadLabel: String? = null,
+    val secondaryHeadLabel: String? = null,
+    /**
      * A sensor that measures the room, used in preference to the head's own reading.
      *
      * The heads measure their own return air, and that thermistor sits inside the casing of a
@@ -465,6 +472,11 @@ data class ClimateZone(
     val secondaryClimateEntityId: String? = null,
     val secondaryHvacMode: String? = null,
     val secondaryTargetTemp: Double? = null,
+    /** The second head's own reading and `hvac_action`, to judge it on its own. */
+    val secondaryCurrentTemp: Double? = null,
+    val secondaryHvacAction: String? = null,
+    val primaryHeadLabel: String? = null,
+    val secondaryHeadLabel: String? = null,
     val vaneMode: String = "Auto",
     val fanMode: String = "Auto",
     /**
@@ -488,20 +500,27 @@ data class ClimateZone(
 ) {
     /** True only while the unit should actually be moving air to reach its target. */
     val isCalling: Boolean
+        get() = headIsCalling(currentHvacMode, hvacAction, currentTemp, targetTemp)
+
+    /**
+     * One line per head for a two-head zone with both labels set; null otherwise. Each head is
+     * judged on its own mode, reading and target by the same rule as the zone, so a split shows
+     * up as two lines that differ rather than needing a word of its own.
+     */
+    val headStatuses: List<HeadStatus>?
         get() {
-            val mode = currentHvacMode.lowercase()
-            if (mode in notReportingModes) return false
-            hvacAction?.lowercase()?.let { action ->
-                return action == "heating" || action == "cooling" || action == "drying"
-            }
-            val current = currentTemp ?: return false
-            val target = targetTemp ?: return false
-            return when (mode) {
-                "heat" -> current < target - 0.5
-                "cool", "dry" -> current > target + 0.5
-                "fan_only" -> true
-                else -> false
-            }
+            if (secondaryClimateEntityId == null) return null
+            val first = primaryHeadLabel?.takeIf { it.isNotBlank() } ?: return null
+            val second = secondaryHeadLabel?.takeIf { it.isNotBlank() } ?: return null
+            val otherMode = secondaryHvacMode ?: "unavailable"
+            // Both heads on but in different modes (heating and cooling): RUNNING on each would
+            // hide that, so each line says its mode instead.
+            val clash = isSplit && currentHvacMode.lowercase() != "off" && otherMode.lowercase() != "off"
+            val otherCalling = headIsCalling(otherMode, secondaryHvacAction, secondaryCurrentTemp, secondaryTargetTemp)
+            return listOf(
+                HeadStatus(first, currentHvacMode, headStatusText(currentHvacMode, isCalling, currentTemp != null && targetTemp != null, clash), isCalling),
+                HeadStatus(second, otherMode, headStatusText(otherMode, otherCalling, secondaryCurrentTemp != null && secondaryTargetTemp != null, clash), otherCalling)
+            )
         }
 
     /**
@@ -546,8 +565,37 @@ data class ClimateZone(
     private companion object {
         /** States that mean "no usable reading", as opposed to a head deliberately switched off. */
         val notReportingModes = NOT_REPORTING_MODES
+
+        /** True only while a head should actually be moving air to reach its target. */
+        fun headIsCalling(hvacMode: String, action: String?, current: Double?, target: Double?): Boolean {
+            val mode = hvacMode.lowercase()
+            if (mode in notReportingModes) return false
+            action?.lowercase()?.let { return it == "heating" || it == "cooling" || it == "drying" }
+            if (current == null || target == null) return false
+            return when (mode) {
+                "heat" -> current < target - 0.5
+                "cool", "dry" -> current > target + 0.5
+                "fan_only" -> true
+                else -> false
+            }
+        }
+
+        fun headStatusText(hvacMode: String, calling: Boolean, haveTemps: Boolean, clash: Boolean): String {
+            val mode = hvacMode.lowercase()
+            return when {
+                mode == "off" -> "OFF"
+                mode in notReportingModes -> "UNAVAILABLE"
+                clash -> mode.replace('_', ' ').uppercase()
+                calling -> "RUNNING"
+                haveTemps -> "AT TARGET"
+                else -> "IDLE"
+            }
+        }
     }
 }
+
+/** What one head of a two-head zone is doing, for the card's per-head lines. */
+data class HeadStatus(val label: String, val hvacMode: String, val text: String, val calling: Boolean)
 
 /** States that mean "no usable reading", as opposed to a head deliberately switched off. */
 val NOT_REPORTING_MODES = setOf("unavailable", "unknown", "")

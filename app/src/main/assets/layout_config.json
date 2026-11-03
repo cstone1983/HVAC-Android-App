@@ -1,5 +1,5 @@
 {
-  "version": "6.27.0",
+  "version": "6.28.0",
   "appTitle": "Home Control",
   "showWeatherCard": true,
   "weatherLatitude": 44.422164,
@@ -158,6 +158,8 @@
       "name": "Main Level",
       "climateEntityId": "climate.hp_living_room",
       "secondaryClimateEntityId": "climate.hp_dining_room",
+      "primaryHeadLabel": "L",
+      "secondaryHeadLabel": "DR",
       "roomTemperatureEntityId": "sensor.living_room_temperature",
       "autoEntityId": "input_boolean.zone_enable_main_level",
       "overrideEntityId": "input_boolean.override_main_level",
