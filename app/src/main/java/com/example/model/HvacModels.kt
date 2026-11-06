@@ -314,6 +314,8 @@ data class HvacLayoutConfig(
     val solarCalc: SolarCalcConfig? = SolarCalcConfig(),
     val alarm: AlarmConfig? = AlarmConfig(),
     val homeStatus: HomeStatusConfig? = HomeStatusConfig(),
+    /** The Heat pump settings page. Null hides its gear. See [HvacSettingsConfig]. */
+    val hvacSettings: HvacSettingsConfig? = null,
     val dynamicSections: List<DynamicSectionConfig>? = emptyList(),
     val showWeatherCard: Boolean? = true,
     // Idle behaviour, in seconds. Both were hardcoded to 30, which was too short to read a
@@ -412,9 +414,10 @@ data class ClimateZoneConfig(
  * Which heads of a two-head zone run, picked by an input_select in Home Assistant.
  *
  * n8n holds a paused head off and leaves it out of the mirror, the schedule and setpoints (the
- * same option names and head lists are in the HVAC Controller, Watchdog and Bot). The app shows a
- * switch on the zone card that flips between [allOption] and [switchOption], sends setpoints and
- * modes only to the heads in use, and shows a paused head as [pausedText].
+ * same option names and head lists are in the HVAC Controller, Watchdog and Bot). The app's Heat
+ * pump settings page has a switch that flips between [allOption] and [switchOption] (it moved there
+ * from the zone card on 2026-11-06); the app sends setpoints and modes only to the heads in use, and
+ * shows a paused head as [pausedText].
  */
 @JsonClass(generateAdapter = true)
 data class HeadChoiceConfig(
@@ -428,7 +431,9 @@ data class HeadChoiceConfig(
     /** Short label beside the card's switch. */
     val switchLabel: String? = null,
     /** What a paused head's status line says. */
-    val pausedText: String? = null
+    val pausedText: String? = null,
+    /** The second line of its row on the Heat pump settings page. */
+    val description: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -505,6 +510,15 @@ data class ClimateZone(
     val headChoice: HeadChoiceConfig? = null,
     /** The head-choice helper's current option, e.g. "Living room only". */
     val headChoiceValue: String? = null,
+    /**
+     * The schedule block a house condition has the zone on instead of the house's ("Away" while
+     * Kids away is on), or null when it follows the house. See [zoneConditionEffect].
+     */
+    val scheduleOverride: String? = null,
+    /** Degrees a running Boost adds (heating) or takes off (cooling). */
+    val boostDegrees: Double = 0.0,
+    /** Shown after SET while a condition changes the zone's target ("BOOST", "KIDS AWAY"). */
+    val conditionLabel: String? = null,
     val vaneMode: String = "Auto",
     val fanMode: String = "Auto",
     /**
@@ -868,14 +882,15 @@ fun scheduledSetpoint(zone: ClimateZone, houseSchedule: String, targetMode: Stri
     val mode = targetMode.lowercase()
     if (mode == "off" || mode == "fan_only" || mode == "unavailable") return null
 
+    // House conditions (Kids away, Night early, Boost) as n8n applies them.
     val presets = if (mode == "cool") zone.presetsCool else zone.presetsHeat
-    val value = when (houseSchedule.lowercase()) {
+    val value = when ((zone.scheduleOverride ?: houseSchedule).lowercase()) {
         "night" -> presets.nightValue
         "away" -> presets.awayValue
         else -> presets.dayValue
     } ?: return null
 
-    return clampToHardwareFloor(value, mode)
+    return clampToHardwareFloor(applyBoost(value, zone.boostDegrees, mode), mode)
 }
 
 /**

@@ -33,7 +33,7 @@ import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.Bed
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Thermostat
@@ -50,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -124,6 +125,10 @@ fun CommandCenterHome(
         return
     }
     val medium = layout == CommandLayout.MEDIUM
+    var showSettings by remember { mutableStateOf(false) }
+    if (showSettings) HeatPumpSettingsDialog(state, viewModel, onDismiss = { showSettings = false })
+    val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
+    val openSettings: (() -> Unit)? = if (layoutConfig.hvacSettings != null) ({ showSettings = true }) else null
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -146,10 +151,9 @@ fun CommandCenterHome(
                     .weight(1f)
                     .fillMaxHeight()
             ) {
-                ZonesHeader()
+                ZonesHeader(state, openSettings)
                 Spacer(Modifier.height(6.dp))
                 ZoneGrid(
-                    onHeadChoice = { zone, on -> viewModel.setHeadChoice(zone, on) },
                     zones = state.zones,
                     onZoneClick = onZoneClick,
                     modifier = Modifier
@@ -205,12 +209,14 @@ private fun NarrowCommandCenter(
     ) {
         CommandTopBar(viewModel, outlookDays = 0)
         val layoutConfig by viewModel.layoutConfig.collectAsStateWithLifecycle()
+        var showSettings by remember { mutableStateOf(false) }
+        if (showSettings) HeatPumpSettingsDialog(state, viewModel, onDismiss = { showSettings = false })
         HomeAlertStrip(viewModel = viewModel, homeStatus = layoutConfig.homeStatus)
         HomeAlarmCard(viewModel = viewModel, slim = true, modifier = Modifier.fillMaxWidth())
         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            ZonesHeader()
+            ZonesHeader(state, if (layoutConfig.hvacSettings != null) ({ showSettings = true }) else null)
             state.zones.forEach { zone ->
-                CommandZoneRow(zone = zone, onClick = { onZoneClick(zone) }, onHeadChoice = { on -> viewModel.setHeadChoice(zone, on) })
+                CommandZoneRow(zone = zone, onClick = { onZoneClick(zone) })
             }
             OtherRoomsLine(state, viewModel)
         }
@@ -226,7 +232,7 @@ private fun NarrowCommandCenter(
  * number, the head and target stacked on the right, and HOLD spelled out because there is room.
  */
 @Composable
-private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit, onHeadChoice: (Boolean) -> Unit) {
+private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
     val theme = LocalHvacTheme.current
     val activeColor = theme.colorForMode(zone.currentHvacMode)
     val modeTint = theme.tintForMode(zone.currentHvacMode)
@@ -324,27 +330,6 @@ private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit, onHeadChoice:
                 heads?.drop(1)?.forEach { HeadStatusLine(it, fontSize = 10.sp, lowercase = true) }
                 }
             }
-            // The head-choice switch as a pause button: the row has no room for a labelled one.
-            if (zone.headChoice != null) {
-                val on = zone.headChoiceSwitchOn
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .padding(horizontal = 4.dp)
-                        .size(30.dp)
-                        .background(if (on) PausedColor.copy(alpha = 0.2f) else Color.Transparent, com.example.ui.theme.themedShape(8.dp))
-                        .border(1.dp, if (on) PausedColor else Color.White.copy(alpha = 0.25f), com.example.ui.theme.themedShape(8.dp))
-                        .clickable { onHeadChoice(!on) }
-                        .testTag("cc_head_choice_${zone.key}")
-                ) {
-                    Icon(
-                        Icons.Default.Pause,
-                        contentDescription = zone.headChoice.switchOption + if (on) " on" else " off",
-                        tint = if (on) PausedColor else Color.White.copy(alpha = 0.6f),
-                        modifier = Modifier.size(15.dp)
-                    )
-                }
-            }
             // Fixed widths from here on, so the numbers line up down the list.
             Box(modifier = Modifier.width(44.dp)) {
                 zone.roomHumidity?.let { humidity ->
@@ -395,12 +380,17 @@ private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit, onHeadChoice:
                         maxLines = 1
                     )
                 }
+                // No room for the condition's name here; an amber SET says one is changing the target.
                 Text(
                     text = "SET ${zone.targetTemp?.toInt() ?: "--"}°",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 0.6.sp,
-                    color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.6f),
+                    color = when {
+                        zone.conditionLabel != null -> ConditionOnColor
+                        zone.isCalling -> activeColor
+                        else -> Color.White.copy(alpha = 0.6f)
+                    },
                     maxLines = 1
                 )
             }
@@ -564,25 +554,85 @@ private fun weatherIcon(name: String?): ImageVector = when (name?.lowercase()) {
 private val RoomColor = Color(0xFF7FD1C7)
 private val HumidityColor = Color(0xFF6AA8E0)
 
+/**
+ * HEAT PUMPS, then what the settings page has switched on ("KIDS AWAY", "BOOST 14 MIN") and its
+ * gear. The heading, the chips and the gear are one tap target that opens the page. Living room
+ * only has no chip: the card's DR: PAUSED already says it.
+ */
 @Composable
-private fun ZonesHeader() {
+private fun ZonesHeader(state: HvacUiState.Success, onOpenSettings: (() -> Unit)?) {
+    val conditions = state.houseConditions
+    val anyTimer = conditions.conditions.any { it.on && it.endsAt != null } || conditions.nightDelay?.running == true
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(anyTimer) {
+        while (anyTimer) {
+            nowMs = System.currentTimeMillis()
+            kotlinx.coroutines.delay(15_000L)
+        }
+    }
+    fun left(endsAt: Long?) = endsAt?.let { " ${((it - nowMs + 59_999L) / 60_000L).coerceAtLeast(0L)} MIN" } ?: ""
+    val chips = buildList {
+        conditions.conditions.filter { it.on && !it.config.chip.isNullOrBlank() }.forEach { c ->
+            // Night early only matters while the house is still on Day.
+            val fromOk = c.config.fromSchedule == null ||
+                c.config.fromSchedule.equals(state.globalSettings.houseSchedule, ignoreCase = true)
+            if (fromOk) add(c.config.chip + left(c.endsAt))
+        }
+        conditions.nightDelay?.takeIf { it.running && !it.config.chip.isNullOrBlank() }?.let { add(it.config.chip + left(it.endsAt)) }
+    }
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "HEAT PUMPS",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = 1.2.sp,
-            color = Color.White.copy(alpha = 0.55f)
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .clip(com.example.ui.theme.themedShape(8.dp))
+                .then(if (onOpenSettings != null) Modifier.clickable(onClick = onOpenSettings) else Modifier)
+                .padding(end = 6.dp)
+                .testTag("cc_hp_settings")
+        ) {
+            Text(
+                text = "HEAT PUMPS",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.2.sp,
+                color = Color.White.copy(alpha = 0.55f)
+            )
+            chips.forEach { chip ->
+                Text(
+                    text = chip,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.6.sp,
+                    lineHeight = 12.sp,
+                    color = ConditionOnColor,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier
+                        .background(ConditionOnColor.copy(alpha = 0.14f), RoundedCornerShape(50))
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
+            if (onOpenSettings != null) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = "Heat pump settings",
+                    tint = Color.White.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(4.dp).size(18.dp)
+                )
+            }
+        }
         Spacer(Modifier.weight(1f))
-        LegendItem(Icons.Default.Home, RoomColor, "room")
-        Spacer(Modifier.width(12.dp))
-        LegendItem(Icons.Default.Air, Color.White.copy(alpha = 0.55f), "head")
-        Spacer(Modifier.width(12.dp))
-        LegendItem(Icons.Default.WaterDrop, HumidityColor, "humidity")
+        // The key gives way to the chips: both do not fit on the kitchen tablet or the phone.
+        if (chips.isEmpty()) {
+            LegendItem(Icons.Default.Home, RoomColor, "room")
+            Spacer(Modifier.width(12.dp))
+            LegendItem(Icons.Default.Air, Color.White.copy(alpha = 0.55f), "head")
+            Spacer(Modifier.width(12.dp))
+            LegendItem(Icons.Default.WaterDrop, HumidityColor, "humidity")
+        }
     }
 }
 
@@ -599,7 +649,6 @@ private fun LegendItem(icon: ImageVector, tint: Color, label: String) {
 private fun ZoneGrid(
     zones: List<ClimateZone>,
     onZoneClick: (ClimateZone) -> Unit,
-    onHeadChoice: (ClimateZone, Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val rows = zones.chunked(3)
@@ -615,7 +664,6 @@ private fun ZoneGrid(
                     CommandZoneCard(
                         zone = zone,
                         onClick = { onZoneClick(zone) },
-                        onHeadChoice = { on -> onHeadChoice(zone, on) },
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxHeight()
@@ -639,7 +687,6 @@ private fun ZoneGrid(
 private fun CommandZoneCard(
     zone: ClimateZone,
     onClick: () -> Unit,
-    onHeadChoice: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val theme = LocalHvacTheme.current
@@ -686,8 +733,6 @@ private fun CommandZoneCard(
             // The hero numeral scales with the card, so the A9's shorter cards and the Fold's
             // narrower ones still fit — by height on the tablets, by width on the phone.
             val heroSize = minOf(maxHeight.value * 0.26f, maxWidth.value * 0.24f).coerceIn(26f, 50f).sp
-            // The kitchen tablet with its side menu open: too narrow for the switch's label beside it.
-            val narrowCard = maxWidth < 250.dp
 
             Column(
                 modifier = Modifier
@@ -808,15 +853,6 @@ private fun CommandZoneCard(
                             color = HumidityColor
                         )
                     }
-                    // Just above SET, in the big reading's row rather than a line of its own: the
-                    // kitchen tablet's shorter cards had no height for one and lost SET.
-                    if (zone.headChoice != null) {
-                        Spacer(Modifier.weight(1f))
-                        Column(horizontalAlignment = Alignment.End, modifier = Modifier.align(Alignment.Bottom)) {
-                            SetpointStatusLine(zone.key, fontSize = 13.sp, modifier = Modifier.wrapContentWidth(Alignment.End, unbounded = true))
-                            HeadChoiceSwitch(zone, onHeadChoice, stacked = narrowCard)
-                        }
-                    }
                 }
 
                 // The head and the target.
@@ -837,17 +873,22 @@ private fun CommandZoneCard(
                     }
                     Spacer(Modifier.weight(1f))
                     // The "Setting to" line floats just above SET without taking any height, so the
-                    // card and its big reading stay exactly where they are when it appears. With a
-                    // head-choice switch there it sits above the switch instead (see above).
+                    // card and its big reading stay exactly where they are when it appears.
                     Box(contentAlignment = Alignment.BottomEnd) {
+                        // "SET 72° BOOST": a house condition from the settings page is changing it.
                         Text(
-                            text = "SET ${zone.targetTemp?.toInt() ?: "--"}°",
+                            text = "SET ${zone.targetTemp?.toInt() ?: "--"}°" + (zone.conditionLabel?.let { " $it" } ?: ""),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
                             letterSpacing = 0.8.sp,
-                            color = if (zone.isCalling) activeColor else Color.White.copy(alpha = 0.6f)
+                            color = when {
+                                zone.conditionLabel != null -> ConditionOnColor
+                                zone.isCalling -> activeColor
+                                else -> Color.White.copy(alpha = 0.6f)
+                            },
+                            maxLines = 1
                         )
-                        if (zone.headChoice == null) SetpointStatusLine(
+                        SetpointStatusLine(
                             zone.key,
                             fontSize = 13.sp,
                             modifier = Modifier
@@ -858,60 +899,6 @@ private fun CommandZoneCard(
                 }
             }
         }
-    }
-}
-
-/** Amber, like the boost colour family: something deliberately not running as usual. */
-private val PausedColor = Color(0xFFF0A24B)
-
-/**
- * The zone card's head-choice switch ("LR ONLY"). Its own tap target, so flipping it does not
- * open the zone pop-up; tapping anywhere else on the card still does.
- */
-@Composable
-private fun HeadChoiceSwitch(zone: ClimateZone, onHeadChoice: (Boolean) -> Unit, stacked: Boolean = false) {
-    val choice = zone.headChoice ?: return
-    val on = zone.headChoiceSwitchOn
-    val tap = Modifier
-        .clip(com.example.ui.theme.themedShape(6.dp))
-        .clickable { onHeadChoice(!on) }
-        .padding(horizontal = 2.dp, vertical = 2.dp)
-        .testTag("cc_head_choice_${zone.key}")
-    val label = @Composable {
-        Text(
-            text = choice.switchLabel?.takeIf { it.isNotBlank() } ?: choice.switchOption.uppercase(),
-            fontSize = if (stacked) 8.sp else 9.5.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = if (stacked) 0.4.sp else 0.6.sp,
-            lineHeight = if (stacked) 10.sp else 12.sp,
-            color = if (on) PausedColor else Color.White.copy(alpha = 0.55f),
-            maxLines = 1
-        )
-    }
-    // Side by side normally; on a narrow card the label sits smaller, over the switch.
-    if (stacked) Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp), modifier = tap) {
-        label()
-        HeadChoiceToggle(on)
-    } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp), modifier = tap) {
-        label()
-        HeadChoiceToggle(on)
-    }
-}
-
-@Composable
-private fun HeadChoiceToggle(on: Boolean) {
-    Box(
-        modifier = Modifier
-            .size(width = 28.dp, height = 16.dp)
-            .background(if (on) PausedColor else Color.White.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
-    ) {
-        Box(
-            modifier = Modifier
-                .align(if (on) Alignment.CenterEnd else Alignment.CenterStart)
-                .padding(2.dp)
-                .size(12.dp)
-                .background(if (on) Color.White else Color(0xFFCBD5E1), CircleShape)
-        )
     }
 }
 

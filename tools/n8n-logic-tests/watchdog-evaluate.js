@@ -103,6 +103,65 @@ function nameOf(eid) {
   return (s && s.attributes && s.attributes.friendly_name) ? s.attributes.friendly_name : eid;
 }
 
+function st(eid) { return stateOf(eid); }
+// House conditions (2026-11-06): the switches on the app's Heat pump settings page that change
+// which temperature a zone should be at. Keep identical in the Controller ('Compute Sequencer
+// Actions'), the Watchdog ('Evaluate') and the Bot ('Check Verify'), or one of them
+// will think the others are wrong.
+//  - schedule: the zone follows that schedule block instead of the house's. fromSchedule limits
+//    it to while the house is on that block.
+//  - boostHelper: degrees added while heating and taken off while cooling (not in dry).
+// Later entries win, so Kids away beats Night early for Anthony and Autumn.
+const CONDITIONS = [
+  { helper: 'input_boolean.hvac_early_night', on: 'on', zones: 'all', fromSchedule: 'day', schedule: 'night' },
+  { helper: 'input_boolean.hvac_kids_away', on: 'on', zones: ['anthony', 'autumn'], schedule: 'away' },
+  { helper: 'timer.hvac_boost_main_level', on: 'active', zones: ['main_level'], boostHelper: 'input_number.hvac_boost_degrees', boostDefault: 3 }
+];
+// A boost never takes a heating target past this (the schedule helpers' own maximum).
+const BOOST_HEAT_MAX = 80;
+function condOn(c) { return String(st(c.helper) || '') === c.on; }
+function condFor(c, zone) { return c.zones === 'all' || c.zones.indexOf(zone) !== -1; }
+function zoneSched(zone, houseSched) {
+  let s = houseSched;
+  for (const c of CONDITIONS) {
+    if (!c.schedule || !condFor(c, zone) || !condOn(c)) continue;
+    if (c.fromSchedule && c.fromSchedule !== houseSched) continue;
+    s = c.schedule;
+  }
+  return s;
+}
+function zoneBoost(zone) {
+  let b = 0;
+  for (const c of CONDITIONS) {
+    if (!c.boostHelper || !condFor(c, zone) || !condOn(c)) continue;
+    const d = parseFloat(st(c.boostHelper));
+    b += (!isNaN(d) && d > 0 && d <= 10) ? d : c.boostDefault;
+  }
+  return b;
+}
+// The temperature a zone should be at in this mode: its schedule helper (after the conditions
+// above), plus any boost, clamped to what the heads accept. NaN when there is none.
+function zoneTarget(zone, mode, houseSched) {
+  if (mode !== 'heat' && mode !== 'cool' && mode !== 'dry') return NaN;
+  const raw = parseFloat(st('input_number.' + zone + '_' + zoneSched(zone, houseSched) + (mode === 'cool' ? '_cool' : '_temp')));
+  if (isNaN(raw) || raw < 40 || raw > 100) return NaN;
+  const b = zoneBoost(zone);
+  if (mode === 'heat') return Math.max(Math.min(raw + b, Math.max(raw, BOOST_HEAT_MAX)), HEAT_FLOOR);
+  if (mode === 'cool') return Math.max(raw - b, COOL_FLOOR);
+  return Math.max(raw, COOL_FLOOR);
+}
+// True while a condition covering the zone changed less than CHOICE_GRACE_MS ago, so heads still
+// moving to the new target are not mistaken for a manual change.
+function condSettling(zone) {
+  for (const c of CONDITIONS) {
+    if (!condFor(c, zone)) continue;
+    const s = states[c.helper];
+    const t = s && s.last_changed ? Date.parse(s.last_changed) : NaN;
+    if (!isNaN(t) && (now - t) < CHOICE_GRACE_MS) return true;
+  }
+  return false;
+}
+
 function titleZone(z) {
   return z.split('_').map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
 }
@@ -344,24 +403,20 @@ if (!skipReason) {
 // head somebody switched OFF, and the setpoint. A head that is off used to be skipped outright,
 // which is why turning heads off never raised an override. Paused heads are left to E.
 if (!skipReason) {
-  const suffix = globalMode === 'cool' ? 'cool' : 'temp';
   const drifted = [];
   for (const zone of ZONE_NAMES) {
     if (conflictedZones[zone]) { delete sd.driftSince[zone]; continue; }
-    if (choiceSettling(zone)) { delete sd.driftSince[zone]; continue; }
+    if (choiceSettling(zone) || condSettling(zone)) { delete sd.driftSince[zone]; continue; }
     const enabled = stateOf('input_boolean.zone_enable_' + zone) === 'on';
     const overrideOff = stateOf('input_boolean.override_' + zone) === 'off';
     if (!enabled || !overrideOff) { delete sd.driftSince[zone]; continue; }
 
-    let expected = parseFloat(stateOf('input_number.' + zone + '_' + sched + '_' + suffix));
-    // The setpoint only means something while the house is conditioning. With the house off
-    // there is nothing to compare a temperature against, and requiring one here would skip the
-    // zone before the mode check below ever ran.
+    // The value the sequencer will really write: the zone's schedule helper after the house
+    // conditions, clamped to what the equipment accepts. The setpoint only means something while
+    // the house is conditioning; with the house off there is nothing to compare a temperature
+    // against, and requiring one here would skip the zone before the mode check below ever ran.
+    const expected = zoneTarget(zone, globalMode, sched);
     if (globalMode !== 'off' && isNaN(expected)) { delete sd.driftSince[zone]; continue; }
-    // Clamp to whatever the equipment can actually accept, so the comparison is against the
-    // value the sequencer will really write rather than the raw helper.
-    if (globalMode === 'cool' || globalMode === 'dry') expected = Math.max(expected, COOL_FLOOR);
-    else if (globalMode !== 'off') expected = Math.max(expected, HEAT_FLOOR);
 
     const paused = pausedHeads(zone);
     let drifting = false;

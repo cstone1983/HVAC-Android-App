@@ -157,5 +157,85 @@ wdTicks('W10 Both, split heat vs cool (unchanged) -> split alert after ~2 min (o
 wdTicks('W11 Living only + Override on, dining running -> still turned off', [() => Object.assign({}, LO, { 'input_boolean.override_main_level': 'on' }), () => Object.assign({}, LO, { 'input_boolean.override_main_level': 'on' })], '- / turn_on:override_main_level,n8n_hvac_notify[HVAC Override]'.replace(/.*/, '- / turn_off:dining_room'));
 wdTicks('W12 Living only, dining unavailable -> no turn_off, unavailable alert only', [() => Object.assign({}, LO, { [DR]: { state: 'unavailable', last_changed: iso(clock - 120000) } })], 'n8n_hvac_notify[HVAC Head Unavailable]');
 
+console.log('\n=== House conditions (2026-11-06): Kids away, Boost, Night early ===');
+const KA = { 'input_boolean.hvac_kids_away': { state: 'on', last_changed: iso(clock - 3600e3) } };
+const KAheads = { 'climate.hp_anthony': { attrs: { temperature: 64 } }, 'climate.hp_autumn': { attrs: { temperature: 62 } } };
+const BO = { 'timer.hvac_boost_main_level': { state: 'active', last_changed: iso(clock - 3600e3) } };
+const NE = { 'input_boolean.hvac_early_night': { state: 'on', last_changed: iso(clock - 3600e3) } };
+const NIGHTheads = { [LR]: { attrs: { temperature: 67 } }, [DR]: { attrs: { temperature: 67 } }, 'climate.hp_anthony': { attrs: { temperature: 66 } }, 'climate.hp_autumn': { attrs: { temperature: 64 } }, 'climate.hp_bedroom': { attrs: { temperature: 68 } } };
+const tKA = 'input_boolean.hvac_kids_away', tBO = 'timer.hvac_boost_main_level', tNE = 'input_boolean.hvac_early_night';
+const M = (...o) => Object.assign({}, ...o);
+seq('K1  Kids away ON, heating Day -> Anthony 64, Autumn 62 (their Away)', KA, tKA, 'anthony:set_temperature=64 | autumn:set_temperature=62');
+seq('K2  Kids away OFF -> back to Day 68 / 65', M({ 'input_boolean.hvac_kids_away': 'off' }, KAheads), tKA, 'anthony:set_temperature=68 | autumn:set_temperature=65');
+seq('K3  Kids away ON, already at Away -> nothing', M(KA, KAheads), tKA, 'NOOP (condition changed: temperatures already match)');
+seq('K4  Kids away, Day->Night -> others to Night, kids stay Away', M(KA, KAheads, { 'input_select.house_schedule_state': 'Night' }), 'input_select.house_schedule_state', 'living_room:set_temperature=67 | dining_room:set_temperature=67 | bedroom:set_temperature=68');
+seq('K5  Kids away, cooling -> Away cool 76', M(KA, { 'input_select.global_hvac_mode': 'cool', 'climate.hp_anthony': { state: 'cool', attrs: { temperature: 72 } }, 'climate.hp_autumn': { state: 'cool', attrs: { temperature: 72 } } }), tKA, 'anthony:set_temperature=76 | autumn:set_temperature=76');
+seq('K6  Kids away ON, Anthony on Override -> Autumn only', M(KA, { 'input_boolean.override_anthony': 'on' }), tKA, 'autumn:set_temperature=62');
+seq('K7  Kids away ON, Anthony head off -> not switched on', M(KA, { 'climate.hp_anthony': 'off' }), tKA, 'autumn:set_temperature=62');
+seq('K7b Kids away ON, Autumn Auto off -> Anthony only', M(KA, { 'input_boolean.zone_enable_autumn': 'off' }), tKA, 'anthony:set_temperature=64');
+seq('K8  Kids away ON, house Off -> nothing', M(KA, allOff), tKA, 'NOOP (condition changed while the house is off)');
+seq('K9  Kids away, Anthony Day setpoint changed -> ignored (Away governs)', M(KA, KAheads, { 'input_number.anthony_day_temp': '70' }), 'input_number.anthony_day_temp', 'NOOP (nothing to change)');
+seq('K10 Kids away, Anthony Away setpoint 64->63 -> Anthony 63', M(KA, KAheads, { 'input_number.anthony_away_temp': '63' }), 'input_number.anthony_away_temp', 'anthony:set_temperature=63');
+seq('K11 Kids away, HA restart -> kids kept at Away', M(KA, KAheads), 'homeassistant.start', 'NOOP (nothing to change)');
+seq('K12 Kids away, Anthony Wi-Fi recovery -> Away 64', M(KA, { 'climate.hp_autumn': { attrs: { temperature: 62 } } }), 'recovered:climate.hp_anthony', 'anthony:set_temperature=64');
+seq('K13 Kids away, house Off->Heat -> kids on at Away (others already hold their Day temp)', M(KA, allOff, { 'input_select.global_hvac_mode': 'heat' }), 'input_select.global_hvac_mode', 'living_room:turn_on | living_room:set_hvac_mode=heat | dining_room:turn_on | dining_room:set_hvac_mode=heat | anthony:turn_on | anthony:set_hvac_mode=heat | anthony:set_temperature=64 | autumn:turn_on | autumn:set_hvac_mode=heat | autumn:set_temperature=62 | bedroom:turn_on | bedroom:set_hvac_mode=heat | bedroom_2:turn_on | bedroom_2:set_hvac_mode=heat | basement:turn_on | basement:set_hvac_mode=heat');
+seq('K14 Kids away, Anthony Override cleared -> Away 64', M(KA, { 'climate.hp_autumn': { attrs: { temperature: 62 } } }), 'input_boolean.override_anthony', 'anthony:set_temperature=64');
+seq('B1  Boost ON, heating 69 -> both Main Level heads 72', BO, tBO, 'living_room:set_temperature=72 | dining_room:set_temperature=72');
+seq('B2  Boost ON, Living room only -> living 72, dining left off', M(BO, LOoff), tBO, 'living_room:set_temperature=72');
+seq('B3  Boost ON, dining switched off (Both) -> living only, dining not woken', M(BO, { [DR]: 'off' }), tBO, 'living_room:set_temperature=72');
+seq('B4  Boost ON, boost set to 2 degrees -> 71', M(BO, { 'input_number.hvac_boost_degrees': '2' }), tBO, 'living_room:set_temperature=71 | dining_room:set_temperature=71');
+seq('B4b Boost ON, boost helper unavailable -> default 3', M(BO, { 'input_number.hvac_boost_degrees': 'unavailable' }), tBO, 'living_room:set_temperature=72 | dining_room:set_temperature=72');
+seq('B5  Boost ON, Day setpoint 79 -> capped at 80', M(BO, { 'input_number.main_level_day_temp': '79', [LR]: { attrs: { temperature: 79 } }, [DR]: { attrs: { temperature: 79 } } }), tBO, 'living_room:set_temperature=80 | dining_room:set_temperature=80');
+seq('B6  Boost ON, cooling 71 -> 68', M(BO, { 'input_select.global_hvac_mode': 'cool', [LR]: { state: 'cool', attrs: { temperature: 71 } }, [DR]: { state: 'cool', attrs: { temperature: 71 } } }), tBO, 'living_room:set_temperature=68 | dining_room:set_temperature=68');
+seq('B6b Boost ON, cooling 66 -> 64.5 floor', M(BO, { 'input_select.global_hvac_mode': 'cool', 'input_number.main_level_day_cool': '66', [LR]: { state: 'cool', attrs: { temperature: 66 } }, [DR]: { state: 'cool', attrs: { temperature: 66 } } }), tBO, 'living_room:set_temperature=64.5 | dining_room:set_temperature=64.5');
+seq('B7  Boost ON, dry mode -> no change', M(BO, { 'input_select.global_hvac_mode': 'dry', [LR]: 'dry', [DR]: 'dry' }), tBO, 'NOOP (condition changed: temperatures already match)');
+seq('B8  Boost ends -> back to 69', M({ 'timer.hvac_boost_main_level': 'idle' }, { [LR]: { attrs: { temperature: 72 } }, [DR]: { attrs: { temperature: 72 } } }), tBO, 'living_room:set_temperature=69 | dining_room:set_temperature=69');
+seq('B8b Boost ends with Living room only -> living back to 69, dining untouched', M({ 'timer.hvac_boost_main_level': 'idle' }, LOoff, { [LR]: { attrs: { temperature: 72 } } }), tBO, 'living_room:set_temperature=69');
+seq('B9  Boost ON, Main Level on Override -> nothing', M(BO, { 'input_boolean.override_main_level': 'on' }), tBO, 'NOOP (condition changed: temperatures already match)');
+seq('B10 Boost ON, house Off -> nothing', M(BO, allOff), tBO, 'NOOP (condition changed while the house is off)');
+seq('B11 Boost ON, Anthony setpoint change -> Anthony normal (no boost)', M(BO, { [LR]: { attrs: { temperature: 72 } }, [DR]: { attrs: { temperature: 72 } }, 'input_number.anthony_day_temp': '69' }), 'input_number.anthony_day_temp', 'anthony:set_temperature=69');
+seq('B12 Boost ON, HA restart -> heads kept at 72', M(BO, { [LR]: { attrs: { temperature: 72 } }, [DR]: { attrs: { temperature: 72 } } }), 'homeassistant.start', 'NOOP (nothing to change)');
+seq('B13 Boost paused (not active) -> no boost', M({ 'timer.hvac_boost_main_level': 'paused' }), tBO, 'NOOP (condition changed: temperatures already match)');
+seq('B14 Boost ON, dining mirror event at 72 -> nothing', M(BO, { [LR]: { attrs: { temperature: 72 } }, [DR]: { attrs: { temperature: 72 } } }), DR, 'NOOP (main-level heads already in sync)');
+seq('B15 Boost ON, Living only -> Both: dining copies living 72', M(BO, { [LR]: { attrs: { temperature: 72 } }, [DR]: 'off' }), 'input_select.main_level_heads', 'dining_room:turn_on | dining_room:set_hvac_mode=heat | dining_room:set_temperature=72 | dining_room:set_fan_mode=auto | dining_room:set_swing_mode=Lowest');
+seq('B16 Boost ON, Main Level setpoint changed -> boosted new value (HA cancels boost next)', M(BO, { 'input_number.main_level_day_temp': '70' }), 'input_number.main_level_day_temp', 'living_room:set_temperature=73 | dining_room:set_temperature=73');
+seq('N1  Night early ON in Day -> every zone to Night', NE, tNE, 'living_room:set_temperature=67 | dining_room:set_temperature=67 | anthony:set_temperature=66 | autumn:set_temperature=64 | bedroom:set_temperature=68');
+seq('N2  Night early + Kids away -> kids at Away, rest Night', M(NE, KA), tNE, 'living_room:set_temperature=67 | dining_room:set_temperature=67 | anthony:set_temperature=64 | autumn:set_temperature=62 | bedroom:set_temperature=68');
+seq('N3  Night early ON, house already Night -> nothing extra', M(NE, NIGHTheads, { 'input_select.house_schedule_state': 'Night' }), tNE, 'NOOP (condition changed: temperatures already match)');
+seq('N4  Night early ON, house Away -> Away temps (only applies over Day)', M(NE, { 'input_select.house_schedule_state': 'Away' }), tNE, 'living_room:set_temperature=66 | dining_room:set_temperature=66 | anthony:set_temperature=64 | autumn:set_temperature=62 | bedroom:set_temperature=66 | bedroom_2:set_temperature=62 | basement:set_temperature=61');
+seq('N5  Night early + Boost -> Main Level Night 67 + 3 = 70', M(NE, BO), tBO, 'living_room:set_temperature=70 | dining_room:set_temperature=70');
+seq('N6  Night early turned OFF in Day -> back to Day', M({ 'input_boolean.hvac_early_night': 'off' }, NIGHTheads), tNE, 'living_room:set_temperature=69 | dining_room:set_temperature=69 | anthony:set_temperature=68 | autumn:set_temperature=65 | bedroom:set_temperature=70');
+seq('N7  Night early ON, real Day->Night arrives -> already there, nothing', M(NE, NIGHTheads, { 'input_select.house_schedule_state': 'Night' }), 'input_select.house_schedule_state', 'NOOP (nothing to change)');
+seq('N8  Night early ON, Bedroom Override -> others only', M(NE, { 'input_boolean.override_bedroom_1': 'on' }), tNE, 'living_room:set_temperature=67 | dining_room:set_temperature=67 | anthony:set_temperature=66 | autumn:set_temperature=64');
+seq('N9  Unknown hvac_ boolean -> ignored', { 'input_boolean.hvac_something': 'on' }, 'input_boolean.hvac_something', 'NOOP (ignored: not a sequencer trigger (input_boolean.hvac_something))');
+
+console.log('\n=== Watchdog with house conditions ===');
+wdTicks('WK1 Kids away ON for an hour, kids at Away -> nothing', Array(3).fill(() => M(KA, KAheads)), '- / - / -');
+wdTicks('WK2 Kids away just switched ON, heads still at Day -> no override while they move', [
+  () => M({ 'input_boolean.hvac_kids_away': { state: 'on', last_changed: iso(clock - 5000) } }),
+  () => M({ 'input_boolean.hvac_kids_away': { state: 'on', last_changed: iso(clock - 65000) } }),
+  () => M({ 'input_boolean.hvac_kids_away': { state: 'on', last_changed: iso(clock - 125000) } }, KAheads),
+  () => M({ 'input_boolean.hvac_kids_away': { state: 'on', last_changed: iso(clock - 185000) } }, KAheads),
+], '- / - / - / -');
+wdTicks('WK3 Kids away ON, Anthony put back to 68 by hand -> override (a real change)', [() => M(KA, KAheads, { 'climate.hp_anthony': { attrs: { temperature: 68 } } }), () => M(KA, KAheads, { 'climate.hp_anthony': { attrs: { temperature: 68 } } })], '- / turn_on:override_anthony,n8n_hvac_notify[HVAC Override]');
+wdTicks('WK4 Kids away ON but still at Day after 3+ min -> override (it did not take)', [() => M({ 'input_boolean.hvac_kids_away': { state: 'on', last_changed: iso(clock - 200000) } }), () => M({ 'input_boolean.hvac_kids_away': { state: 'on', last_changed: iso(clock - 260000) } })], '- / turn_on:override_anthony,turn_on:override_autumn,n8n_hvac_notify[HVAC Override: 2 zones]');
+wdTicks('WK5 Kids away ON, other zones judged as usual (Bedroom at 73 by hand -> override)', [() => M({ 'input_boolean.hvac_kids_away': { state: 'on', last_changed: iso(clock - 5000) } }, { 'climate.hp_bedroom': { attrs: { temperature: 73 } } }), () => M({ 'input_boolean.hvac_kids_away': { state: 'on', last_changed: iso(clock - 65000) } }, { 'climate.hp_bedroom': { attrs: { temperature: 73 } } })], '- / turn_on:override_bedroom_1,n8n_hvac_notify[HVAC Override]');
+const BOheads = { [LR]: { attrs: { temperature: 72 } }, [DR]: { attrs: { temperature: 72 } } };
+wdTicks('WB1 Boost running, Main Level at 72 -> nothing', Array(3).fill(() => M(BO, BOheads)), '- / - / -');
+wdTicks('WB2 Boost just ended, heads still at 72 -> no override while they come back', [
+  () => M({ 'timer.hvac_boost_main_level': { state: 'idle', last_changed: iso(clock - 5000) } }, BOheads),
+  () => M({ 'timer.hvac_boost_main_level': { state: 'idle', last_changed: iso(clock - 65000) } }, BOheads),
+  () => M({ 'timer.hvac_boost_main_level': { state: 'idle', last_changed: iso(clock - 125000) } }),
+], '- / - / -');
+wdTicks('WB3 Boost running, Living room only, dining off -> nothing', Array(3).fill(() => M(BO, LOoff, { [LR]: { attrs: { temperature: 72 } } })), '- / - / -');
+wdTicks('WB4 Boost running but heads stuck at 69 after 3+ min -> override', [() => M({ 'timer.hvac_boost_main_level': { state: 'active', last_changed: iso(clock - 200000) } }), () => M({ 'timer.hvac_boost_main_level': { state: 'active', last_changed: iso(clock - 260000) } })], '- / turn_on:override_main_level,n8n_hvac_notify[HVAC Override]');
+wdTicks('WN1 Night early ON for an hour, all at Night -> nothing', Array(2).fill(() => M(NE, NIGHTheads)), '- / -');
+wdTicks('WN2 Night early just ON, heads at Day -> no override while settling', [() => M({ 'input_boolean.hvac_early_night': { state: 'on', last_changed: iso(clock - 5000) } }), () => M({ 'input_boolean.hvac_early_night': { state: 'on', last_changed: iso(clock - 65000) } })], '- / -');
+
+// Init Run's entity filter (copy of the live regex, with the 2026-11-06 additions).
+const RE = /^(recovered:)?(climate\.hp_[a-z0-9_]+|input_select\.(global_hvac_mode|house_schedule_state|[a-z0-9_]+_(fan|tilt)_mode|[a-z0-9_]+_heads)|input_boolean\.((zone_enable|override)_[a-z0-9_]+|hvac_[a-z0-9_]+)|timer\.hvac_[a-z0-9_]+|input_number\.[a-z0-9_]+_(day|night|away)_(temp|cool)|homeassistant\.start)$/;
+check('I1  Init Run accepts the new conditions', [tKA, tBO, tNE].map((e) => RE.test(e)).join(','), 'true,true,true');
+check('I2  Init Run still accepts old triggers, rejects others', ['input_boolean.override_anthony', 'input_number.anthony_day_temp', 'input_select.main_level_heads', 'timer.other', 'input_boolean.guest'].map((e) => RE.test(e)).join(','), 'true,true,true,false,false');
+
 Date.now = realNow;
 console.log('\n' + (fails ? fails + ' FAILED' : 'ALL PASSED'));

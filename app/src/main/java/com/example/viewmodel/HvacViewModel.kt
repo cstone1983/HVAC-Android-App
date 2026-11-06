@@ -33,7 +33,9 @@ sealed interface HvacUiState {
         val lights: List<LightControl>,
         val switches: List<SwitchControl>,
         val covers: List<CoverControl>,
-        val lastUpdated: Long
+        val lastUpdated: Long,
+        /** The Heat pump settings page's switches and timers. */
+        val houseConditions: com.example.model.HouseConditionsState = com.example.model.HouseConditionsState()
     ) : HvacUiState
     data class Error(val message: String) : HvacUiState
 }
@@ -1462,7 +1464,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
             // 3. Climate Zones mapping parsed from active configuration dynamically
             val currentSuccessState = _uiState.value as? HvacUiState.Success
+            val conditionConfigs = activeConfig.hvacSettings?.conditions.orEmpty()
             val parsedZones = activeConfig.zones.map { zone ->
+                val effect = com.example.model.zoneConditionEffect(zone.key, houseSchedule, conditionConfigs) { statesMap[it]?.state }
                 val climate = statesMap[zone.climateEntityId]
                 val auto = statesMap[zone.autoEntityId]
                 val override = statesMap[zone.overrideEntityId]
@@ -1585,6 +1589,15 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     secondaryHeadLabel = zone.secondaryHeadLabel,
                     headChoice = zone.headChoice,
                     headChoiceValue = zone.headChoice?.let { statesMap[it.entityId]?.state },
+                    scheduleOverride = effect.schedule,
+                    boostDegrees = effect.boostDegrees,
+                    // Only while n8n is applying it: not with the house off, the zone held (Auto off
+                    // or Override), or a Boost alone in dry, which does nothing there.
+                    conditionLabel = effect.label.takeIf {
+                        val gm = globalHvacMode.lowercase()
+                        gm != "off" && auto?.state?.lowercase() == "on" && override?.state?.lowercase() != "on" &&
+                            !(gm == "dry" && effect.schedule == null)
+                    },
                     vaneMode = tilt?.state ?: "Auto",
                     fanMode = fan?.state ?: "Auto",
                     // Fallbacks match the helpers' real option lists. The vane list here used to
@@ -1803,7 +1816,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 lights = parsedLights,
                 switches = parsedSwitches,
                 covers = parsedCovers,
-                lastUpdated = System.currentTimeMillis()
+                lastUpdated = System.currentTimeMillis(),
+                houseConditions = houseConditionsFrom(activeConfig.hvacSettings, statesMap)
             )
             // This runs on every state change of every entity in HA (1000+ of them, mostly sensors the
             // dashboard doesn't show). Only publish when something on screen actually changed, so the
@@ -2089,7 +2103,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             else -> settings.globalHvacMode
         }.lowercase()
         val presets = if (family == "cool") zone.presetsCool else zone.presetsHeat
-        return when (settings.houseSchedule.lowercase()) {
+        // A house condition (Kids away) can have the zone on another block than the house.
+        return when ((zone.scheduleOverride ?: settings.houseSchedule).lowercase()) {
             "night" -> presets.night
             "away" -> presets.away
             else -> presets.day
@@ -2186,6 +2201,87 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         (_uiState.value as? HvacUiState.Success)?.zones
             ?.find { it.climateEntityId == zoneEntityId }?.headsInUse?.firstOrNull()
             ?: zoneEntityId
+
+    /** The settings page's view of each condition, from the helpers' states. */
+    private fun houseConditionsFrom(
+        cfg: com.example.model.HvacSettingsConfig?,
+        statesMap: Map<String, com.example.api.EntityState>
+    ): com.example.model.HouseConditionsState {
+        if (cfg == null) return com.example.model.HouseConditionsState()
+        fun endsAt(entityId: String): Long? = statesMap[entityId]
+            ?.takeIf { it.state == "active" }
+            ?.getStringAttribute("finishes_at")
+            ?.let { com.example.ui.parseHaTimestamp(it) }
+        return com.example.model.HouseConditionsState(
+            conditions = cfg.conditions.map { c ->
+                val on = statesMap[c.entityId]?.state == c.onState
+                com.example.model.HouseConditionStatus(
+                    config = c,
+                    on = on,
+                    endsAt = if (c.timed) endsAt(c.entityId) else null,
+                    boostDegrees = c.boostDegreesEntityId?.let { id ->
+                        statesMap[id]?.state?.toDoubleOrNull()?.takeIf { it > 0 && it <= 10 } ?: c.boostDefault
+                    }
+                )
+            },
+            nightDelay = cfg.nightDelay?.let { n ->
+                com.example.model.NightDelayStatus(
+                    config = n,
+                    running = statesMap[n.timerEntityId]?.state == "active",
+                    endsAt = endsAt(n.timerEntityId),
+                    scope = statesMap[n.scopeEntityId]?.state
+                )
+            }
+        )
+    }
+
+    /** A switch on the Heat pump settings page (Kids away). */
+    fun setHouseCondition(condition: com.example.model.HouseConditionConfig, on: Boolean, label: String? = null) {
+        val domain = condition.entityId.substringBefore('.')
+        callServiceWithOptimisticFeedback(
+            domain, if (on) "turn_on" else "turn_off", mapOf("entity_id" to condition.entityId),
+            "${label ?: condition.name ?: "Setting"} ${if (on) "on" else "off"}"
+        )
+    }
+
+    /** Starts a timed condition (Boost) for its configured minutes, or cancels it. */
+    fun setTimedCondition(condition: com.example.model.HouseConditionConfig, start: Boolean) {
+        val name = condition.name ?: condition.entityId
+        if (!start) {
+            callServiceWithOptimisticFeedback("timer", "cancel", mapOf("entity_id" to condition.entityId), "$name cancelled")
+            return
+        }
+        val minutes = (condition.durationMinutes ?: 20).coerceIn(1, 240)
+        callServiceWithOptimisticFeedback(
+            "timer", "start",
+            mapOf("entity_id" to condition.entityId, "duration" to timerDuration(minutes)),
+            "$name for $minutes minutes"
+        )
+    }
+
+    /**
+     * "Night in N minutes". The scope goes first and must land before the countdown starts, because
+     * the automation that runs when it ends reads the scope then.
+     */
+    fun startNightDelay(cfg: com.example.model.NightDelayConfig, minutes: Int, scope: com.example.model.NightDelayScope) {
+        val m = minutes.coerceIn(1, 240)
+        _actionFeedback.value = "Night in $m minutes · ${scope.title}"
+        viewModelScope.launch {
+            try {
+                val ok = performServiceCall("input_select", "select_option", mapOf("entity_id" to cfg.scopeEntityId, "option" to scope.option)) &&
+                    performServiceCall("timer", "start", mapOf("entity_id" to cfg.timerEntityId, "duration" to timerDuration(m)))
+                if (!ok) _actionFeedback.value = "Home Assistant didn't accept that. Try again."
+            } catch (e: Exception) {
+                _actionFeedback.value = "Couldn't reach Home Assistant. Try again."
+            }
+        }
+    }
+
+    fun cancelNightDelay(cfg: com.example.model.NightDelayConfig) {
+        callServiceWithOptimisticFeedback("timer", "cancel", mapOf("entity_id" to cfg.timerEntityId), "Night countdown cancelled")
+    }
+
+    private fun timerDuration(minutes: Int): String = "%02d:%02d:00".format(minutes / 60, minutes % 60)
 
     /** Flips the zone card's head-choice switch ("Living room only") on or off. */
     fun setHeadChoice(zone: ClimateZone, switchOn: Boolean) {

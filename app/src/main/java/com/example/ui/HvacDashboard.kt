@@ -758,7 +758,8 @@ fun DynamicTabContent(
             zone = currentZoneStatus,
             globalHvacMode = state.globalSettings.globalHvacMode,
             lastNonOffHvacMode = state.globalSettings.lastNonOffHvacMode,
-            activeScheduleState = state.globalSettings.houseSchedule,
+            // A house condition (Kids away) can put the zone on another block than the house.
+            activeScheduleState = currentZoneStatus.scheduleOverride ?: state.globalSettings.houseSchedule,
             onDismiss = { activeZoneDetail = null },
             viewModel = viewModel,
             onInteraction = onInteraction

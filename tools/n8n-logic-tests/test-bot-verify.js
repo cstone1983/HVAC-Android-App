@@ -13,4 +13,8 @@ c('B1 Both, all heating -> confirmed',run({}),'confirmed');
 c('B2 Living only, dining off -> confirmed (was the false failure)',run({'input_select.main_level_heads':{state:'Living room only'},[DR]:{state:'off',attributes:{}}}),'confirmed');
 c('B3 Both, dining off -> still reported (unchanged)',run({[DR]:{state:'off',attributes:{}}}),'not confirmed on: Main Level ');
 c('B4 Living only, living off -> reported',run({'input_select.main_level_heads':{state:'Living room only'},[DR]:{state:'off',attributes:{}},[LR]:{state:'off',attributes:{}}}),'not confirmed on: Main Level ');
+c('B5 Kids away, kids at Away 64/62 -> confirmed',run({'input_boolean.hvac_kids_away':{state:'on'},'input_number.anthony_away_temp':{state:'64'},'input_number.autumn_away_temp':{state:'62'},'climate.hp_anthony':{state:'heat',attributes:{temperature:64}},'climate.hp_autumn':{state:'heat',attributes:{temperature:62}}}),'confirmed');
+c('B6 Kids away, kids still at Day -> reported',run({'input_boolean.hvac_kids_away':{state:'on'},'input_number.anthony_away_temp':{state:'64'},'input_number.autumn_away_temp':{state:'62'}}),'not confirmed on: Anthony, Autumn ');
+c('B7 Boost, Main Level at 72 -> confirmed',run({'timer.hvac_boost_main_level':{state:'active'},[LR]:{state:'heat',attributes:{temperature:72}},[DR]:{state:'heat',attributes:{temperature:72}}}),'confirmed');
+c('B8 Boost, Main Level still 69 -> reported',run({'timer.hvac_boost_main_level':{state:'active'}}),'not confirmed on: Main Level ');
 console.log(f?f+' FAILED':'ALL PASSED');

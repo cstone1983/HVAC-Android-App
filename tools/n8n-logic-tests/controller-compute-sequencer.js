@@ -52,6 +52,52 @@ function num(v) {
   return NaN;
 }
 function plausible(t) { return !isNaN(t) && t >= TEMP_MIN && t <= TEMP_MAX; }
+// House conditions (2026-11-06): the switches on the app's Heat pump settings page that change
+// which temperature a zone should be at. Keep identical in the Controller ('Compute Sequencer
+// Actions'), the Watchdog ('Evaluate') and the Bot ('Check Verify'), or one of them
+// will think the others are wrong.
+//  - schedule: the zone follows that schedule block instead of the house's. fromSchedule limits
+//    it to while the house is on that block.
+//  - boostHelper: degrees added while heating and taken off while cooling (not in dry).
+// Later entries win, so Kids away beats Night early for Anthony and Autumn.
+const CONDITIONS = [
+  { helper: 'input_boolean.hvac_early_night', on: 'on', zones: 'all', fromSchedule: 'day', schedule: 'night' },
+  { helper: 'input_boolean.hvac_kids_away', on: 'on', zones: ['anthony', 'autumn'], schedule: 'away' },
+  { helper: 'timer.hvac_boost_main_level', on: 'active', zones: ['main_level'], boostHelper: 'input_number.hvac_boost_degrees', boostDefault: 3 }
+];
+// A boost never takes a heating target past this (the schedule helpers' own maximum).
+const BOOST_HEAT_MAX = 80;
+function condOn(c) { return String(st(c.helper) || '') === c.on; }
+function condFor(c, zone) { return c.zones === 'all' || c.zones.indexOf(zone) !== -1; }
+function zoneSched(zone, houseSched) {
+  let s = houseSched;
+  for (const c of CONDITIONS) {
+    if (!c.schedule || !condFor(c, zone) || !condOn(c)) continue;
+    if (c.fromSchedule && c.fromSchedule !== houseSched) continue;
+    s = c.schedule;
+  }
+  return s;
+}
+function zoneBoost(zone) {
+  let b = 0;
+  for (const c of CONDITIONS) {
+    if (!c.boostHelper || !condFor(c, zone) || !condOn(c)) continue;
+    const d = parseFloat(st(c.boostHelper));
+    b += (!isNaN(d) && d > 0 && d <= 10) ? d : c.boostDefault;
+  }
+  return b;
+}
+// The temperature a zone should be at in this mode: its schedule helper (after the conditions
+// above), plus any boost, clamped to what the heads accept. NaN when there is none.
+function zoneTarget(zone, mode, houseSched) {
+  if (mode !== 'heat' && mode !== 'cool' && mode !== 'dry') return NaN;
+  const raw = parseFloat(st('input_number.' + zone + '_' + zoneSched(zone, houseSched) + (mode === 'cool' ? '_cool' : '_temp')));
+  if (isNaN(raw) || raw < 40 || raw > 100) return NaN;
+  const b = zoneBoost(zone);
+  if (mode === 'heat') return Math.max(Math.min(raw + b, Math.max(raw, BOOST_HEAT_MAX)), HEAT_FLOOR);
+  if (mode === 'cool') return Math.max(raw - b, COOL_FLOOR);
+  return Math.max(raw, COOL_FLOOR);
+}
 function pausedHeads(zone) {
   const c = HEAD_CHOICE[zone];
   if (!c) return [];
@@ -168,6 +214,27 @@ if (MODES.indexOf(globalMode) === -1 || ['day', 'night', 'away'].indexOf(sched) 
   return done(actions, 'skipped: global mode or schedule state unavailable (' + globalMode + '/' + sched + ')');
 }
 
+// A house condition changed (Night early, Kids away, Boost). Only temperatures move: heads that are
+// running in the zones it covers go to their new target. Nothing is switched on or off and no
+// override is cleared, so a Boost can never wake a dining head that is off or paused.
+const condTrig = CONDITIONS.filter(function (c) { return c.helper === trig; })[0];
+if (condTrig) {
+  if (globalMode === 'off') return done(actions, 'condition changed while the house is off');
+  for (const zone of ZONES) {
+    if (!condFor(condTrig, zone)) continue;
+    if (st('input_boolean.zone_enable_' + zone) !== 'on' || st('input_boolean.override_' + zone) === 'on') continue;
+    const t = zoneTarget(zone, globalMode, sched);
+    if (isNaN(t)) continue;
+    for (const head of inUse(zone)) {
+      const hs = st(head);
+      if (bad(hs) || hs === 'off') continue;
+      const cur = num(at(head, 'temperature'));
+      if (isNaN(cur) || Math.abs(cur - t) > TEMP_EPS) actions.push(setTemp(zone, head, t));
+    }
+  }
+  return done(actions, 'condition changed: temperatures already match');
+}
+
 const isSchedule = trig === 'input_select.house_schedule_state';
 const isGlobal = trig === 'input_select.global_hvac_mode';
 const isZoneEnable = trig.indexOf('input_boolean.zone_enable_') === 0;
@@ -207,12 +274,11 @@ for (const zone of targetZones) {
   if (overrideActive) continue;
 
   // A setpoint is only needed when we will command a temperature. With global mode off we still must turn heads off.
+  // House conditions included: Kids away, Night early, Boost.
   let targetTemp = NaN;
   if (globalMode !== 'off') {
-    const suffix = globalMode === 'cool' ? '_cool' : '_temp';
-    const raw = num(st('input_number.' + zone + '_' + sched + suffix));
-    if (!plausible(raw)) continue;
-    targetTemp = (globalMode === 'cool' || globalMode === 'dry') ? Math.max(raw, COOL_FLOOR) : Math.max(raw, HEAT_FLOOR);
+    targetTemp = zoneTarget(zone, globalMode, sched);
+    if (isNaN(targetTemp)) continue;
   }
 
   for (const head of inUse(zone)) {

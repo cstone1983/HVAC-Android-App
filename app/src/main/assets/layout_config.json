@@ -1,5 +1,5 @@
 {
-  "version": "6.29.0",
+  "version": "6.30.0",
   "appTitle": "Home Control",
   "showWeatherCard": true,
   "weatherLatitude": 44.422164,
@@ -169,7 +169,8 @@
           "Dining room only": ["climate.hp_living_room"]
         },
         "switchLabel": "LR ONLY",
-        "pausedText": "PAUSED"
+        "pausedText": "PAUSED",
+        "description": "Dining room head stays off. The card shows DR: PAUSED."
       },
       "roomTemperatureEntityId": "sensor.living_room_temperature",
       "autoEntityId": "input_boolean.zone_enable_main_level",
@@ -386,6 +387,63 @@
   ],
   "idleReturnSeconds": 20,
   "popupTimeoutSeconds": 20,
+  "hvacSettings": {
+    "title": "HEAT PUMP SETTINGS",
+    "stayOnHeading": "STAYS ON UNTIL YOU TURN IT OFF",
+    "timedHeading": "TURNS ITSELF OFF",
+    "conditions": [
+      {
+        "entityId": "input_boolean.hvac_early_night",
+        "zones": ["*"],
+        "fromSchedule": "day",
+        "schedule": "night",
+        "setLabel": "NIGHT",
+        "chip": "NIGHT EARLY"
+      },
+      {
+        "entityId": "input_boolean.hvac_kids_away",
+        "zones": ["anthony", "autumn"],
+        "schedule": "away",
+        "name": "Kids away",
+        "description": "Anthony and Autumn hold their Away temperatures, day and night, heating or cooling.",
+        "setLabel": "KIDS AWAY",
+        "chip": "KIDS AWAY"
+      },
+      {
+        "entityId": "timer.hvac_boost_main_level",
+        "onState": "active",
+        "zones": ["main_level"],
+        "boostDegreesEntityId": "input_number.hvac_boost_degrees",
+        "boostDefault": 3,
+        "durationMinutes": 20,
+        "name": "Boost Main Level",
+        "description": "{deg}° {warmer} for {min} minutes, then back to the schedule. Heads that are off stay off. Changing Main Level's temperature ends it.",
+        "actionLabel": "BOOST",
+        "setLabel": "BOOST",
+        "chip": "BOOST"
+      }
+    ],
+    "nightDelay": {
+      "timerEntityId": "timer.hvac_night_delay",
+      "scopeEntityId": "input_select.hvac_night_delay_scope",
+      "name": "Night early",
+      "description": "Start Night sooner. You'll pick how long, then what goes to Night.",
+      "actionLabel": "START",
+      "durations": [5, 10, 30, 60],
+      "durationQuestion": "Start Night in…",
+      "scopeQuestion": "What should go to Night?",
+      "scopes": [
+        { "option": "Whole house", "title": "Whole house", "description": "Same as plugging your phone in: Night temperatures, the bedtime shutdown (lights, purifier, Nightfall), and the alarm night-arms 5 minutes later." },
+        { "option": "Downstairs", "title": "Downstairs", "description": "The house goes to Night, and the alarm night-arms 5 minutes later. The bedroom string lights, the purifier and the sleep sounds wait for your phone to go on the charger." },
+        { "option": "Heat pumps only", "title": "Heat pumps only", "description": "The heat pumps go to Night temperatures. Everything else waits for your phone to go on the charger as usual." }
+      ],
+      "onlyFromSchedule": "day",
+      "earlyNightEntityId": "input_boolean.hvac_early_night",
+      "earlyNightTitle": "Heat pumps on Night",
+      "earlyNightDescription": "Until your phone goes on the charger, or 5 AM. END puts them back on Day.",
+      "chip": "NIGHT IN"
+    }
+  },
   "waterHeaterRunningEntityId": "binary_sensor.heat_pump_water_heater_running",
   "homeStatus": {
     "outdoorTempEntityId": "sensor.hp_anthony_outdoor_temperature",

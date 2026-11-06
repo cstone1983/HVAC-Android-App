@@ -358,6 +358,13 @@ private fun ReadingAndTarget(
             val live = zone.targetTemp
             if (LocalPendingSetpoints.current.containsKey(zone.key)) {
                 SetpointStatusLine(zone.key, fontSize = 14.sp)
+            } else if (zone.boostDegrees > 0 && zone.conditionLabel != null) {
+                // The steppers change the schedule number, and changing it ends the Boost.
+                Text(
+                    "Boost: head set to ${live?.toInt()?.let { "$it°" } ?: "--"} · changing this ends Boost",
+                    fontSize = 13.sp,
+                    color = ConditionOnColor
+                )
             } else if (activeBlock?.value != null && live != null && live.toInt() != activeBlock.value.toInt()) {
                 Text("head set to ${live.toInt()}°", fontSize = 13.sp, color = Color.White.copy(alpha = 0.5f))
             } else if (activeBlock != null) {

@@ -372,10 +372,18 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
             // The panel has sent the scheduled setpoint since ae019a5; the car never did, so the
             // two surfaces left the system in different states for the same user action.
             if (zoneKey != null && nextMode != "off" && awaitHeadState(climateEntityId) { it == nextMode }) {
-                val sched = states.value["input_select.house_schedule_state"]?.state ?: ""
+                val houseSched = states.value["input_select.house_schedule_state"]?.state ?: ""
+                // The Heat pump settings page's conditions (Kids away, Night early, Boost), as the
+                // panel and n8n apply them.
+                val conditions = com.example.viewmodel.HvacViewModel.getInstance()
+                    ?.getActiveLayoutConfig()?.hvacSettings?.conditions.orEmpty()
+                val effect = com.example.model.zoneConditionEffect(zoneKey, houseSched, conditions) { states.value[it]?.state }
+                val sched = effect.schedule ?: houseSched
                 com.example.model.presetHelperId(zoneKey, sched, nextMode)?.let { helperId ->
                     states.value[helperId]?.state?.toDoubleOrNull()?.let { raw ->
-                        val wanted = com.example.model.clampToHardwareFloor(raw, nextMode)
+                        val wanted = com.example.model.clampToHardwareFloor(
+                            com.example.model.applyBoost(raw, effect.boostDegrees, nextMode), nextMode
+                        )
                         val current = states.value[climateEntityId]
                             ?.getDoubleAttribute("temperature")
                         if (current == null || kotlin.math.abs(current - wanted) > 0.6) {
