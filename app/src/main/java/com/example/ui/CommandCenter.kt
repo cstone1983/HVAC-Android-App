@@ -356,13 +356,15 @@ private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
             )
             Spacer(Modifier.width(3.dp))
             Text(
-                text = (room ?: zone.headTemp)?.let { "${it.toInt()}°" } ?: "--°",
+                text = room?.let { roomTempHero(it) }
+                    ?: androidx.compose.ui.text.AnnotatedString(zone.headTemp?.let { "${it.toInt()}°" } ?: "--°"),
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Light,
                 letterSpacing = (-0.8).sp,
                 color = Color.White,
                 maxLines = 1,
-                modifier = Modifier.width(44.dp)
+                softWrap = false,
+                modifier = Modifier.width(54.dp)
             )
             Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(58.dp)) {
                 if (LocalPendingSetpoints.current.containsKey(zone.key)) {
@@ -831,7 +833,8 @@ private fun CommandZoneCard(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = (room ?: zone.headTemp)?.let { "${it.toInt()}°" } ?: "--°",
+                        text = room?.let { roomTempHero(it) }
+                            ?: androidx.compose.ui.text.AnnotatedString(zone.headTemp?.let { "${it.toInt()}°" } ?: "--°"),
                         fontSize = heroSize,
                         fontWeight = FontWeight.Light,
                         letterSpacing = (-1.2).sp,
@@ -975,7 +978,7 @@ private fun OtherRoomsLine(state: HvacUiState.Success, viewModel: HvacViewModel)
                     color = Color.White.copy(alpha = 0.6f)
                 )
                 Text(
-                    text = room.temp?.let { "${it.toInt()}°" } ?: "--°",
+                    text = roomTemp(room.temp),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White

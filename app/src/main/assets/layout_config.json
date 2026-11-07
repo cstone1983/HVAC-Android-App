@@ -1,6 +1,7 @@
 {
-  "version": "6.30.0",
+  "version": "6.31.0",
   "appTitle": "Home Control",
+  "roomTempDecimals": 1,
   "showWeatherCard": true,
   "weatherLatitude": 44.422164,
   "weatherLongitude": -69.587659,

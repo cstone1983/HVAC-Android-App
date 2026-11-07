@@ -915,7 +915,7 @@ fun SecondaryRoomChips(
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = room.temp?.let { "${it.toInt()}°" } ?: "--°",
+                    text = roomTemp(room.temp),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White,

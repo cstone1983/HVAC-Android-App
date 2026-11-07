@@ -318,6 +318,8 @@ data class HvacLayoutConfig(
     val hvacSettings: HvacSettingsConfig? = null,
     val dynamicSections: List<DynamicSectionConfig>? = emptyList(),
     val showWeatherCard: Boolean? = true,
+    // Decimals on room sensor readings: 1 shows "68.4°", 0 goes back to "68°". Heads stay whole.
+    val roomTempDecimals: Int? = 1,
     // Idle behaviour, in seconds. Both were hardcoded to 30, which was too short to read a
     // chart and short enough to close a popup while it was being used.
     val idleReturnSeconds: Int? = 20,

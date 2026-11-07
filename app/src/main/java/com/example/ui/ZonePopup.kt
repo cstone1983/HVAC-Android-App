@@ -325,7 +325,15 @@ private fun ReadingAndTarget(
     ) {
         Column(Modifier.weight(1f)) {
             Text("Room", fontSize = 13.sp, color = Color.White.copy(alpha = 0.55f))
-            Text(room?.let { "${it.toInt()}°" } ?: "--°", fontSize = 52.sp, fontWeight = FontWeight.Light, color = Color.White)
+            Text(
+                text = when {
+                    zone.roomTemp != null -> roomTempHero(zone.roomTemp)
+                    else -> androidx.compose.ui.text.AnnotatedString(room?.let { "${it.toInt()}°" } ?: "--°")
+                },
+                fontSize = 52.sp,
+                fontWeight = FontWeight.Light,
+                color = Color.White
+            )
             val extras = buildList {
                 if (zone.roomTemp != null) add("head ${zone.headTemp?.toInt()?.let { "$it°" } ?: "--"}")
                 zone.roomHumidity?.let { add("${it.toInt()}% humidity") }

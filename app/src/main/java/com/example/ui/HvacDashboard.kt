@@ -374,7 +374,10 @@ fun HvacDashboard(
 
     androidx.compose.runtime.SideEffect { com.example.ui.theme.HvacCorners.style = cardCornerStyle }
 
-    CompositionLocalProvider(LocalHvacTheme provides hvacThemeColors) {
+    CompositionLocalProvider(
+        LocalHvacTheme provides hvacThemeColors,
+        LocalRoomTempDecimals provides (layoutConfig.roomTempDecimals ?: 1)
+    ) {
         if (showSettingsDialog) {
             HvacSettingsDialog(
                 viewModel = viewModel,
@@ -1770,7 +1773,7 @@ fun HvacDashboardContent(
                                                 modifier = Modifier.weight(1f)
                                             )
                                             Text(
-                                                text = room.temp?.let { "${it.toInt()}°" } ?: "--°",
+                                                text = roomTemp(room.temp),
                                                 fontSize = 17.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color.White
@@ -2099,7 +2102,7 @@ fun RoomSensorsStrip(rooms: List<RoomSensor>) {
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = room.temp?.let { "${it.toInt()}°F" } ?: "--°F",
+                                text = roomTemp(room.temp, "°F"),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White,
