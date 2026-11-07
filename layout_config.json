@@ -1,5 +1,5 @@
 {
-  "version": "6.32.0",
+  "version": "6.32.1",
   "appTitle": "Home Control",
   "roomTempDecimals": 1,
   "roomTempChangeSeconds": 20,
@@ -437,8 +437,8 @@
       "durationQuestion": "Start Night in…",
       "scopeQuestion": "What should go to Night?",
       "scopes": [
-        { "option": "Whole house", "title": "Whole house", "description": "Same as plugging your phone in: Night temperatures, the bedtime shutdown (lights, purifier, Nightfall), and the alarm night-arms 5 minutes later." },
-        { "option": "Downstairs", "title": "Downstairs", "description": "The house goes to Night, and the alarm night-arms 5 minutes later. The bedroom string lights, the purifier and the sleep sounds wait for your phone to go on the charger." },
+        { "option": "Whole house", "title": "Whole house", "description": "Same as plugging your phone in: Night temperatures, the downstairs and outside lights off, both purifiers cycled, the bedroom string lights off, Nightfall, and the alarm night-arms 5 minutes later. The dining room night light stays on." },
+        { "option": "Downstairs", "title": "Downstairs", "description": "Night temperatures, the living room, kitchen, dining and outside lights off and the living room purifier cycled, and the alarm night-arms 5 minutes later. The dining room night light stays on. The bedroom string lights, the bedroom purifier and the sleep sounds wait for your phone to go on the charger." },
         { "option": "Heat pumps only", "title": "Heat pumps only", "description": "The heat pumps go to Night temperatures. Everything else waits for your phone to go on the charger as usual." }
       ],
       "onlyFromSchedule": "day",
