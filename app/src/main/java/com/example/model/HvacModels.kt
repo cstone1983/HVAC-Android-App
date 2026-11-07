@@ -320,6 +320,11 @@ data class HvacLayoutConfig(
     val showWeatherCard: Boolean? = true,
     // Decimals on room sensor readings: 1 shows "68.4°", 0 goes back to "68°". Heads stay whole.
     val roomTempDecimals: Int? = 1,
+    // When a room reading changes, a green "+0.2" or red "−0.3" beside it for this many seconds.
+    // 0 turns it off.
+    val roomTempChangeSeconds: Int? = 20,
+    val roomTempRiseColorHex: String? = "#10B981",
+    val roomTempFallColorHex: String? = "#EF4444",
     // Idle behaviour, in seconds. Both were hardcoded to 30, which was too short to read a
     // chart and short enough to close a popup while it was being used.
     val idleReturnSeconds: Int? = 20,

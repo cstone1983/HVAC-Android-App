@@ -366,6 +366,7 @@ private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
                 softWrap = false,
                 modifier = Modifier.width(54.dp)
             )
+            val roomChange = rememberRoomTempChange(zone.key, room)
             Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(58.dp)) {
                 if (LocalPendingSetpoints.current.containsKey(zone.key)) {
                     // Above SET, in place of the head reading, for the few seconds it shows.
@@ -374,6 +375,8 @@ private fun CommandZoneRow(zone: ClimateZone, onClick: () -> Unit) {
                         fontSize = 10.sp,
                         modifier = Modifier.wrapContentWidth(Alignment.End, unbounded = true)
                     )
+                } else if (roomChange != null) {
+                    RoomTempChange(roomChange, fontSize = 11.sp)
                 } else if (room != null) {
                     Text(
                         text = "head ${zone.headTemp?.toInt()?.let { "$it°" } ?: "--"}",
@@ -842,6 +845,11 @@ private fun CommandZoneCard(
                         color = Color.White,
                         maxLines = 1
                     )
+                    RoomTempChange(
+                        rememberRoomTempChange(zone.key, room),
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
                     zone.roomHumidity?.let { humidity ->
                         Spacer(Modifier.width(8.dp))
                         Icon(
@@ -983,6 +991,7 @@ private fun OtherRoomsLine(state: HvacUiState.Success, viewModel: HvacViewModel)
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White
                 )
+                RoomTempChange(rememberRoomTempChange(room.id, room.temp), fontSize = 11.sp)
             }
         }
     }

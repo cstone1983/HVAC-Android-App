@@ -1,7 +1,10 @@
 {
-  "version": "6.31.0",
+  "version": "6.32.0",
   "appTitle": "Home Control",
   "roomTempDecimals": 1,
+  "roomTempChangeSeconds": 20,
+  "roomTempRiseColorHex": "#10B981",
+  "roomTempFallColorHex": "#EF4444",
   "showWeatherCard": true,
   "weatherLatitude": 44.422164,
   "weatherLongitude": -69.587659,

@@ -376,7 +376,12 @@ fun HvacDashboard(
 
     CompositionLocalProvider(
         LocalHvacTheme provides hvacThemeColors,
-        LocalRoomTempDecimals provides (layoutConfig.roomTempDecimals ?: 1)
+        LocalRoomTempStyle provides RoomTempStyle(
+            decimals = layoutConfig.roomTempDecimals ?: 1,
+            changeSeconds = layoutConfig.roomTempChangeSeconds ?: 20,
+            riseColor = parseHexColor(layoutConfig.roomTempRiseColorHex, Color(0xFF10B981)),
+            fallColor = parseHexColor(layoutConfig.roomTempFallColorHex, Color(0xFFEF4444))
+        )
     ) {
         if (showSettingsDialog) {
             HvacSettingsDialog(
