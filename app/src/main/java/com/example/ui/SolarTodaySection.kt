@@ -3,6 +3,9 @@ package com.example.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -371,7 +374,9 @@ private data class ChartSeries(
 fun SolarTodayChart(
     chart: SolarChart,
     palette: SolarPalette,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The top of the scale in kW, so days compare at a glance; null fits the scale to the day. */
+    fixedTopKw: Float? = null
 ) {
     val startMs = remember(chart.start) { parseHaTimestamp(chart.start) }
     val stepMin = chart.stepMinutes ?: 5
@@ -410,10 +415,16 @@ fun SolarTodayChart(
         }
     }
 
-    val maxKw = remember(series) {
-        (series.flatMap { s -> s.points.map { it.second } }.maxOrNull() ?: 1f)
-            .coerceAtLeast(0.5f) * 1.12f
+    // The top of the chart is a round number on the kW scale, so every line on it is labelled.
+    // Fixed still grows past its top on a day that beats it, rather than cutting the line off.
+    val peakKw = remember(series) {
+        (series.flatMap { s -> s.points.map { it.second } }.maxOrNull() ?: 1f).coerceAtLeast(0.5f) * 1.05f
     }
+    // Fixed at 18 reads 0, 6, 12, 18: its own number at the top, in thirds.
+    val fixedFits = fixedTopKw != null && fixedTopKw > 0f && peakKw <= fixedTopKw
+    val top = maxOf(peakKw, fixedTopKw ?: 0f)
+    val scaleStep = if (fixedFits) fixedTopKw!! / 3f else kwScaleStep(top)
+    val maxKw = if (fixedFits) fixedTopKw!! else kotlin.math.ceil(top / scaleStep - 0.001f) * scaleStep
 
     val shadeSpans = remember(chart.behindTrees) {
         chart.behindTrees.orEmpty().mapNotNull { span ->
@@ -433,20 +444,20 @@ fun SolarTodayChart(
                 .fillMaxWidth()
                 .height(190.dp)
                 .pointerInput(series) {
-                    detectTapGestures(onPress = { readoutX = it.x / size.width.toFloat() })
+                    detectTapGestures(onPress = { readoutX = plotFraction(it.x, size.width.toFloat()) })
                 }
                 .pointerInput(series) {
                     detectDragGestures(
-                        onDragStart = { readoutX = it.x / size.width.toFloat() },
-                        onDrag = { change, _ -> readoutX = change.position.x / size.width.toFloat() },
+                        onDragStart = { readoutX = plotFraction(it.x, size.width.toFloat()) },
+                        onDrag = { change, _ -> readoutX = plotFraction(change.position.x, size.width.toFloat()) },
                         onDragEnd = { readoutX = null },
                         onDragCancel = { readoutX = null }
                     )
                 }
         ) {
             Canvas(modifier = Modifier.fillMaxSize().testTag("solar_today_chart")) {
-                val leftPad = 8.dp.toPx()
-                val rightPad = 40.dp.toPx()
+                val leftPad = ChartLeftPad.toPx()
+                val rightPad = ChartRightPad.toPx()
                 val topPad = 10.dp.toPx()
                 val bottomPad = 20.dp.toPx()
                 val plotW = size.width - leftPad - rightPad
@@ -466,6 +477,34 @@ fun SolarTodayChart(
                             topLeft = Offset(x0, topPad),
                             size = Size(x1 - x0, plotH)
                         )
+                    }
+                }
+
+                // The kW scale: a faint line at each step, labelled down the left.
+                val steps = kotlin.math.round(maxKw / scaleStep).toInt()
+                for (i in 0..steps) {
+                    val kw = i * scaleStep
+                    val y = py(kw)
+                    drawLine(
+                        color = palette.line.copy(alpha = if (i == 0) 1f else 0.6f),
+                        start = Offset(leftPad, y),
+                        end = Offset(leftPad + plotW, y),
+                        strokeWidth = 1f
+                    )
+                    try {
+                        val label = textMeasurer.measure(
+                            formatScaleKw(kw) + if (i == steps) " kW" else "",
+                            TextStyle(color = palette.muted, fontSize = 9.sp)
+                        )
+                        drawText(
+                            label,
+                            topLeft = Offset(
+                                (leftPad - 5.dp.toPx() - label.size.width).coerceAtLeast(0f),
+                                (y - label.size.height / 2f).coerceAtLeast(0f)
+                            )
+                        )
+                    } catch (e: Exception) {
+                        // A missing axis label is survivable; an exception mid-draw is not.
                     }
                 }
 
@@ -547,15 +586,6 @@ fun SolarTodayChart(
                     )
                 }
 
-                // y axis, right hand side like the trends chart.
-                drawTextSafely(
-                    textMeasurer, formatKw(maxKw), leftPad + plotW + 4.dp.toPx(), topPad,
-                    palette.muted, 9f
-                )
-                drawTextSafely(
-                    textMeasurer, "0", leftPad + plotW + 4.dp.toPx(), topPad + plotH - 10.dp.toPx(),
-                    palette.muted, 9f
-                )
             }
         }
 
@@ -611,6 +641,28 @@ private fun LegendChip(label: String, color: Color, palette: SolarPalette) {
 
 private fun formatKw(kw: Float): String = String.format(java.util.Locale.US, "%.2f", kw)
 
+/** The today chart's margins: a gutter on the left for the kW scale, a little room on the right. */
+private val ChartLeftPad = 34.dp
+private val ChartRightPad = 10.dp
+
+/** Where a touch falls across the plot, 0..1, leaving out the scale's gutter. */
+private fun androidx.compose.ui.unit.Density.plotFraction(x: Float, width: Float): Float {
+    val left = ChartLeftPad.toPx()
+    val plotW = width - left - ChartRightPad.toPx()
+    return if (plotW <= 0f) 0f else ((x - left) / plotW).coerceIn(0f, 1f)
+}
+
+/**
+ * A round step for the kW scale, giving at most four lines above zero: 0.25, 0.5, 1, 2, 2.5, 5 or
+ * 10 kW apart. Chris, 2026-11-08: a scale down the left, "maybe four" points for the chart's size.
+ */
+internal fun kwScaleStep(peakKw: Float): Float =
+    listOf(0.25f, 0.5f, 1f, 2f, 2.5f, 5f).firstOrNull { peakKw / it <= 4.001f } ?: 10f
+
+/** "0", "1", "2.5", "0.25": no trailing zeros on a scale label. */
+internal fun formatScaleKw(kw: Float): String =
+    String.format(java.util.Locale.US, "%.2f", kw).trimEnd('0').trimEnd('.')
+
 /** UTC in, Chris's clock out. The server speaks UTC; the wall panel should not. */
 internal fun formatLocalTime(epochMillis: Long): String =
     java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).apply {
@@ -655,7 +707,8 @@ fun SolarCalcTodaySection(
     state: com.example.model.SolarTodayState,
     palette: SolarPalette,
     enabled: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    scale: com.example.model.SolarChartScaleConfig? = null
 ) {
     if (!enabled) return
 
@@ -721,15 +774,41 @@ fun SolarCalcTodaySection(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 15.dp)) {
-                            Text(
-                                text = "TODAY",
-                                fontSize = 11.sp,
-                                letterSpacing = 1.0.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = palette.muted
-                            )
+                            // Dynamic fits the scale to today; Fixed holds it at the usual peak so
+                            // days compare by eye. Remembered per panel.
+                            val prefs = androidx.compose.ui.platform.LocalContext.current
+                                .getSharedPreferences("hvac_settings", android.content.Context.MODE_PRIVATE)
+                            var fixed by remember { mutableStateOf(prefs.getBoolean(FixedScalePref, false)) }
+                            val fixedKw = (scale?.fixedKw ?: 18.0).toFloat()
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "TODAY",
+                                    fontSize = 11.sp,
+                                    letterSpacing = 1.0.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = palette.muted,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (scale?.showToggle != false) {
+                                    ScaleToggle(
+                                        fixed = fixed,
+                                        dynamicLabel = scale?.dynamicLabel ?: "Dynamic",
+                                        fixedLabel = (scale?.fixedLabel ?: "Fixed {kw} kW")
+                                            .replace("{kw}", formatScaleKw(fixedKw)),
+                                        palette = palette,
+                                        onChange = {
+                                            fixed = it
+                                            prefs.edit().putBoolean(FixedScalePref, it).apply()
+                                        }
+                                    )
+                                }
+                            }
                             Spacer(Modifier.height(10.dp))
-                            SolarTodayChart(chart = chart, palette = palette)
+                            SolarTodayChart(
+                                chart = chart,
+                                palette = palette,
+                                fixedTopKw = if (fixed && scale?.showToggle != false) fixedKw else null
+                            )
                         }
                     }
                 }
@@ -737,6 +816,45 @@ fun SolarCalcTodaySection(
                 // The week either side of today, below the chart as on the site. Hidden
                 // entirely when the reply predates the field.
                 SolarWeekSection(week = response.week, palette = palette)
+            }
+        }
+    }
+}
+
+private const val FixedScalePref = "solar_chart_fixed_scale"
+
+/** Two segments at the chart's top right: Dynamic and Fixed. */
+@Composable
+private fun ScaleToggle(
+    fixed: Boolean,
+    dynamicLabel: String,
+    fixedLabel: String,
+    palette: SolarPalette,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .clip(com.example.ui.theme.themedShape(8.dp))
+            .border(BorderStroke(1.dp, palette.line), com.example.ui.theme.themedShape(8.dp))
+    ) {
+        listOf(false to dynamicLabel, true to fixedLabel).forEach { (isFixed, label) ->
+            val on = fixed == isFixed
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .heightIn(min = 34.dp)
+                    .background(if (on) palette.line else Color.Transparent)
+                    .clickable { onChange(isFixed) }
+                    .padding(horizontal = 12.dp)
+                    .testTag(if (isFixed) "solar_scale_fixed" else "solar_scale_dynamic")
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 11.sp,
+                    fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (on) palette.text else palette.muted,
+                    maxLines = 1
+                )
             }
         }
     }

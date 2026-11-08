@@ -243,7 +243,21 @@ data class SolarCalcConfig(
      * Assistant WebSocket.
      */
     val pollSeconds: Int? = 60,
-    val colors: SolarCalcColors? = SolarCalcColors()
+    val colors: SolarCalcColors? = SolarCalcColors(),
+    val chartScale: SolarChartScaleConfig? = SolarChartScaleConfig()
+)
+
+/**
+ * The Today chart's Dynamic / Fixed switch (Chris, 2026-11-08). Fixed holds the scale at
+ * [fixedKw], about the highest the house and the array reach, so one day compares with another
+ * by eye; a day that goes higher still fits. `{kw}` in [fixedLabel] becomes the number.
+ */
+@JsonClass(generateAdapter = true)
+data class SolarChartScaleConfig(
+    val fixedKw: Double? = 18.0,
+    val showToggle: Boolean? = true,
+    val dynamicLabel: String? = "Dynamic",
+    val fixedLabel: String? = "Fixed {kw} kW"
 )
 
 /**

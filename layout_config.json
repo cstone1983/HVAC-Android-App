@@ -1,5 +1,5 @@
 {
-  "version": "6.32.1",
+  "version": "6.33.0",
   "appTitle": "Home Control",
   "roomTempDecimals": 1,
   "roomTempChangeSeconds": 20,
@@ -528,6 +528,7 @@
     "enabled": true,
     "baseUrl": "https://solar.stoneyshome.com/",
     "pollSeconds": 20,
+    "chartScale": { "fixedKw": 18, "showToggle": true, "dynamicLabel": "Dynamic", "fixedLabel": "Fixed {kw} kW" },
     "colors": {
       "panel": "#111823",
       "line": "#222d3d",

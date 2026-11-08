@@ -109,7 +109,8 @@ fun SolarDashboardView(
         SolarCalcTodaySection(
             state = solarToday,
             palette = solarPalette,
-            enabled = solarCalcCfg?.enabled != false
+            enabled = solarCalcCfg?.enabled != false,
+            scale = solarCalcCfg?.chartScale
         )
 
         liveState.cmpBankBalance?.let { balance ->
