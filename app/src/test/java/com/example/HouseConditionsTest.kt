@@ -108,8 +108,27 @@ class HouseConditionsTest {
         )
         assertEquals(listOf(5, 10, 30, 60), hs.nightDelay!!.durations)
         assertEquals(listOf("Whole house", "Downstairs", "Heat pumps only"), hs.nightDelay!!.scopes.map { it.option })
+        // The one-tap rows (2026-11-15): Whole house and Downstairs, NOW 10 30 60.
+        assertEquals(listOf("Whole house", "Downstairs"), hs.nightDelay!!.scopes.filter { it.quick }.map { it.option })
+        assertEquals(listOf(0, 10, 30, 60), hs.nightDelay!!.quickDurations)
         // The Living room only row's wording comes from the zone's headChoice.
         assertNotNull(cfg.zones.first { it.key == "main_level" }.headChoice?.description)
+    }
+
+    @Test
+    fun `quick night buttons read NOW, minutes and hours`() {
+        assertEquals("NOW", com.example.model.nightDelayChipLabel(0))
+        assertEquals("10 MIN", com.example.model.nightDelayChipLabel(10))
+        assertEquals("1 HR", com.example.model.nightDelayChipLabel(60))
+        assertEquals("90 MIN", com.example.model.nightDelayChipLabel(90))
+    }
+
+    @Test
+    fun `NOW is a short countdown, minutes are minutes`() {
+        assertEquals(10, com.example.model.nightDelaySeconds(0, 10))
+        assertEquals(3, com.example.model.nightDelaySeconds(0, 0))
+        assertEquals(600, com.example.model.nightDelaySeconds(10, 10))
+        assertEquals(14400, com.example.model.nightDelaySeconds(999, 10))
     }
 
     private fun <T> assertNotNullAndGet(v: T?): T { assertNotNull(v); return v!! }

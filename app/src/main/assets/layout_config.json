@@ -1,5 +1,5 @@
 {
-  "version": "6.33.0",
+  "version": "6.34.0",
   "appTitle": "Home Control",
   "roomTempDecimals": 1,
   "roomTempChangeSeconds": 20,
@@ -437,15 +437,18 @@
       "durationQuestion": "Start Night in…",
       "scopeQuestion": "What should go to Night?",
       "scopes": [
-        { "option": "Whole house", "title": "Whole house", "description": "Same as plugging your phone in: Night temperatures, the downstairs and outside lights off, both purifiers cycled, the bedroom string lights off, Nightfall, and the alarm night-arms 5 minutes later. The dining room night light stays on." },
-        { "option": "Downstairs", "title": "Downstairs", "description": "Night temperatures, the living room, kitchen, dining and outside lights off and the living room purifier cycled, and the alarm night-arms 5 minutes later. The dining room night light stays on. The bedroom string lights, the bedroom purifier and the sleep sounds wait for your phone to go on the charger." },
+        { "option": "Whole house", "title": "Whole house", "description": "Same as plugging your phone in: Night temperatures, the downstairs and outside lights off, both purifiers cycled, the bedroom string lights off, Nightfall, and the alarm night-arms 5 minutes later. The dining room night light stays on.", "quick": true, "quickTitle": "Whole house to Night", "quickDescription": "Same as plugging your phone in, bedroom steps included." },
+        { "option": "Downstairs", "title": "Downstairs", "description": "Night temperatures, the living room, kitchen, dining and outside lights off and the living room purifier cycled, and the alarm night-arms 5 minutes later. The dining room night light stays on. The bedroom string lights, the bedroom purifier and the sleep sounds wait for your phone to go on the charger.", "quick": true, "quickTitle": "Downstairs to Night", "quickDescription": "Night temperatures, downstairs and outside lights off. The alarm night-arms 5 minutes later." },
         { "option": "Heat pumps only", "title": "Heat pumps only", "description": "The heat pumps go to Night temperatures. Everything else waits for your phone to go on the charger as usual." }
       ],
       "onlyFromSchedule": "day",
       "earlyNightEntityId": "input_boolean.hvac_early_night",
       "earlyNightTitle": "Heat pumps on Night",
       "earlyNightDescription": "Until your phone goes on the charger, or 5 AM. END puts them back on Day.",
-      "chip": "NIGHT IN"
+      "chip": "NIGHT IN",
+      "quickDurations": [0, 10, 30, 60],
+      "nowLabel": "NOW",
+      "nowSeconds": 10
     }
   },
   "waterHeaterRunningEntityId": "binary_sensor.heat_pump_water_heater_running",

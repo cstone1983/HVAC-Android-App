@@ -76,7 +76,19 @@ data class NightDelayConfig(
     val earlyNightEntityId: String? = null,
     val earlyNightTitle: String? = "Heat pumps on Night",
     val earlyNightDescription: String? = null,
-    val chip: String? = "NIGHT IN"
+    val chip: String? = "NIGHT IN",
+    /**
+     * The one-row shortcuts (2026-11-15): each scope with `quick = true` gets its own row with a
+     * button per entry here, so it takes one tap instead of START, a duration and a scope. 0 is NOW.
+     * The START row with the full choice stays below them.
+     */
+    val quickDurations: List<Int> = listOf(0, 10, 30, 60),
+    val nowLabel: String? = "NOW",
+    /**
+     * NOW still runs the countdown, this many seconds long, so the same automation does the work
+     * and the row offers CANCEL for a moment after a slip.
+     */
+    val nowSeconds: Int = 10
 )
 
 @JsonClass(generateAdapter = true)
@@ -84,8 +96,25 @@ data class NightDelayScope(
     /** The input_select option the automation reads. */
     val option: String,
     val title: String,
-    val description: String? = null
+    val description: String? = null,
+    /** Show this scope as its own row with [NightDelayConfig.quickDurations] buttons. */
+    val quick: Boolean = false,
+    /** That row's title, e.g. "Downstairs to Night"; [title] when not given. */
+    val quickTitle: String? = null,
+    /** That row's one-line description; [description] is long, so give a short one here. */
+    val quickDescription: String? = null
 )
+
+/** A quick-row button's label: NOW, "10 MIN", "1 HR", "90 MIN". */
+fun nightDelayChipLabel(minutes: Int, nowLabel: String? = "NOW"): String = when {
+    minutes <= 0 -> nowLabel ?: "NOW"
+    minutes % 60 == 0 -> "${minutes / 60} HR"
+    else -> "$minutes MIN"
+}
+
+/** The countdown length for a choice in minutes, where 0 means NOW ([NightDelayConfig.nowSeconds]). */
+fun nightDelaySeconds(minutes: Int, nowSeconds: Int): Int =
+    if (minutes <= 0) nowSeconds.coerceIn(3, 59) else minutes.coerceIn(1, 240) * 60
 
 /** What the conditions do to one zone: the schedule block it follows instead, and its boost. */
 data class ZoneConditionEffect(

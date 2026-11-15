@@ -49,6 +49,7 @@ import com.example.model.ClimateZone
 import com.example.model.HouseConditionStatus
 import com.example.model.NightDelayConfig
 import com.example.model.NightDelayScope
+import com.example.model.nightDelayChipLabel
 import com.example.ui.theme.LocalHvacTheme
 import com.example.ui.theme.themedShape
 import com.example.viewmodel.HvacUiState
@@ -178,8 +179,16 @@ fun HeatPumpSettingsDialog(state: HvacUiState.Success, viewModel: HvacViewModel,
                     }
                     val allowed = n.onlyFromSchedule == null ||
                         state.globalSettings.houseSchedule.equals(n.onlyFromSchedule, ignoreCase = true)
+                    // One row per quick scope ("Downstairs to Night": NOW 10 MIN 30 MIN 1 HR), so the
+                    // usual choices take one tap. Hidden while a countdown runs (its row below has
+                    // CANCEL) and when the house is not on Day, where they would do nothing.
+                    if (!running && allowed) {
+                        n.scopes.filter { it.quick }.forEach { scope ->
+                            QuickNightRow(n, scope) { minutes -> viewModel.startNightDelay(n, minutes, scope) }
+                        }
+                    }
                     val title = if (running) {
-                        "${n.name ?: "Night early"} · in ${minutesLeft(status?.endsAt, nowMs)} min"
+                        "${n.name ?: "Night early"} · in ${countdownLeft(status?.endsAt, nowMs)}"
                     } else n.name ?: "Night early"
                     val desc = when {
                         running -> status?.scope?.let { s -> n.scopes.firstOrNull { it.option == s }?.title ?: s }
@@ -226,6 +235,12 @@ fun HeatPumpSettingsDialog(state: HvacUiState.Success, viewModel: HvacViewModel,
 
 private fun minutesLeft(endsAt: Long?, nowMs: Long): Long =
     endsAt?.let { ((it - nowMs + 59_999L) / 60_000L).coerceAtLeast(0L) } ?: 0L
+
+/** "8 s" in the last minute (NOW's short countdown), otherwise "12 min". */
+private fun countdownLeft(endsAt: Long?, nowMs: Long): String {
+    val ms = ((endsAt ?: nowMs) - nowMs).coerceAtLeast(0L)
+    return if (ms < 60_000L) "${(ms + 999L) / 1000L} s" else "${minutesLeft(endsAt, nowMs)} min"
+}
 
 private fun clockTime(ms: Long): String =
     java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(java.util.Date(ms))
@@ -354,6 +369,44 @@ private fun ActionRow(
                 letterSpacing = 0.5.sp,
                 color = if (active) Color.White.copy(alpha = 0.7f) else accent
             )
+        }
+    }
+}
+
+/** A Night early scope as one row: its title, then a big button for each quick duration. */
+@Composable
+private fun QuickNightRow(n: NightDelayConfig, scope: NightDelayScope, onStart: (Int) -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(themedShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .testTag("hp_quick_night_${scope.option}")
+    ) {
+        RowText(scope.quickTitle ?: scope.title, scope.quickDescription, false, ConditionOnColor, Modifier.fillMaxWidth())
+        Spacer(Modifier.size(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            n.quickDurations.forEach { minutes ->
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .clip(themedShape(10.dp))
+                        .background(NightColor.copy(alpha = 0.15f))
+                        .border(1.dp, NightColor.copy(alpha = 0.5f), themedShape(10.dp))
+                        .clickable { onStart(minutes) }
+                        .testTag("hp_quick_night_${scope.option}_$minutes")
+                ) {
+                    Text(
+                        nightDelayChipLabel(minutes, n.nowLabel),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                        color = NightColor
+                    )
+                }
+            }
         }
     }
 }

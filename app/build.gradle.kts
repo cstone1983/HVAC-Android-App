@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.hvac_controller.krnyzs"
     minSdk = 24
     targetSdk = 36
-    versionCode = 80
-    versionName = "80.0"
+    versionCode = 81
+    versionName = "81.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

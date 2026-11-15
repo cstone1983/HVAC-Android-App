@@ -2264,12 +2264,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * the automation that runs when it ends reads the scope then.
      */
     fun startNightDelay(cfg: com.example.model.NightDelayConfig, minutes: Int, scope: com.example.model.NightDelayScope) {
-        val m = minutes.coerceIn(1, 240)
-        _actionFeedback.value = "Night in $m minutes · ${scope.title}"
+        // 0 is NOW: a few seconds' countdown, so the same automation does the work.
+        val seconds = com.example.model.nightDelaySeconds(minutes, cfg.nowSeconds)
+        _actionFeedback.value = if (minutes <= 0) "Night now · ${scope.title}" else "Night in ${seconds / 60} minutes · ${scope.title}"
         viewModelScope.launch {
             try {
                 val ok = performServiceCall("input_select", "select_option", mapOf("entity_id" to cfg.scopeEntityId, "option" to scope.option)) &&
-                    performServiceCall("timer", "start", mapOf("entity_id" to cfg.timerEntityId, "duration" to timerDuration(m)))
+                    performServiceCall("timer", "start", mapOf("entity_id" to cfg.timerEntityId, "duration" to timerDurationSeconds(seconds)))
                 if (!ok) _actionFeedback.value = "Home Assistant didn't accept that. Try again."
             } catch (e: Exception) {
                 _actionFeedback.value = "Couldn't reach Home Assistant. Try again."
@@ -2282,6 +2283,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun timerDuration(minutes: Int): String = "%02d:%02d:00".format(minutes / 60, minutes % 60)
+
+    private fun timerDurationSeconds(seconds: Int): String =
+        "%02d:%02d:%02d".format(seconds / 3600, (seconds / 60) % 60, seconds % 60)
 
     /** Flips the zone card's head-choice switch ("Living room only") on or off. */
     fun setHeadChoice(zone: ClimateZone, switchOn: Boolean) {
