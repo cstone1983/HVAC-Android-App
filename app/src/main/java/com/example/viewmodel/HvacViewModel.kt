@@ -619,7 +619,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _backupHaUrl = MutableStateFlow(
         sharedPrefs.getString("backup_ha_url", null) 
-            ?: (try { com.example.BuildConfig.HA_BACKUP_URL } catch (e: Exception) { "http://10.10.1.116:8123/" })
+            ?: (try { com.example.BuildConfig.HA_BACKUP_URL } catch (e: Exception) { "http://10.10.11.103:8123/" })
     )
     val backupHaUrl: StateFlow<String> = _backupHaUrl.asStateFlow()
 

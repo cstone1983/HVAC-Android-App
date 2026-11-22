@@ -19,7 +19,7 @@ the releases of **[cstone1983/app-builder](https://github.com/cstone1983/app-bui
 Things that follow from that:
 
 - **Version numbers.** app-builder sets `versionName` to this repo's `versionName` plus its run
-  number (`83.0` becomes `83.0.57`) and `versionCode` to `1000 + run`. Keep `versionName` in
+  number (`84.0` becomes `84.0.57`) and `versionCode` to `1000 + run`. Keep `versionName` in
   `app/build.gradle.kts` as plain dotted numbers and `versionCode` below 1000.
 - **No secrets are built in.** app-builder has no `.env`, and its releases are public, so a
   release carries no Home Assistant token, no main (remote) Home Assistant address and no GitHub

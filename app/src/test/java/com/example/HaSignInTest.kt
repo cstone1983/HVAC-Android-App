@@ -44,14 +44,14 @@ import org.junit.Test
  */
 class HaSignInTest {
 
-    private val home = "http://10.10.1.116:8123/"
+    private val home = "http://10.10.11.103:8123/"
 
     // --- addresses ---
 
     @Test
     fun `client id is the server address with a slash`() {
-        assertEquals("http://10.10.1.116:8123/", signInClientId("http://10.10.1.116:8123"))
-        assertEquals("http://10.10.1.116:8123/", signInClientId("http://10.10.1.116:8123/"))
+        assertEquals("http://10.10.11.103:8123/", signInClientId("http://10.10.11.103:8123"))
+        assertEquals("http://10.10.11.103:8123/", signInClientId("http://10.10.11.103:8123/"))
         assertEquals("https://ha.example.com/", signInClientId(" https://HA.Example.com "))
     }
 
@@ -62,7 +62,7 @@ class HaSignInTest {
 
     @Test
     fun `websocket address follows the scheme`() {
-        assertEquals("ws://10.10.1.116:8123/api/websocket", signInWebSocketUrl("http://10.10.1.116:8123"))
+        assertEquals("ws://10.10.11.103:8123/api/websocket", signInWebSocketUrl("http://10.10.11.103:8123"))
         assertEquals("wss://ha.example.com/api/websocket", signInWebSocketUrl("https://ha.example.com/"))
     }
 
@@ -73,7 +73,7 @@ class HaSignInTest {
         // The old, never-used code sent ["homeassistant", "default"], which Home Assistant
         // answers with 404 "Invalid handler specified".
         assertEquals(
-            """{"client_id":"http://10.10.1.116:8123/","handler":["homeassistant",null],"redirect_uri":"http://10.10.1.116:8123/"}""",
+            """{"client_id":"http://10.10.11.103:8123/","handler":["homeassistant",null],"redirect_uri":"http://10.10.11.103:8123/"}""",
             loginFlowStartBody(home)
         )
     }
@@ -82,11 +82,11 @@ class HaSignInTest {
     fun `a step carries client_id with its own fields`() {
         // Home Assistant answers a step without client_id with a 400.
         assertEquals(
-            """{"client_id":"http://10.10.1.116:8123/","username":"chris","password":"p\"a\\ss"}""",
+            """{"client_id":"http://10.10.11.103:8123/","username":"chris","password":"p\"a\\ss"}""",
             loginFlowStepBody(home, linkedMapOf("username" to "chris", "password" to "p\"a\\ss"))
         )
         assertEquals(
-            """{"client_id":"http://10.10.1.116:8123/","code":"123456"}""",
+            """{"client_id":"http://10.10.11.103:8123/","code":"123456"}""",
             loginFlowStepBody(home, mapOf("code" to "123456"))
         )
     }
@@ -94,7 +94,7 @@ class HaSignInTest {
     @Test
     fun `a field cannot replace client_id`() {
         assertEquals(
-            """{"client_id":"http://10.10.1.116:8123/"}""",
+            """{"client_id":"http://10.10.11.103:8123/"}""",
             loginFlowStepBody(home, mapOf("client_id" to "http://evil.example/"))
         )
     }
@@ -308,7 +308,7 @@ class HaSignInTest {
     fun `only long-lived tokens count as taken names`() {
         val list = (parseSignInWsMessage(
             """{"id":1,"type":"result","success":true,"result":[
-                 {"id":"a","type":"normal","client_id":"http://10.10.1.116:8123/","client_name":null,"is_current":true},
+                 {"id":"a","type":"normal","client_id":"http://10.10.11.103:8123/","client_name":null,"is_current":true},
                  {"id":"b","type":"long_lived_access_token","client_id":null,"client_name":"HVAC tablet - kitchen"},
                  {"id":"c","type":"long_lived_access_token","client_id":null,"client_name":"n8n"},
                  {"id":"d","type":"normal","client_name":"HVAC tablet - upstairs"}]}"""
@@ -408,7 +408,7 @@ class HaSignInTest {
     fun `no answer at all is can't reach the server`() {
         val refused = networkErrorMessage(java.net.ConnectException("Connection refused"), home)
         assertEquals("unreachable", refused.key)
-        assertEquals("Can't reach the server at http://10.10.1.116:8123/ (nothing is answering there)", refused.text)
+        assertEquals("Can't reach the server at http://10.10.11.103:8123/ (nothing is answering there)", refused.text)
         assertTrue(networkErrorMessage(java.net.UnknownHostException("ha.example.com"), home).text.contains("the name was not found"))
         assertTrue(networkErrorMessage(java.net.SocketTimeoutException("timeout"), home).text.contains("no answer in time"))
         assertTrue(networkErrorMessage(javax.net.ssl.SSLHandshakeException("bad cert"), home).text.contains("secure connection"))

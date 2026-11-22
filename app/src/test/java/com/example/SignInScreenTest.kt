@@ -63,7 +63,7 @@ class SignInScreenTest {
                     title = "Home Control",
                     subtitle = "HVAC SYSTEM CONTROLLER",
                     text = SignInConfig(),
-                    server = "http://10.10.1.116:8123/",
+                    server = "http://10.10.11.103:8123/",
                     mainUrl = "https://localhost/",
                     defaultMainUrl = "https://localhost/",
                     stage = stage,
@@ -87,7 +87,7 @@ class SignInScreenTest {
     @Test
     fun `log in sends what was typed and the device name, once`() {
         show()
-        compose.onNodeWithText("http://10.10.1.116:8123/").assertIsDisplayed()
+        compose.onNodeWithText("http://10.10.11.103:8123/").assertIsDisplayed()
         compose.onNodeWithTag("sign_in_device_name_input").assertTextContains("HVAC tablet - kitchen")
         // On the tablet the button has to be on screen without scrolling: the keyboard will take
         // the bottom half.
@@ -161,7 +161,7 @@ class SignInScreenTest {
 
     @Test
     fun `can't reach the server is shown as that`() {
-        error = "Can't reach the server at http://10.10.1.116:8123/ (nothing is answering there)"
+        error = "Can't reach the server at http://10.10.11.103:8123/ (nothing is answering there)"
         show(username = "chris")
         compose.onNodeWithText(error!!).performScrollTo().assertIsDisplayed()
         capture("5_unreachable")

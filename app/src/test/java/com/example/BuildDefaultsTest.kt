@@ -17,7 +17,7 @@ import org.junit.Test
  */
 class BuildDefaultsTest {
 
-    private val home = "http://10.10.1.116:8123/"
+    private val home = "http://10.10.11.103:8123/"
 
     @Test
     fun `a build with no token and nothing saved is not signed in`() {

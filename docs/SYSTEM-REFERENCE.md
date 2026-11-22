@@ -165,7 +165,9 @@ Two things to notice:
 
 ## 4. Home Assistant
 
-Base URL `https://ha.stoneyshome.com`, LAN fallback `http://10.10.1.116:8123`. Timezone
+Base URL `https://ha.stoneyshome.com`, LAN fallback `http://10.10.11.103:8123` (it was
+`http://10.10.1.116:8123` until the network overhaul; that address no longer
+answers). Timezone
 `America/New_York`. Roughly 1183 entities.
 
 ### 4.1 The intent helpers — the heart of the system
@@ -769,7 +771,7 @@ minute**. A helper written at `:31` is the recurring schedule, not something don
 applicationId  com.aistudio.hvac_controller.krnyzs
 MainActivity   com.example.MainActivity
 namespace      com.example
-versionCode 83   versionName "83.0"   (app-builder releases: 1000 + run, "83.0.<run>")
+versionCode 84   versionName "84.0"   (app-builder releases: 1000 + run, "84.0.<run>")
 minSdk 24        targetSdk 36     compileSdk 36.1
 repo           cstone1983/HVAC-Android-App  (branch main)
 ```
@@ -973,6 +975,15 @@ and no GitHub token. A fresh install therefore starts on the sign-in screen (`re
 and with no main address it signs in through the home address (`signInUrl`). Both are kept in
 SharedPreferences and survive updates, but not an uninstall. Never put the token or the remote
 address in `.env.example` or anywhere else in git: the repo and the releases are public.
+
+**Where the home address comes from.** `HA_BACKUP_URL` in `.env.example` is the default home
+address of every app-builder release (the build has no `.env`, so BuildConfig takes the example
+file's value), and of the sign-in screen on a fresh install. The literal in `HvacViewModel`
+(`_backupHaUrl`) is only a last fallback and must say the same. A saved address (SharedPreferences
+`backup_ha_url`, or `ha_url` after signing in through the home address) wins over both and
+survives updates, so if Home Assistant moves again, a device that is already signed in needs the
+new address typed in Settings > Connection; changing the default only helps a fresh install.
+84.0 changed the default to `http://10.10.11.103:8123/`.
 
 **Sign-in (83.0).** The sign-in screen (`ui/SignInScreen.kt`) takes a username, password and
 device name and ends with an ordinary long-lived token in SharedPreferences `ha_token`, the same
