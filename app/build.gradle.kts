@@ -14,16 +14,23 @@ android {
     applicationId = "com.aistudio.hvac_controller.krnyzs"
     minSdk = 24
     targetSdk = 36
-    versionCode = 81
-    versionName = "81.0"
+    // Installed builds come from cstone1983/app-builder, which builds :app:assembleRelease from
+    // main and overrides these: versionCode = 1000 + its run number, versionName =
+    // "<versionName>.<run>". So keep versionName plain dotted numbers (its check rejects anything
+    // else) and versionCode below 1000.
+    versionCode = 82
+    versionName = "82.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  // app-builder signs the release APK itself, with the one shared release key, after building it
+  // unsigned. A keystore is only used here if one is on this machine.
+  val releaseKeystore = file(System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks")
+
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
+      storeFile = releaseKeystore
       storePassword = System.getenv("STORE_PASSWORD")
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
@@ -37,17 +44,24 @@ android {
   }
 
   buildTypes {
+    // What the three devices run, built by app-builder (2026-11-21). Keep it the same app as
+    // "panel" below: not debuggable, R8 off (Moshi's reflection adapters would need keep rules
+    // first), nothing build-type specific in the sources. With no keystore here it comes out
+    // unsigned, which is what app-builder and the CI build check want.
     release {
+      isDebuggable = false
+      isJniDebuggable = false
       isCrunchPngs = false
       isMinifyEnabled = false
+      isShrinkResources = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      signingConfig = if (releaseKeystore.exists()) signingConfigs.getByName("release") else null
     }
-    // What the three devices run (2026-10-20). A debug build is debuggable, which turns off much of
-    // ART's optimisation, and Compose is noticeably slower for it on the A8 and A9. This is the
-    // same app made non-debuggable, signed with the same key as the debug builds already on the
-    // devices so it installs over them in place. R8 stays off: Moshi's reflection adapters would
-    // need keep rules first. Build with assemblePanel.
+    // For installs from Android Studio (2026-10-20). A debug build is debuggable, which turns off
+    // much of ART's optimisation, and Compose is noticeably slower for it on the A8 and A9. This
+    // is the same app made non-debuggable, signed with this PC's debug key. It cannot install
+    // over an app-builder release (different key) without uninstalling first. Build with
+    // assemblePanel.
     create("panel") {
       initWith(getByName("debug"))
       isDebuggable = false

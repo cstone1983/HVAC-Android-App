@@ -1,63 +1,63 @@
-name: Build and Deploy Rolling Android Release
+name: Build check
+
+# Checks that main still builds the way cstone1983/app-builder builds it: the "release" build
+# type, with no .env and no keystore. It publishes nothing.
+#
+# Installable APKs come from app-builder's releases (titled "hvac <version>"), which the tablets
+# and the phone install through Obtainium. This workflow used to publish a debug APK as a rolling
+# "v1.0" release here; each run signed it with a new throwaway key, so it could never be installed
+# as an update.
+#
+# The in-app layout update does not use releases at all. It reads layout_config.json from the
+# branch, so a push to main is all it needs.
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    paths-ignore: ["docs/**", "mockups/**", "**.md"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
+      - uses: actions/checkout@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
+          persist-credentials: false
 
-      - name: Grant execute permission to Gradle wrapper
-        run: chmod +x gradlew
+      - name: The two layout_config.json copies are the same
+        run: cmp layout_config.json app/src/main/assets/layout_config.json
 
-      - name: Set up Environment from .env
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and an unsigned release build (no .env, no keystore)
         run: |
-          if [ ! -f .env ]; then
-            if [ -f .env.example ]; then
-              cp .env.example .env
-            else
-              touch .env
-            fi
+          chmod +x gradlew
+          ./gradlew --no-daemon --no-configuration-cache :app:testDebugUnitTest :app:assembleRelease
+
+      - name: Check the APK
+        run: |
+          mapfile -t apks < <(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' | sort)
+          [ "${#apks[@]}" = 1 ] || { echo "expected one release APK, found: ${apks[*]:-none}"; exit 1; }
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          badge=$("$bt/aapt2" dump badging "${apks[0]}" | head -1)
+          echo "$badge"
+          code=$(sed -nE "s/.*versionCode='([^']+)'.*/\1/p" <<<"$badge")
+          name=$(sed -nE "s/.*versionName='([^']+)'.*/\1/p" <<<"$badge")
+          # app-builder appends its run number to versionName and uses 1000 + run as versionCode.
+          [[ "$name" =~ ^[0-9]+(\.[0-9]+)+$ ]] || { echo "versionName '$name' is not plain dotted numbers"; exit 1; }
+          [ "$code" -lt 1000 ] || { echo "versionCode $code must stay below 1000"; exit 1; }
+          if "$bt/aapt2" dump xmltree --file AndroidManifest.xml "${apks[0]}" | grep -q 'android:debuggable.*=true'; then
+            echo "the release build is debuggable"; exit 1
           fi
-
-      - name: Build Debug APK with Gradle
-        run: ./gradlew assembleDebug --no-daemon
-
-      - name: Create or Update GitHub Release
-        uses: ncipollo/release-action@v1
-        with:
-          allowUpdates: true
-          tag: "v1.0"
-          name: "Latest Rolling Release v1.0"
-          body: |
-            ### HAVEN HVAC COMPILATION BUILD
-            
-            This release is automatically updated to host the latest compiled Android package (.apk) generated directly from your commits to the `main` branch.
-            
-            • **Branch:** `main`
-            • **Build Trigger:** Push / Auto Deploy
-            
-            **How to install:**
-            Download and run the attached `.apk` asset on your Android device to install the update. If you are already running the app on your phone, you can go to the **System Updates** tab inside the app to check for and install this update over-the-air (OTA)!
-          draft: false
-          prerelease: false
-          artifacts: "app/build/outputs/apk/debug/app-debug.apk"
-          replacesArtifacts: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+          echo "### hvac $name (versionCode $code), unsigned release build OK" >> "$GITHUB_STEP_SUMMARY"

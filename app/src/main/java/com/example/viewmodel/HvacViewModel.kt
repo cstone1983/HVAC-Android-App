@@ -1011,27 +1011,18 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val buildUrl = try { com.example.BuildConfig.HA_URL } catch (ex: Exception) { "" }
         val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (ex: Exception) { "" }
 
-        val finalUrl = if (buildUrl.isNotEmpty() && buildUrl != "https://localhost/") {
-            buildUrl
-        } else if (!savedUrl.isNullOrEmpty()) {
-            savedUrl
-        } else {
-            "https://localhost/"
-        }
-
-        val finalToken = if (buildToken.isNotEmpty() && buildToken != "YOUR_HOME_ASSISTANT_TOKEN") {
-            buildToken
-        } else if (!savedToken.isNullOrEmpty()) {
-            savedToken
-        } else {
-            ""
-        }
+        val startup = com.example.api.resolveHaStartup(buildUrl, buildToken, savedUrl, savedToken)
+        val finalUrl = startup.url
+        val finalToken = startup.token
 
         startUpdateSync()
         startWeatherSync()
 
         HomeAssistantClient.initialize(finalUrl, finalToken)
-        _isLoggedIn.value = true
+        // A release from app-builder has no token built in, so a fresh install starts on the
+        // sign-in screen and keeps the token it is given there. This was always `true`, which
+        // left such an install on an empty dashboard with no way to sign in.
+        _isLoggedIn.value = startup.signedIn
 
         // Off the main thread.
         //
@@ -1122,10 +1113,16 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                 // Fallback option in case it was previously stored in sharedPrefs
                 val savedUrl = sharedPrefs.getString("ha_url", null)
 
-                val targetUrl = if (!savedUrl.isNullOrEmpty()) savedUrl else buildUrl
+                // A release from app-builder has no main address built in. On the home network
+                // the home address is enough to sign in; the main one can be set with CHANGE
+                // SERVER ADDRESS first, or in Settings > Connection afterwards.
+                val targetUrl = com.example.api.signInUrl(
+                    if (!savedUrl.isNullOrEmpty()) savedUrl else buildUrl,
+                    _backupHaUrl.value
+                )
 
                 if (targetUrl.isEmpty()) {
-                    _loginErrorMessage.value = "Configuration error: Missing background Server Address configuration."
+                    _loginErrorMessage.value = "Set the server address first (CHANGE SERVER ADDRESS below)."
                     return@launch
                 }
 
@@ -1154,6 +1151,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         .apply()
 
                     HomeAssistantClient.initialize(formattedUrl, cleanToken)
+                    _haUrl.value = formattedUrl
                     _isLoggedIn.value = true
                     _loginErrorMessage.value = null
                     startSync()
@@ -2882,6 +2880,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     private var pendingVersion: String = ""
     private var pendingSoftwareCommit: String = ""
 
+    /** The branch's layout file at the last finished check; see [com.example.api.layoutApiCheckNeeded]. */
+    private var lastCheckedBranchLayout: String? = null
+
     fun checkForUpdates(currentVersion: String, quiet: Boolean = false) {
         val current = _updateState.value
         if (current is UpdateState.Downloading || current is UpdateState.Installing || current is UpdateState.Success) {
@@ -2894,6 +2895,25 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val repo = _githubRepo.value
                 val branch = _githubBranch.value
+
+                // With no GitHub token (every release from app-builder), a background check reads
+                // the layout file first and stays off the rate-limited API unless it has changed.
+                val tokenless = com.example.api.GithubClient.tokenProvider?.invoke() == null
+                var branchLayout: String? = null
+                if (quiet && tokenless) {
+                    branchLayout = try {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            val raw = com.example.api.GithubClient.service.getLayoutConfig(
+                                "https://raw.githubusercontent.com/$repo/$branch/layout_config.json",
+                                System.currentTimeMillis()
+                            )
+                            if (raw.isSuccessful) raw.body()?.string() else null
+                        }
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (!com.example.api.layoutApiCheckNeeded(branchLayout, lastCheckedBranchLayout)) return@launch
+                }
 
                 // 1. Fetch latest commit SHA and metadata of the branch (e.g., commit message, author name)
                 var sha = ""
@@ -2934,7 +2954,11 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     checkFailureDetails = "Connection failure: ${e.localizedMessage ?: "Unknown network failure"}"
                 }
 
-                if (sha.isNotEmpty()) {
+                if (sha.isNotEmpty() && branchLayout != null) lastCheckedBranchLayout = branchLayout
+
+                // The history list is only read on the Updates page, which runs its own check
+                // when it opens, so a tokenless background check does not spend a request on it.
+                if (sha.isNotEmpty() && !(quiet && tokenless)) {
                     try {
                         val recentCommitsUrl = "https://api.github.com/repos/$repo/commits?sha=$branch&per_page=6&t=${System.currentTimeMillis()}"
                         val recentResponse = com.example.api.GithubClient.service.getRecentCommits(recentCommitsUrl)

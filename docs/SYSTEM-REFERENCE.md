@@ -769,14 +769,16 @@ minute**. A helper written at `:31` is the recurring schedule, not something don
 applicationId  com.aistudio.hvac_controller.krnyzs
 MainActivity   com.example.MainActivity
 namespace      com.example
-versionCode 21   versionName "21.0"
+versionCode 82   versionName "82.0"   (app-builder releases: 1000 + run, "82.0.<run>")
 minSdk 24        targetSdk 36     compileSdk 36.1
 repo           cstone1983/HVAC-Android-App  (branch main)
 ```
 
 Kotlin + Jetpack Compose (Material 3), Retrofit + Moshi + OkHttp, Room, Robolectric/Roborazzi for
 tests. Secrets come from `.env` via the Secrets Gradle Plugin into `BuildConfig`
-(`HA_URL`, `HA_BACKUP_URL`, `HA_TOKEN`, `GITHUB_TOKEN`).
+(`HA_URL`, `HA_BACKUP_URL`, `HA_TOKEN`, `GITHUB_TOKEN`), **but only in a build made on the
+development PC**. A release from app-builder has no `.env` and gets the `.env.example` placeholders,
+which the app treats as absent: see §6.8.
 
 ### 6.2 File map
 
@@ -945,18 +947,32 @@ temperatures and HEAT / COOL / OFF actions. It reschedules itself every five min
 
 Two completely separate paths:
 
-**Layout (works, this is the one that matters).** `checkForUpdates` reads
-`api.github.com/repos/<repo>/commits/<branch>`; applying downloads
-`raw.githubusercontent.com/<repo>/<sha>/layout_config.json` and stores the **raw bytes**, not a
-re-serialized parse — re-serializing silently dropped every key the running build didn't know
+**Layout.** `checkForUpdates` reads `api.github.com/repos/<repo>/commits/<branch>`; applying
+downloads `raw.githubusercontent.com/<repo>/<sha>/layout_config.json` and stores the **raw bytes**,
+not a re-serialized parse — re-serializing silently dropped every key the running build didn't know
 about. It writes `layout_config_json`, `layout_version` and `layout_commit_sha`, and deliberately
-does **not** touch the displayed app version.
+does **not** touch the displayed app version. It never reads a GitHub release.
 
-**APK (does not work).** `.github/workflows/android-release.yml` runs `assembleDebug` on every push
-to `main` and attaches `app-debug.apk` to a rolling `v1.0` release. **CI mints a fresh debug
-keystore each run**, so those APKs cannot install over anything — including each other. There is no
-working OTA path for code. Fixing it needs a keystore in GitHub secrets plus a one-time
-uninstall/reinstall on all three panels.
+With no GitHub token (every app-builder release), the five-minute background check first reads
+`raw.githubusercontent.com/<repo>/<branch>/layout_config.json` and only goes to the API when that
+file differs from the one seen at the last finished check (`layoutApiCheckNeeded` in
+`api/BuildDefaults.kt`). GitHub allows 60 unauthenticated API requests an hour per IP address;
+three devices at two requests every five minutes would use 72, and Obtainium shares the same
+allowance. The Updates page's own check always uses the API.
+
+**APK (since 2026-11-21).** Releases are built by `cstone1983/app-builder`: it checks out `main`,
+builds `:app:assembleRelease` unsigned (an init script drops the signing config and sets
+versionCode = 1000 + run, versionName = `<versionName>.<run>`), signs with the one shared release
+key and publishes a pre-release titled `hvac <version>`. Promoting it to a full release deploys it;
+Obtainium on each device installs it in place. `.github/workflows/android-release.yml` here is only
+a build check and publishes nothing. (Until 2026-11-21 it attached a debug APK to a rolling `v1.0`
+release, signed with a fresh key each run, which could never install as an update.)
+
+**What an app-builder release does not carry.** No Home Assistant token, no main (remote) address
+and no GitHub token. A fresh install therefore starts on the sign-in screen (`resolveHaStartup`),
+and with no main address it signs in through the home address (`signInUrl`). Both are kept in
+SharedPreferences and survive updates, but not an uninstall. Never put the token or the remote
+address in `.env.example` or anywhere else in git: the repo and the releases are public.
 
 ### 6.9 Deploy targets
 
@@ -1254,7 +1270,7 @@ of cloud backup.
   mutex is released roughly 11 s before the writes it guards land. Fixing it means flipping that
   flag **and** raising the 150 s mutex TTL in the same change — a full sweep is about 350 s. The
   most behaviour-changing edit on the list, and the reason it is parked.
-- **OTA / CI signing.** See §6.8. No working APK update path exists.
+- ~~**OTA / CI signing.**~~ Done 2026-11-21: APKs come from app-builder through Obtainium, see §6.8.
 
 **Known and unfixed in n8n:**
 
