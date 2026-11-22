@@ -327,6 +327,8 @@ data class HvacLayoutConfig(
     val solarSensors: SolarSensorConfig? = SolarSensorConfig(),
     val solarCalc: SolarCalcConfig? = SolarCalcConfig(),
     val alarm: AlarmConfig? = AlarmConfig(),
+    /** The sign-in screen: device names, token lifetime, error wording. See [SignInConfig]. */
+    val signIn: SignInConfig? = SignInConfig(),
     val homeStatus: HomeStatusConfig? = HomeStatusConfig(),
     /** The Heat pump settings page. Null hides its gear. See [HvacSettingsConfig]. */
     val hvacSettings: HvacSettingsConfig? = null,
@@ -926,6 +928,33 @@ fun clampToHardwareFloor(value: Double, targetMode: String): Double {
     return if (mode == "cool" || mode == "dry") maxOf(value, COOL_FLOOR_F)
     else maxOf(value, HEAT_FLOOR_F)
 }
+
+/**
+ * The sign-in screen (83.0). Signing in with a username and password ends with Home Assistant
+ * making a long-lived token for this device; these are the parts of that worth changing without
+ * a new build.
+ */
+@JsonClass(generateAdapter = true)
+data class SignInConfig(
+    // The name the token is listed under in Home Assistant (Profile > Security), by Android
+    // model. It is only the default: the name can be edited on the sign-in screen.
+    val deviceNames: Map<String, String>? = null,
+    // For a model that is not listed. {model} becomes the Android model.
+    val fallbackDeviceName: String? = "HVAC {model}",
+    // How long the token lasts, in days. 3650 is what Home Assistant's own profile page uses.
+    val tokenLifespanDays: Int? = 3650,
+    // Replacement wording for sign-in errors, by key: invalid_auth, invalid_code, too_many_retry,
+    // login_expired, unreachable, blocked, not_home_assistant, server_refused, token_failed.
+    // {detail} is filled with what Home Assistant said, where there is something.
+    val messages: Map<String, String>? = null,
+    val usernameLabel: String? = "Username",
+    val passwordLabel: String? = "Password",
+    val deviceNameLabel: String? = "Device name",
+    val codeLabel: String? = "Two-factor authentication code",
+    val tokenLabel: String? = "Long-lived access token",
+    val passwordHint: String? = "Log in with your Home Assistant username and password. Home Assistant then gives this device its own long-lived token, listed under the device name in your profile. The password is not kept.",
+    val tokenHint: String? = "Paste a long-lived access token from your Home Assistant profile (Security, at the bottom of the page)."
+)
 
 /**
  * Which alarm panel to drive, and which contact sensors to show beside it.

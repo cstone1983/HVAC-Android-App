@@ -1,5 +1,5 @@
 {
-  "version": "6.34.0",
+  "version": "6.35.0",
   "appTitle": "Home Control",
   "roomTempDecimals": 1,
   "roomTempChangeSeconds": 20,
@@ -630,5 +630,15 @@
       "confirm": false
     }
   ],
-  "powerHoldHint": "Hold a light to dim it"
+  "powerHoldHint": "Hold a light to dim it",
+  "signIn": {
+    "deviceNames": {
+      "SM-X200": "HVAC tablet - upstairs",
+      "SM-X110": "HVAC tablet - kitchen",
+      "SM-F966U1": "HVAC phone - Fold"
+    },
+    "fallbackDeviceName": "HVAC {model}",
+    "tokenLifespanDays": 3650,
+    "messages": {}
+  }
 }

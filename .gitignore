@@ -11,3 +11,6 @@
 local.properties
 .env
 debug.keystore
+
+# Pictures of the sign-in screen from SignInScreenTest (recordRoborazziDebug). Regenerated on demand.
+app/src/test/screenshots/sign_in_*.png

@@ -19,7 +19,7 @@ the releases of **[cstone1983/app-builder](https://github.com/cstone1983/app-bui
 Things that follow from that:
 
 - **Version numbers.** app-builder sets `versionName` to this repo's `versionName` plus its run
-  number (`82.0` becomes `82.0.57`) and `versionCode` to `1000 + run`. Keep `versionName` in
+  number (`83.0` becomes `83.0.57`) and `versionCode` to `1000 + run`. Keep `versionName` in
   `app/build.gradle.kts` as plain dotted numbers and `versionCode` below 1000.
 - **No secrets are built in.** app-builder has no `.env`, and its releases are public, so a
   release carries no Home Assistant token, no main (remote) Home Assistant address and no GitHub
@@ -29,13 +29,28 @@ Things that follow from that:
 
 ### First start after a fresh install
 
-A fresh install opens on a sign-in screen. Paste a Home Assistant long-lived access token and tap
-LOG IN. On the home network that is all it needs: with no main address set it signs in through the
-home address (`HA_BACKUP_URL` in `.env.example`). For a device that leaves the house, tap CHANGE
-SERVER ADDRESS first and enter the main address, or set it later in Settings > Connection.
+A fresh install opens on a sign-in screen. Type a Home Assistant username and password, check the
+device name, and tap LOG IN. If the account has two-step verification, the screen then asks for the
+code. Home Assistant makes a long-lived access token for the device, listed under the device name
+in the user's profile (Security > Long-lived access tokens); the app keeps that token and nothing
+else. The password is not stored.
+
+On the home network that is all it needs: with no main address set it signs in through the home
+address (`HA_BACKUP_URL` in `.env.example`), shown under the heading. For a device that leaves the
+house, tap CHANGE SERVER ADDRESS first and enter the main address, or set it later in Settings >
+Connection.
+
+USE A LONG-LIVED TOKEN INSTEAD swaps the three fields for one where a token can be pasted, for an
+account that does not sign in with a password.
+
+A failed login is never retried by the app: Home Assistant counts failures and, if `ip_ban` is
+set up, bans the address after enough of them. The screen shows what Home Assistant answered.
 
 The token and addresses are kept on the device and survive every update. They are lost only if the
-app is uninstalled.
+app is uninstalled. Signing in again after that makes a new token; if the old name is still listed
+in Home Assistant, the new one gets " (2)" added, and the old entry can be deleted there.
+
+The default device names per tablet model are in `signIn.deviceNames` in `layout_config.json`.
 
 ## Layout updates (over the air)
 

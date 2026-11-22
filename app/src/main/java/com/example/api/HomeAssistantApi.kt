@@ -92,25 +92,9 @@ interface HomeAssistantApi {
         @Body payload: Map<String, Any>
     ): Response<okhttp3.ResponseBody>
 
-    @POST("auth/login_flow")
-    suspend fun startLoginFlow(
-        @Body request: LoginFlowStartRequest
-    ): LoginFlowResponse
-
-    @POST("auth/login_flow/{flow_id}")
-    suspend fun submitLoginStep(
-        @Path("flow_id") flowId: String,
-        @Body request: LoginFlowStepRequest
-    ): LoginFlowResponse
-
-    @POST("auth/token")
-    @retrofit2.http.FormUrlEncoded
-    suspend fun getAccessToken(
-        @retrofit2.http.Field("grant_type") grantType: String,
-        @retrofit2.http.Field("code") code: String,
-        @retrofit2.http.Field("client_id") clientId: String,
-        @retrofit2.http.Field("redirect_uri") redirectUri: String
-    ): TokenResponse
+    // Username and password sign-in does not go through Retrofit: see HaSignInClient. The
+    // startLoginFlow / submitLoginStep / getAccessToken declarations that used to be here were
+    // never called and did not match Home Assistant's auth API.
 
     @POST("auth/token")
     @retrofit2.http.FormUrlEncoded
@@ -119,33 +103,3 @@ interface HomeAssistantApi {
         @retrofit2.http.Field("action") action: String = "revoke"
     ): okhttp3.ResponseBody
 }
-
-@JsonClass(generateAdapter = true)
-data class LoginFlowStartRequest(
-    val client_id: String = "http://localhost/",
-    val handler: List<String> = listOf("homeassistant", "default"),
-    val redirect_uri: String = "http://localhost/"
-)
-
-@JsonClass(generateAdapter = true)
-data class LoginFlowResponse(
-    val flow_id: String,
-    val step_id: String,
-    val type: String,
-    val result: String? = null,
-    val errors: Map<String, String>? = null
-)
-
-@JsonClass(generateAdapter = true)
-data class LoginFlowStepRequest(
-    val username: String,
-    val password: String
-)
-
-@JsonClass(generateAdapter = true)
-data class TokenResponse(
-    val access_token: String,
-    val expires_in: Int,
-    val refresh_token: String,
-    val token_type: String
-)

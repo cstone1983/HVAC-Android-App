@@ -769,7 +769,7 @@ minute**. A helper written at `:31` is the recurring schedule, not something don
 applicationId  com.aistudio.hvac_controller.krnyzs
 MainActivity   com.example.MainActivity
 namespace      com.example
-versionCode 82   versionName "82.0"   (app-builder releases: 1000 + run, "82.0.<run>")
+versionCode 83   versionName "83.0"   (app-builder releases: 1000 + run, "83.0.<run>")
 minSdk 24        targetSdk 36     compileSdk 36.1
 repo           cstone1983/HVAC-Android-App  (branch main)
 ```
@@ -973,6 +973,34 @@ and no GitHub token. A fresh install therefore starts on the sign-in screen (`re
 and with no main address it signs in through the home address (`signInUrl`). Both are kept in
 SharedPreferences and survive updates, but not an uninstall. Never put the token or the remote
 address in `.env.example` or anywhere else in git: the repo and the releases are public.
+
+**Sign-in (83.0).** The sign-in screen (`ui/SignInScreen.kt`) takes a username, password and
+device name and ends with an ordinary long-lived token in SharedPreferences `ha_token`, the same
+place a pasted token goes (`storeSignIn`), so nothing after the screen differs. The steps, in
+`api/HaSignInClient.kt`, each sent once:
+
+1. `POST auth/login_flow` with `{client_id, handler: ["homeassistant", null], redirect_uri}`.
+   `client_id` and `redirect_uri` are the server's own address plus "/", as the login page sends.
+2. `POST auth/login_flow/{flow_id}` with `{client_id, username, password}`. If the answer is a form
+   with `step_id: "mfa"`, the screen asks for the code and posts `{client_id, code}` to the same
+   flow. `select_mfa_module` (an account with two methods) is offered as buttons.
+3. On `type: "create_entry"`, `POST auth/token` form-encoded: `grant_type=authorization_code`,
+   `code`, `client_id`.
+4. A WebSocket of its own: `auth` with the short-lived token, `auth/refresh_tokens` to see which
+   long-lived names are taken, then `auth/long_lived_access_token` with `client_name` and
+   `lifespan` (days, from `signIn.tokenLifespanDays`, 3650).
+5. `POST auth/token` with `token=<refresh token>&action=revoke`. The short-lived pair is held only
+   inside `finishSignIn` and revoked in its `finally`.
+
+Rules that are easy to break: a 4xx on steps 1 to 3 counts as a failed login in Home Assistant
+(`log_invalid_auth`), as does a wrong password or code, and failed logins feed `ip_ban`; so
+nothing is retried automatically, the sign-in HTTP client has retries and redirects off, and it
+has no logging interceptor. Home Assistant allows one long-lived token per name per user and
+answers a duplicate with a bare "Unknown error", so a taken name gets " (2)". The parsing, the
+next-step decision (`nextSignInMove`) and the error wording are in `api/HaSignIn.kt` and unit
+tested; `HaSignInClientTest` runs the whole exchange against a fake server. Device names per
+model, the lifespan, the field labels and replacement error wording are in `signIn` in
+`layout_config.json` (6.35.0).
 
 ### 6.9 Deploy targets
 

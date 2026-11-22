@@ -18,8 +18,8 @@ android {
     // main and overrides these: versionCode = 1000 + its run number, versionName =
     // "<versionName>.<run>". So keep versionName plain dotted numbers (its check rejects anything
     // else) and versionCode below 1000.
-    versionCode = 82
-    versionName = "82.0"
+    versionCode = 83
+    versionName = "83.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -136,6 +136,7 @@ dependencies {
   testImplementation(libs.androidx.junit)
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation(libs.mockwebserver)
   testImplementation(libs.robolectric)
   testImplementation(libs.roborazzi)
   testImplementation(libs.roborazzi.compose)

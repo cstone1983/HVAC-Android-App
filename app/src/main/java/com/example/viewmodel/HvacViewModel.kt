@@ -1098,90 +1098,257 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         startSync()
     }
 
-    fun login(token: String) {
+    // ------------------------------------------------------------------------------------------
+    // Sign-in
+    // ------------------------------------------------------------------------------------------
+
+    /**
+     * Where a token lives once the app has one, however it was obtained: pasted on the sign-in
+     * screen, or made by Home Assistant after a username and password sign-in. Everything else
+     * in the app reads it from here (see [resolveHaToken]).
+     */
+    private fun storeSignIn(formattedUrl: String, token: String) {
+        sharedPrefs.edit()
+            .putString("ha_url", formattedUrl)
+            .putString("ha_token", token)
+            .putBoolean("logged_in", true)
+            .apply()
+
+        HomeAssistantClient.initialize(formattedUrl, token)
+        _haUrl.value = formattedUrl
+        _isLoggedIn.value = true
+        _loginErrorMessage.value = null
+        startSync()
+    }
+
+    /**
+     * The address the sign-in screen talks to: the main address, or the home (LAN) address when
+     * the build has no main address and none has been saved. Empty when there is neither.
+     */
+    fun signInAddress(): String {
+        val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+        val savedUrl = sharedPrefs.getString("ha_url", null)
+        val target = com.example.api.signInUrl(
+            if (!savedUrl.isNullOrEmpty()) savedUrl else buildUrl,
+            _backupHaUrl.value
+        )
+        return if (target.isEmpty()) "" else HomeAssistantClient.formatBaseUrl(target)
+    }
+
+    /** The name this device's token gets in Home Assistant unless it is changed on the screen. */
+    fun defaultSignInDeviceName(): String {
+        val config = getActiveLayoutConfig().signIn
+        return com.example.api.defaultDeviceName(
+            android.os.Build.MODEL, config?.deviceNames, config?.fallbackDeviceName
+        )
+    }
+
+    private val _signInStage = MutableStateFlow<com.example.api.SignInStage>(com.example.api.SignInStage.Credentials)
+    val signInStage: StateFlow<com.example.api.SignInStage> = _signInStage.asStateFlow()
+
+    /** Goes up each time Home Assistant rejects the password, so the screen can empty the field. */
+    private val _passwordRejections = MutableStateFlow(0)
+    val passwordRejections: StateFlow<Int> = _passwordRejections.asStateFlow()
+
+    /** A login flow that is waiting for a two-step code. Held in memory only. */
+    private class PendingSignIn(
+        val baseUrl: String,
+        val flowId: String,
+        val deviceName: String,
+        val inputField: String
+    )
+
+    private var pendingSignIn: PendingSignIn? = null
+    private val signInClient by lazy { com.example.api.HaSignInClient() }
+
+    private fun showSignInError(error: com.example.api.SignInError) {
+        _loginErrorMessage.value =
+            com.example.api.signInErrorText(error, getActiveLayoutConfig().signIn?.messages)
+    }
+
+    /**
+     * Runs one sign-in request. Exactly one: Home Assistant counts a refused request as a failed
+     * login and bans an address that collects too many, so nothing in here tries again by
+     * itself. A second attempt only happens when someone taps the button again.
+     */
+    private fun signInRequest(block: suspend () -> Unit) {
+        if (_isLoggingIn.value) return
+        _isLoggingIn.value = true
+        _loginErrorMessage.value = null
         viewModelScope.launch {
-            _loginErrorMessage.value = null
-            if (token.isBlank()) {
-                _loginErrorMessage.value = "Long-lived access token cannot be empty."
-                return@launch
-            }
-            _isLoggingIn.value = true
             try {
-                // Get pre-configured background server address
-                val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
-
-                // Fallback option in case it was previously stored in sharedPrefs
-                val savedUrl = sharedPrefs.getString("ha_url", null)
-
-                // A release from app-builder has no main address built in. On the home network
-                // the home address is enough to sign in; the main one can be set with CHANGE
-                // SERVER ADDRESS first, or in Settings > Connection afterwards.
-                val targetUrl = com.example.api.signInUrl(
-                    if (!savedUrl.isNullOrEmpty()) savedUrl else buildUrl,
-                    _backupHaUrl.value
-                )
-
-                if (targetUrl.isEmpty()) {
-                    _loginErrorMessage.value = "Set the server address first (CHANGE SERVER ADDRESS below)."
-                    return@launch
-                }
-
-                // Trim trailing slash and format helper
-                val formattedUrl = HomeAssistantClient.formatBaseUrl(targetUrl)
-
-                // Cleartext Check
-                val isCleartext = formattedUrl.startsWith("http://", ignoreCase = true)
-                if (isCleartext) {
-                    android.util.Log.w(
-                        "HomeAssistantAuth",
-                        "WARNING: Cleartext (HTTP) URL detected: $formattedUrl."
-                    )
-                }
-
-                val cleanToken = token.trim()
-
-                // Verify and initialize the authenticated client using long-lived access token directly
-                val tempService = HomeAssistantClient.createService(formattedUrl, cleanToken)
-                val states = tempService.getStates()
-                if (states.isNotEmpty()) {
-                    sharedPrefs.edit()
-                        .putString("ha_url", formattedUrl)
-                        .putString("ha_token", cleanToken)
-                        .putBoolean("logged_in", true)
-                        .apply()
-
-                    HomeAssistantClient.initialize(formattedUrl, cleanToken)
-                    _haUrl.value = formattedUrl
-                    _isLoggedIn.value = true
-                    _loginErrorMessage.value = null
-                    startSync()
-                } else {
-                    _loginErrorMessage.value = "Validation failed: No entities found or token is invalid."
-                }
-            } catch (e: retrofit2.HttpException) {
-                val statusCode = e.code()
-                val errorBody = try { e.response()?.errorBody()?.string() } catch (ex: Exception) { null }
-                
-                if (statusCode == 500) {
-                    android.util.Log.e("HomeAssistantAuth", "CRITICAL 500 INTERNAL SERVER ERROR - Raw Response Body: $errorBody", e)
-                } else {
-                    android.util.Log.e("HomeAssistantAuth", "HTTP Error $statusCode - Raw Response Body: $errorBody", e)
-                }
-
-                val savedUrl = sharedPrefs.getString("ha_url", null)
-                val targetUrlLocal = if (!savedUrl.isNullOrEmpty()) savedUrl else (try { com.example.BuildConfig.HA_URL } catch (ex: Exception) { "" })
-                val isCleartext = targetUrlLocal.startsWith("http://", ignoreCase = true)
-                val cleartextNotice = if (isCleartext) {
-                    " (Notice: Using cleartext HTTP. Server frequently fails or returns 500 Internal Server Error unless accessed securely via HTTPS.)"
-                } else {
-                    ""
-                }
-
-                _loginErrorMessage.value = "Connection failed (${statusCode}): ${e.message()} - ${errorBody ?: "No details"}$cleartextNotice"
+                block()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: com.example.api.SignInException) {
+                showSignInError(e.error)
             } catch (e: Exception) {
-                _loginErrorMessage.value = "Connection failed: ${e.localizedMessage ?: "Unknown error"}"
+                // The class name only: a message could carry part of a request.
+                showSignInError(
+                    com.example.api.SignInError("unexpected", "Sign-in stopped unexpectedly (${e.javaClass.simpleName}).")
+                )
             } finally {
                 _isLoggingIn.value = false
+            }
+        }
+    }
+
+    /**
+     * Username and password sign-in. Ends with a long-lived token stored exactly where a pasted
+     * one goes, so nothing after the sign-in screen can tell the difference. The password is
+     * sent to Home Assistant once and is not kept, saved or logged.
+     */
+    fun loginWithPassword(username: String, password: String, deviceName: String) {
+        val user = username.trim()
+        if (user.isEmpty() || password.isEmpty()) {
+            _loginErrorMessage.value = "Enter your username and password."
+            return
+        }
+        val baseUrl = signInAddress()
+        if (baseUrl.isEmpty()) {
+            _loginErrorMessage.value = "Set the server address first (CHANGE SERVER ADDRESS below)."
+            return
+        }
+        val name = deviceName.trim().ifEmpty { defaultSignInDeviceName() }
+        signInRequest {
+            dropPendingSignIn()
+            val start = signInClient.startFlow(baseUrl)
+            if (start is com.example.api.LoginFlowResult.Form && start.stepId == "init" && start.error == null) {
+                val result = signInClient.submitStep(
+                    baseUrl, start.flowId, mapOf("username" to user, "password" to password)
+                )
+                handleSignInResult(baseUrl, name, result)
+            } else {
+                handleSignInResult(baseUrl, name, start)
+            }
+        }
+    }
+
+    /** The two-step code Home Assistant asked for. A wrong one can be typed again by hand. */
+    fun submitSignInCode(code: String) {
+        val pending = pendingSignIn
+        if (pending == null) {
+            _signInStage.value = com.example.api.SignInStage.Credentials
+            return
+        }
+        val clean = code.trim()
+        if (clean.isEmpty()) {
+            _loginErrorMessage.value = "Enter the code."
+            return
+        }
+        signInRequest {
+            val result = signInClient.submitStep(pending.baseUrl, pending.flowId, mapOf(pending.inputField to clean))
+            handleSignInResult(pending.baseUrl, pending.deviceName, result)
+        }
+    }
+
+    /** Which two-step method to use, for an account with more than one. */
+    fun chooseSignInMethod(moduleId: String) {
+        val pending = pendingSignIn ?: return
+        signInRequest {
+            val result = signInClient.submitStep(
+                pending.baseUrl, pending.flowId, mapOf(com.example.api.FIELD_MFA_MODULE to moduleId)
+            )
+            handleSignInResult(pending.baseUrl, pending.deviceName, result)
+        }
+    }
+
+    /** Back to the username and password, giving up a sign-in that was waiting for a code. */
+    fun cancelSignInStep() {
+        if (_isLoggingIn.value) return
+        _loginErrorMessage.value = null
+        viewModelScope.launch { dropPendingSignIn() }
+    }
+
+    private suspend fun dropPendingSignIn() {
+        val pending = pendingSignIn
+        pendingSignIn = null
+        _signInStage.value = com.example.api.SignInStage.Credentials
+        if (pending != null) signInClient.abandonFlow(pending.baseUrl, pending.flowId)
+    }
+
+    private suspend fun handleSignInResult(
+        baseUrl: String,
+        deviceName: String,
+        result: com.example.api.LoginFlowResult
+    ) {
+        when (val next = com.example.api.nextSignInMove(result)) {
+            is com.example.api.SignInMove.Finish -> {
+                pendingSignIn = null
+                finishSignIn(baseUrl, deviceName, next.code)
+            }
+            is com.example.api.SignInMove.Ask -> {
+                pendingSignIn = PendingSignIn(baseUrl, next.flowId, deviceName, next.inputField)
+                _signInStage.value = next.stage
+                next.error?.let { showSignInError(it) }
+            }
+            is com.example.api.SignInMove.Stop -> {
+                // Home Assistant has discarded the flow itself when it aborted; otherwise it is
+                // still open on the username and password form and is given up here.
+                pendingSignIn = null
+                _signInStage.value = com.example.api.SignInStage.Credentials
+                if (next.passwordRejected) _passwordRejections.value += 1
+                showSignInError(next.error)
+                next.openFlowId?.let { signInClient.abandonFlow(baseUrl, it) }
+            }
+        }
+    }
+
+    /**
+     * From "Home Assistant accepted the login" to a stored long-lived token. The short-lived
+     * pair exists only inside this function and is revoked on the way out, whatever happened.
+     */
+    private suspend fun finishSignIn(baseUrl: String, deviceName: String, code: String) {
+        val pair = signInClient.exchangeCode(baseUrl, code)
+        try {
+            val days = (getActiveLayoutConfig().signIn?.tokenLifespanDays ?: 3650).coerceIn(1, 36500)
+            val token = signInClient.createLongLivedToken(baseUrl, pair.accessToken, deviceName, days)
+            _signInStage.value = com.example.api.SignInStage.Credentials
+            storeSignIn(baseUrl, token)
+        } finally {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                signInClient.revoke(baseUrl, pair.refreshToken)
+            }
+        }
+    }
+
+    /**
+     * The fallback: a long-lived token pasted in. It is checked with one read of the states and
+     * then stored the same way as one made by [loginWithPassword].
+     */
+    fun login(token: String) {
+        val cleanToken = token.trim()
+        if (cleanToken.isEmpty()) {
+            _loginErrorMessage.value = "Paste a long-lived access token first."
+            return
+        }
+        // A release from app-builder has no main address built in. On the home network the home
+        // address is enough to sign in; the main one can be set with CHANGE SERVER ADDRESS
+        // first, or in Settings > Connection afterwards.
+        val formattedUrl = signInAddress()
+        if (formattedUrl.isEmpty()) {
+            _loginErrorMessage.value = "Set the server address first (CHANGE SERVER ADDRESS below)."
+            return
+        }
+        signInRequest {
+            try {
+                val states = HomeAssistantClient.createService(formattedUrl, cleanToken).getStates()
+                if (states.isNotEmpty()) {
+                    storeSignIn(formattedUrl, cleanToken)
+                } else {
+                    _loginErrorMessage.value = "Home Assistant accepted the token but returned no entities."
+                }
+            } catch (e: retrofit2.HttpException) {
+                val body = try { e.response()?.errorBody()?.string() } catch (ex: Exception) { null }
+                throw com.example.api.SignInException(
+                    if (e.code() == 401) {
+                        com.example.api.SignInError("invalid_token", "Home Assistant did not accept that token (401).")
+                    } else {
+                        com.example.api.httpErrorMessage(e.code(), body)
+                    }
+                )
+            } catch (e: java.io.IOException) {
+                throw com.example.api.SignInException(com.example.api.networkErrorMessage(e, formattedUrl))
             }
         }
     }
