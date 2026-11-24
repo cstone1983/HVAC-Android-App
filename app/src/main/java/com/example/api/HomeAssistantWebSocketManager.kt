@@ -178,9 +178,28 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
     private var publishJob: Job? = null
 
     init {
+        HomeNetwork.init(appContext)
         registerNetworkCallback()
         startStatePublisher()
     }
+
+    /**
+     * Whether the home (backup) address may be used right now: only on the home Wi-Fi.
+     *
+     * The ViewModel already only asked for the home address at home, but the background service
+     * and Android Auto passed it as the backup with no check, and this class failed over to it on
+     * its own after two failures, on any network. The token then went over plain HTTP to whatever
+     * answered at the home address. Every switch to it now asks here.
+     */
+    private fun homeAddressAllowed(): Boolean = try {
+        HomeNetwork.onHomeWifi(appContext)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** A LAN address the token may not go to from here. The main address is never one ([resolveMainHaUrl]). */
+    private fun blockedHere(rawUrl: String): Boolean =
+        ((backupRawUrl.isNotEmpty() && rawUrl == backupRawUrl) || isLocalAddress(rawUrl)) && !homeAddressAllowed()
 
     /**
      * Publishes a snapshot of [liveStates] at most every [STATE_PUBLISH_INTERVAL_MS], and only
@@ -300,7 +319,7 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         primaryRawUrl = primaryUrl
         backupRawUrl = effectiveBackup
         consecutiveHostFailures = 0
-        usingBackup = preferBackup && backupRawUrl.isNotEmpty()
+        usingBackup = preferBackup && backupRawUrl.isNotEmpty() && homeAddressAllowed()
         _usingBackupUrl.value = usingBackup
 
         val startRawUrl = if (usingBackup) backupRawUrl else primaryRawUrl
@@ -337,6 +356,23 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
     private fun connectInternal() {
         if (isExplicitlyDisconnected) return
         if (currentWsUrl.isEmpty() || currentToken.isEmpty()) return
+
+        // Every attempt, the first and each reconnect, checks the network it is about to use. A
+        // phone that was home and has just left must not retry the home address on the new one.
+        if (blockedHere(currentRawUrl)) {
+            val main = primaryRawUrl.takeIf { it.isNotEmpty() && !blockedHere(it) }
+            if (main == null) {
+                Log.w(TAG, "Not connecting: the home address is only used on the home Wi-Fi, and there is no main address")
+                _connectionState.value = HaConnectionState.Error("The home address is only used on the home Wi-Fi")
+                return
+            }
+            Log.i(TAG, "Off the home Wi-Fi: using the main address instead of the home one")
+            usingBackup = false
+            _usingBackupUrl.value = false
+            consecutiveHostFailures = 0
+            currentRawUrl = main
+            currentWsUrl = toWebSocketUrl(main)
+        }
 
         // Invalidate every callback from any previous socket BEFORE tearing it down.
         val myGen = connectionGeneration.incrementAndGet()
@@ -746,7 +782,10 @@ class HomeAssistantWebSocketManager private constructor(private val appContext: 
         sessionJob?.cancel()
 
         consecutiveHostFailures++
-        if (backupRawUrl.isNotEmpty() && consecutiveHostFailures >= HOST_FAILOVER_THRESHOLD) {
+        // Back to the main address is always allowed; over to the home one only on the home Wi-Fi.
+        if (backupRawUrl.isNotEmpty() && consecutiveHostFailures >= HOST_FAILOVER_THRESHOLD &&
+            (usingBackup || homeAddressAllowed())
+        ) {
             usingBackup = !usingBackup
             val nextRawUrl = if (usingBackup) backupRawUrl else primaryRawUrl
             currentRawUrl = nextRawUrl

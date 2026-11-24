@@ -165,7 +165,8 @@ Two things to notice:
 
 ## 4. Home Assistant
 
-Base URL `https://ha.stoneyshome.com`, LAN fallback `http://10.10.11.103:8123` (it was
+Main address (built into the app since 85.0) Nabu Casa, `DEFAULT_MAIN_HA_URL`; home address
+`http://10.10.11.103:8123` (it was
 `http://10.10.1.116:8123` until the network overhaul; that address no longer
 answers). Timezone
 `America/New_York`. Roughly 1183 entities.
@@ -970,20 +971,34 @@ Obtainium on each device installs it in place. `.github/workflows/android-releas
 a build check and publishes nothing. (Until 2026-11-21 it attached a debug APK to a rolling `v1.0`
 release, signed with a fresh key each run, which could never install as an update.)
 
-**What an app-builder release does not carry.** No Home Assistant token, no main (remote) address
-and no GitHub token. A fresh install therefore starts on the sign-in screen (`resolveHaStartup`),
-and with no main address it signs in through the home address (`signInUrl`). Both are kept in
-SharedPreferences and survive updates, but not an uninstall. Never put the token or the remote
-address in `.env.example` or anywhere else in git: the repo and the releases are public.
+**What an app-builder release does not carry.** No Home Assistant token and no GitHub token. A
+fresh install therefore starts on the sign-in screen (`resolveHaStartup`) and signs in through the
+main address (`signInUrl`). The token is kept in SharedPreferences and survives updates, but not
+an uninstall. Never put the token in `.env.example` or anywhere else in git: the repo and the
+releases are public.
 
-**Where the home address comes from.** `HA_BACKUP_URL` in `.env.example` is the default home
-address of every app-builder release (the build has no `.env`, so BuildConfig takes the example
-file's value), and of the sign-in screen on a fresh install. The literal in `HvacViewModel`
-(`_backupHaUrl`) is only a last fallback and must say the same. A saved address (SharedPreferences
-`backup_ha_url`, or `ha_url` after signing in through the home address) wins over both and
-survives updates, so if Home Assistant moves again, a device that is already signed in needs the
-new address typed in Settings > Connection; changing the default only helps a fresh install.
-84.0 changed the default to `http://10.10.11.103:8123/`.
+**Where the addresses come from (85.0).** Both are built into the code, on the owner's say-so
+(2026-11-24), because app-builder has no `.env`: `DEFAULT_MAIN_HA_URL` (Nabu Casa) and
+`DEFAULT_HOME_HA_URL` (`http://10.10.11.103:8123/`) in `api/BuildDefaults.kt`. The order, in
+`resolveMainHaUrl` / `resolveHomeHaUrl`, is: saved in Settings (`ha_url`, `backup_ha_url`), then a
+development build's `.env`, then the built-in one. A LAN address never counts as the main one:
+before 85.0 signing in on a release went through the home address and saved it as `ha_url`, and
+such a saved value is now skipped. Everything that connects (ViewModel, foreground service,
+Android Auto) reads them the same way, through `api/HomeNetwork.kt`. If Home Assistant moves, a
+device with a saved address needs the new one typed in Settings > Connection; Restore default
+(or clearing the field) goes back to the built-in one.
+
+**The home address only on the home Wi-Fi (85.0).** The home address is plain HTTP, so the token
+goes there only when the Wi-Fi the device is on has exactly the name saved in Settings >
+Connection (`home_wifi_ssid`, `isHomeWifi`). That is the only test, on every device: the wall
+panels used to fall back to "my address is in the home address's subnet" with no saved name,
+which another network using the same range also passes. Reading the name needs location access,
+asked once by USE THIS WI-FI / FIND WI-FI NETWORKS; without it, or with location off, Android
+reports `<unknown ssid>` and the device stays on the main address. The check is made by the
+ViewModel at start and on every network change, by the foreground service and Android Auto
+before they connect, by the WebSocket before every connect and reconnect and before it fails
+over to the home address on its own, by the REST failover paths, and by the REST client's
+interceptor, which refuses any LAN address off the home Wi-Fi before the token is attached.
 
 **Sign-in (83.0).** The sign-in screen (`ui/SignInScreen.kt`) takes a username, password and
 device name and ends with an ordinary long-lived token in SharedPreferences `ha_token`, the same

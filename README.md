@@ -19,11 +19,14 @@ the releases of **[cstone1983/app-builder](https://github.com/cstone1983/app-bui
 Things that follow from that:
 
 - **Version numbers.** app-builder sets `versionName` to this repo's `versionName` plus its run
-  number (`84.0` becomes `84.0.57`) and `versionCode` to `1000 + run`. Keep `versionName` in
+  number (`85.0` becomes `85.0.57`) and `versionCode` to `1000 + run`. Keep `versionName` in
   `app/build.gradle.kts` as plain dotted numbers and `versionCode` below 1000.
 - **No secrets are built in.** app-builder has no `.env`, and its releases are public, so a
-  release carries no Home Assistant token, no main (remote) Home Assistant address and no GitHub
-  token. See "First start" below.
+  release carries no Home Assistant token and no GitHub token. See "First start" below.
+- **The two Home Assistant addresses are built in** (85.0, the owner's choice): the main address
+  is Nabu Casa (`DEFAULT_MAIN_HA_URL` in `api/BuildDefaults.kt`) and the home address is
+  `http://10.10.11.103:8123/` (`DEFAULT_HOME_HA_URL`). Addresses saved in Settings > Connection
+  still win. The home address is used only on the home Wi-Fi, by its saved name, on every device.
 - **This repo publishes no APK.** `.github/workflows/android-release.yml` is only a build check:
   unit tests plus the same unsigned release build.
 
@@ -35,10 +38,13 @@ code. Home Assistant makes a long-lived access token for the device, listed unde
 in the user's profile (Security > Long-lived access tokens); the app keeps that token and nothing
 else. The password is not stored.
 
-On the home network that is all it needs: with no main address set it signs in through the home
-address (`HA_BACKUP_URL` in `.env.example`), shown under the heading. For a device that leaves the
-house, tap CHANGE SERVER ADDRESS first and enter the main address, or set it later in Settings >
-Connection.
+It signs in through the built-in main address (Nabu Casa), shown under the heading, so it works on
+any network. CHANGE SERVER ADDRESS changes it; it can't be a home network address, because the main
+address is the one used away from home.
+
+To have a device talk to Home Assistant directly at home, open Settings > Connection while on the
+home Wi-Fi and tap USE THIS WI-FI (it asks for location access once: Android only shows Wi-Fi names
+to apps that have it). Until then, and on any other network, the device uses Nabu Casa.
 
 USE A LONG-LIVED TOKEN INSTEAD swaps the three fields for one where a token can be pasted, for an
 account that does not sign in with a password.

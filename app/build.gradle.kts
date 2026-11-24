@@ -18,8 +18,8 @@ android {
     // main and overrides these: versionCode = 1000 + its run number, versionName =
     // "<versionName>.<run>". So keep versionName plain dotted numbers (its check rejects anything
     // else) and versionCode below 1000.
-    versionCode = 84
-    versionName = "84.0"
+    versionCode = 85
+    versionName = "85.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

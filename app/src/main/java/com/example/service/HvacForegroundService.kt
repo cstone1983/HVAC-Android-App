@@ -473,19 +473,23 @@ class HvacForegroundService : Service() {
             // all three devices — so both were empty, the `isNotEmpty()` guard below failed, and
             // this service has never once opened a connection or kept one alive. It still posted
             // its notification, so it looked like it was working.
-            val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+            //
+            // Addresses (2026-11-24): the same main and home addresses the ViewModel uses, from
+            // HomeNetwork. This used to pass the home address as the backup with no home check,
+            // so the WebSocket's own failover could send the token to it on any network. Now the
+            // home address is only started on at home, and the WebSocket re-checks before every
+            // attempt.
             val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" }
-            val url = buildUrl.takeIf { it.isNotEmpty() && it != "https://localhost/" }
-                ?: sharedPrefs.getString("ha_url", null).orEmpty()
-            val backupUrl = try { com.example.BuildConfig.HA_BACKUP_URL } catch (e: Exception) { "" }
-                .takeIf { it.isNotEmpty() }
-                ?: sharedPrefs.getString("backup_ha_url", null).orEmpty()
+            com.example.api.HomeNetwork.init(applicationContext)
+            val url = com.example.api.HomeNetwork.mainUrl(applicationContext)
+            val backupUrl = com.example.api.HomeNetwork.homeUrl(applicationContext)
+            val atHome = com.example.api.HomeNetwork.onHomeWifi(applicationContext)
             val token = buildToken.takeIf { it.isNotEmpty() && it != "YOUR_HOME_ASSISTANT_TOKEN" }
                 ?: sharedPrefs.getString("ha_token", null).orEmpty()
 
             if (url.isNotEmpty() && token.isNotEmpty()) {
-                HomeAssistantClient.initialize(url, token)
-                wsManager.connectWithFailover(url, backupUrl, token)
+                HomeAssistantClient.initialize(if (atHome) backupUrl else url, token)
+                wsManager.connectWithFailover(url, backupUrl, token, preferBackup = atHome)
             }
 
             // Sound the siren when the panel goes off.
@@ -775,13 +779,16 @@ class HvacForegroundService : Service() {
         }
     }
 
-    /** BuildConfig first, then the saved preference — the order the connection uses. */
+    /** The address the connection would use right now, and the token (BuildConfig first, then saved). */
     private fun resolveHaCredentials(): Pair<String, String> {
         val prefs = getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
-        val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
         val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" }
-        val url = buildUrl.takeIf { it.isNotEmpty() && it != "https://localhost/" }
-            ?: prefs.getString("ha_url", null).orEmpty()
+        // At home the home address, anywhere else the main one (HomeNetwork decides).
+        val url = if (com.example.api.HomeNetwork.onHomeWifi(applicationContext)) {
+            com.example.api.HomeNetwork.homeUrl(applicationContext)
+        } else {
+            com.example.api.HomeNetwork.mainUrl(applicationContext)
+        }
         val token = buildToken.takeIf { it.isNotEmpty() && it != "YOUR_HOME_ASSISTANT_TOKEN" }
             ?: prefs.getString("ha_token", null).orEmpty()
         return url to token
