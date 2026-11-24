@@ -75,6 +75,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         instance = this
+        com.example.api.HomeNetwork.init(application)
     }
 
     private val sharedPrefs = application.getSharedPreferences("hvac_settings", Context.MODE_PRIVATE)
@@ -564,7 +565,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                         } catch (e: Exception) {
                             // Failover target retry
                             val token = resolveHaToken()
-                            val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                            val alternateUrl = failoverUrl()
                             if (token.isNotEmpty() && alternateUrl.isNotEmpty()) {
                                 HomeAssistantClient.initialize(alternateUrl, token)
                                 try {
@@ -614,13 +615,23 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         return sharedPrefs.getString("ha_token", null).orEmpty()
     }
 
-    private val _haUrl = MutableStateFlow(sharedPrefs.getString("ha_url", null) ?: (try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }))
+    private fun buildMainUrl(): String = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+    private fun buildHomeUrl(): String = try { com.example.BuildConfig.HA_BACKUP_URL } catch (e: Exception) { "" }
+
+    /** The main address: Settings, then `.env`, then the built-in Nabu Casa address. Never a LAN address. */
+    private fun resolvedMainUrl(): String = HomeAssistantClient.formatBaseUrl(
+        com.example.api.resolveMainHaUrl(buildMainUrl(), sharedPrefs.getString("ha_url", null))
+    )
+
+    /** The home address: Settings, then `.env`, then the built-in one. */
+    private fun resolvedHomeUrl(): String = HomeAssistantClient.formatBaseUrl(
+        com.example.api.resolveHomeHaUrl(buildHomeUrl(), sharedPrefs.getString("backup_ha_url", null))
+    )
+
+    private val _haUrl = MutableStateFlow(resolvedMainUrl())
     val haUrl: StateFlow<String> = _haUrl.asStateFlow()
 
-    private val _backupHaUrl = MutableStateFlow(
-        sharedPrefs.getString("backup_ha_url", null) 
-            ?: (try { com.example.BuildConfig.HA_BACKUP_URL } catch (e: Exception) { "http://10.10.11.103:8123/" })
-    )
+    private val _backupHaUrl = MutableStateFlow(resolvedHomeUrl())
     val backupHaUrl: StateFlow<String> = _backupHaUrl.asStateFlow()
 
     private val _usingBackupUrl = MutableStateFlow(false)
@@ -631,74 +642,45 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     // ------------------------------------------------------------------------------------------
 
     /**
-     * The home Wi-Fi's name, per device. On it, the app connects to the local (backup) address
-     * first instead of going out through the remote one and back — a direct hop on the LAN.
+     * The home Wi-Fi's name, per device. On it, the app connects to the home (backup) address
+     * instead of going out through Nabu Casa and back: a direct hop on the LAN.
      *
-     * Blank is fine: the home network is then recognised by the device's own address sharing a
-     * subnet with the local address, which needs no permission at all. The name only matters
-     * where that is ambiguous, and reading it needs location access (Android's rule, not ours).
+     * It is the only way home is recognised, on every device (2026-11-24, the user's rule: the home
+     * address "should only work on my home network not any network"). The wall panels used to fall
+     * back to "my address is in the home address's range" when no name was saved, which another
+     * network using the same range also passes. Blank now means "always the main address".
+     * Reading the current Wi-Fi's name needs location access (Android's rule, not ours).
      */
     private val _homeWifiSsid = MutableStateFlow(sharedPrefs.getString("home_wifi_ssid", "") ?: "")
     val homeWifiSsid: StateFlow<String> = _homeWifiSsid.asStateFlow()
 
-    /** True on the home network, false away, null when it cannot be told. */
+    /** True on the home Wi-Fi, false anywhere else. Null only until the first check has run. */
     private val _onHomeNetwork = MutableStateFlow<Boolean?>(null)
     val onHomeNetwork: StateFlow<Boolean?> = _onHomeNetwork.asStateFlow()
 
     fun setHomeWifiSsid(ssid: String) {
-        val clean = ssid.trim().trim('"')
+        val clean = com.example.api.cleanSsid(ssid).orEmpty()
         sharedPrefs.edit().putString("home_wifi_ssid", clean).apply()
         _homeWifiSsid.value = clean
         applyHomeNetworkPreference()
     }
 
     /** The current Wi-Fi's name, or null when not on Wi-Fi or Android will not say. */
-    fun currentWifiSsid(): String? = try {
-        val wm = getApplication<Application>().applicationContext
-            .getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager
-        @Suppress("DEPRECATION")
-        val raw = wm.connectionInfo?.ssid?.trim('"')
-        raw?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
-    } catch (e: Exception) {
-        null
-    }
+    fun currentWifiSsid(): String? = com.example.api.HomeNetwork.currentSsid(getApplication<Application>().applicationContext)
+
+    /** Whether this is the home Wi-Fi, by its saved name only ([com.example.api.isHomeWifi]). */
+    private fun evaluateHomeNetwork(): Boolean =
+        com.example.api.isHomeWifi(_homeWifiSsid.value, currentWifiSsid())
 
     /**
-     * Whether this device is on the same subnet as the local address — the permission-free way
-     * of knowing it is home. Null when the local address is a name rather than an IP literal.
+     * Where a failed request may try next: the main address when on the home one, and the home
+     * address only on the home Wi-Fi. Empty when there is nowhere else to go.
      */
-    private fun onLocalSubnet(): Boolean? {
-        val host = _backupHaUrl.value.substringAfter("://").substringBefore('/').substringBefore(':')
-        val target = host.split('.').mapNotNull { it.toIntOrNull() }.takeIf { it.size == 4 }
-            ?: return null
-        val targetBits = target.fold(0L) { acc, b -> (acc shl 8) or b.toLong() }
-        return try {
-            val cm = getApplication<Application>().applicationContext
-                .getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-            val props = cm.getLinkProperties(cm.activeNetwork) ?: return false
-            props.linkAddresses.any { la ->
-                val addr = la.address as? java.net.Inet4Address ?: return@any false
-                val prefix = la.prefixLength.coerceIn(0, 32)
-                val mine = addr.address.fold(0L) { acc, b -> (acc shl 8) or (b.toLong() and 0xFF) }
-                val mask = if (prefix == 0) 0L else (0xFFFFFFFFL shl (32 - prefix)) and 0xFFFFFFFFL
-                (mine and mask) == (targetBits and mask)
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun evaluateHomeNetwork(): Boolean? {
-        val home = _homeWifiSsid.value
-        val ssid = currentWifiSsid()
-        if (home.isNotBlank() && ssid != null) return ssid.equals(home, ignoreCase = false)
-        // A phone travels, and another network can use the same address range as home — on it,
-        // the subnet test would hand the Home Assistant token, in the clear, to whatever answered
-        // at the local address. So a phone is home only by its saved Wi-Fi name. The wall panels
-        // never leave the house, and keep the permission-free subnet test.
-        if (_deviceMode.value == com.example.model.DeviceMode.PHONE) return false
-        return onLocalSubnet()
-    }
+    private fun failoverUrl(): String = when {
+        _usingBackupUrl.value -> _haUrl.value
+        evaluateHomeNetwork() -> _backupHaUrl.value
+        else -> ""
+    }.takeIf { it.isNotBlank() && it != com.example.api.PLACEHOLDER_HA_URL }.orEmpty()
 
     /**
      * Wi-Fi networks in range, strongest first, by name — for picking the home network in
@@ -734,7 +716,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     fun applyHomeNetworkPreference() {
         val home = evaluateHomeNetwork()
         _onHomeNetwork.value = home
-        if (home == null || !_isLoggedIn.value) return
+        if (!_isLoggedIn.value) return
         val wantLocal = home && _backupHaUrl.value.isNotBlank()
         if (wsManager.usingBackupUrl.value == wantLocal && _usingBackupUrl.value == wantLocal) return
         val token = resolveHaToken()
@@ -776,11 +758,15 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateBackupHaUrl(newUrl: String) {
-        val formattedUrl = HomeAssistantClient.formatBaseUrl(newUrl)
-        sharedPrefs.edit().putString("backup_ha_url", formattedUrl).apply()
+        if (newUrl.isBlank()) {
+            // Blank means "the built-in home address", not "no home address".
+            sharedPrefs.edit().remove("backup_ha_url").apply()
+        }
+        val formattedUrl = if (newUrl.isBlank()) resolvedHomeUrl() else HomeAssistantClient.formatBaseUrl(newUrl)
+        if (newUrl.isNotBlank()) sharedPrefs.edit().putString("backup_ha_url", formattedUrl).apply()
         _backupHaUrl.value = formattedUrl
         
-        if (_usingBackupUrl.value && _isLoggedIn.value) {
+        if (_usingBackupUrl.value && _isLoggedIn.value && evaluateHomeNetwork()) {
             val token = resolveHaToken()
             if (token.isNotEmpty()) {
                 HomeAssistantClient.initialize(formattedUrl, token)
@@ -790,9 +776,16 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateHaUrl(newUrl: String) {
-        val formattedUrl = HomeAssistantClient.formatBaseUrl(newUrl)
-        sharedPrefs.edit().putString("ha_url", formattedUrl).apply()
+    /**
+     * Saves the main address. False, and nothing saved, when it is a LAN address: the main address
+     * is the one used away from home, where a LAN address would send the token to whatever
+     * answers there. A home address belongs in the home address field.
+     */
+    fun updateHaUrl(newUrl: String): Boolean {
+        if (newUrl.isNotBlank() && com.example.api.isLocalAddress(newUrl)) return false
+        if (newUrl.isBlank()) sharedPrefs.edit().remove("ha_url").apply()
+        val formattedUrl = if (newUrl.isBlank()) resolvedMainUrl() else HomeAssistantClient.formatBaseUrl(newUrl)
+        if (newUrl.isNotBlank()) sharedPrefs.edit().putString("ha_url", formattedUrl).apply()
         _haUrl.value = formattedUrl
         
         val token = resolveHaToken()
@@ -801,12 +794,13 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             wsManager.connect(formattedUrl, token)
             startSync()
         }
+        return true
     }
 
+    /** Back to the built-in main address: forgets the one saved in Settings. */
     fun restoreDefaultHaUrl() {
-        val defaultUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
-        val formattedUrl = HomeAssistantClient.formatBaseUrl(defaultUrl)
-        sharedPrefs.edit().putString("ha_url", formattedUrl).apply()
+        sharedPrefs.edit().remove("ha_url").apply()
+        val formattedUrl = resolvedMainUrl()
         _haUrl.value = formattedUrl
         
         val token = resolveHaToken()
@@ -817,9 +811,9 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun getDefaultHaUrl(): String {
-        return try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
-    }
+    /** The main address with nothing saved: `.env` on a development build, else Nabu Casa. */
+    fun getDefaultHaUrl(): String =
+        HomeAssistantClient.formatBaseUrl(com.example.api.resolveMainHaUrl(buildMainUrl(), null))
 
     fun setForceScreenOn(enabled: Boolean) {
         sharedPrefs.edit().putBoolean("force_screen_on", enabled).apply()
@@ -1008,7 +1002,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         val savedUrl = sharedPrefs.getString("ha_url", null)
         val savedToken = sharedPrefs.getString("ha_token", null)
 
-        val buildUrl = try { com.example.BuildConfig.HA_URL } catch (ex: Exception) { "" }
+        val buildUrl = buildMainUrl()
         val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (ex: Exception) { "" }
 
         val startup = com.example.api.resolveHaStartup(buildUrl, buildToken, savedUrl, savedToken)
@@ -1108,30 +1102,26 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
      * in the app reads it from here (see [resolveHaToken]).
      */
     private fun storeSignIn(formattedUrl: String, token: String) {
-        sharedPrefs.edit()
-            .putString("ha_url", formattedUrl)
+        val edit = sharedPrefs.edit()
             .putString("ha_token", token)
             .putBoolean("logged_in", true)
-            .apply()
+        // A LAN address is never saved as the main one (see resolveMainHaUrl).
+        if (!com.example.api.isLocalAddress(formattedUrl)) edit.putString("ha_url", formattedUrl)
+        edit.apply()
 
         HomeAssistantClient.initialize(formattedUrl, token)
-        _haUrl.value = formattedUrl
+        _haUrl.value = resolvedMainUrl()
         _isLoggedIn.value = true
         _loginErrorMessage.value = null
         startSync()
     }
 
     /**
-     * The address the sign-in screen talks to: the main address, or the home (LAN) address when
-     * the build has no main address and none has been saved. Empty when there is neither.
+     * The address the sign-in screen talks to: the main address, which since 85.0 always exists
+     * (Settings, `.env`, or the built-in Nabu Casa address).
      */
     fun signInAddress(): String {
-        val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
-        val savedUrl = sharedPrefs.getString("ha_url", null)
-        val target = com.example.api.signInUrl(
-            if (!savedUrl.isNullOrEmpty()) savedUrl else buildUrl,
-            _backupHaUrl.value
-        )
+        val target = com.example.api.signInUrl(_haUrl.value, _backupHaUrl.value)
         return if (target.isEmpty()) "" else HomeAssistantClient.formatBaseUrl(target)
     }
 
@@ -1322,9 +1312,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             _loginErrorMessage.value = "Paste a long-lived access token first."
             return
         }
-        // A release from app-builder has no main address built in. On the home network the home
-        // address is enough to sign in; the main one can be set with CHANGE SERVER ADDRESS
-        // first, or in Settings > Connection afterwards.
+        // The main address (built in since 85.0: Nabu Casa) works on any network, so sign-in goes
+        // there. It can be changed with CHANGE SERVER ADDRESS first.
         val formattedUrl = signInAddress()
         if (formattedUrl.isEmpty()) {
             _loginErrorMessage.value = "Set the server address first (CHANGE SERVER ADDRESS below)."
@@ -1359,10 +1348,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
             _loginErrorMessage.value = "Clearing existing sessions..."
             try {
                 // Get saved token and URL
-                val savedUrl = sharedPrefs.getString("ha_url", null)
                 val savedToken = sharedPrefs.getString("ha_token", null)
-                val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
-                val targetUrl = if (!savedUrl.isNullOrEmpty()) savedUrl else buildUrl
+                val targetUrl = _haUrl.value
 
                 if (!targetUrl.isNullOrEmpty() && !savedToken.isNullOrEmpty()) {
                     val formattedUrl = HomeAssistantClient.formatBaseUrl(targetUrl)
@@ -1408,7 +1395,8 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         // On the home network, start on the local address rather than finding it by failing over.
         val home = evaluateHomeNetwork()
         _onHomeNetwork.value = home
-        if (home == true && _backupHaUrl.value.isNotBlank()) _usingBackupUrl.value = true
+        // At home, start on the home address; anywhere else, never on it.
+        _usingBackupUrl.value = home && _backupHaUrl.value.isNotBlank()
         val targetUrl = if (_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
         val token = resolveHaToken()
         if (token.isNotEmpty() && targetUrl.isNotEmpty() && targetUrl != "https://localhost/") {
@@ -1465,7 +1453,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
         if (responseList == null && _isLoggedIn.value) {
             val token = resolveHaToken()
             if (token.isNotEmpty()) {
-                val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                val alternateUrl = failoverUrl()
                 if (alternateUrl.isNotEmpty() && alternateUrl != "https://localhost/") {
                     HomeAssistantClient.initialize(alternateUrl, token)
                     for (attempt in 1..maxAttempts) {
@@ -2987,7 +2975,7 @@ class HvacViewModel(application: Application) : AndroidViewModel(application) {
                     } catch (e: Exception) {
                         // Try to failover to primary or backup depending on which is currently configured and inactive
                         val token = resolveHaToken()
-                        val alternateUrl = if (!_usingBackupUrl.value) _backupHaUrl.value else _haUrl.value
+                        val alternateUrl = failoverUrl()
                         if (token.isNotEmpty() && alternateUrl.isNotEmpty() && alternateUrl != "https://localhost/") {
                             HomeAssistantClient.initialize(alternateUrl, token)
                             try {

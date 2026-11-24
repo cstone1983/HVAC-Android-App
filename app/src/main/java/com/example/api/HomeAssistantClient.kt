@@ -63,6 +63,13 @@ object HomeAssistantClient {
      */
     private val sharedClient: OkHttpClient by lazy {
         val authInterceptor = Interceptor { chain ->
+            // The home address is plain HTTP and only for the home Wi-Fi (see HomeNetwork). A
+            // request for it anywhere else stops here, before the token is attached. The caller
+            // sees an ordinary network error, which every caller already handles.
+            val requestUrl = chain.request().url.toString()
+            if (!HomeNetwork.mayUse(requestUrl)) {
+                throw java.io.IOException("The home address is only used on the home Wi-Fi")
+            }
             val builder = chain.request().newBuilder()
                 .header("Content-Type", "application/json")
             val token = activeToken
@@ -146,8 +153,11 @@ object HomeAssistantClient {
                         } catch (e: Exception) {
                             ""
                         }
-                        val finalUrl = if (buildUrl.isNotEmpty()) buildUrl else "https://localhost/"
-                        s = createService(finalUrl, buildToken)
+                        // Nothing has initialized the client yet: the main address, by the same
+                        // rule as everywhere else, rather than the build's placeholder.
+                        val finalUrl = resolveMainHaUrl(buildUrl, null)
+                        val token = buildToken.takeIf { it.isNotEmpty() && it != PLACEHOLDER_HA_TOKEN }.orEmpty()
+                        s = createService(finalUrl, token)
                         activeService = s
                     }
                 }

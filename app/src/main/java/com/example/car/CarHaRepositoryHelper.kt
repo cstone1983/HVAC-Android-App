@@ -66,12 +66,15 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
         // credentials come from .env rather than the login screen, and the guard below then
         // skipped the connect entirely — which is why the car logged "No HA credentials found"
         // and never connected on devices that were working perfectly well otherwise.
-        val buildUrl = try { com.example.BuildConfig.HA_URL } catch (e: Exception) { "" }
+        //
+        // Addresses (2026-11-24): the same main and home addresses as the rest of the app. In the
+        // car the phone is almost never on the home Wi-Fi, and the home address is then not used
+        // at all (the WebSocket checks before every attempt).
         val buildToken = try { com.example.BuildConfig.HA_TOKEN } catch (e: Exception) { "" }
-        val url = (prefs.getString("ha_url", null)
-            ?: buildUrl.takeIf { it.isNotBlank() && it != "https://localhost/" }).orEmpty()
-        val backupUrl = (prefs.getString("backup_ha_url", null)
-            ?: try { com.example.BuildConfig.HA_BACKUP_URL } catch (e: Exception) { "" }).orEmpty()
+        com.example.api.HomeNetwork.init(appContext)
+        val url = com.example.api.HomeNetwork.mainUrl(appContext)
+        val backupUrl = com.example.api.HomeNetwork.homeUrl(appContext)
+        val atHome = com.example.api.HomeNetwork.onHomeWifi(appContext)
         val token = if (buildToken.isNotBlank() && buildToken != "YOUR_HOME_ASSISTANT_TOKEN") {
             buildToken
         } else {
@@ -80,8 +83,8 @@ class CarHaRepositoryHelper private constructor(private val appContext: Context)
 
         if (url.isNotBlank() && token.isNotBlank()) {
             Log.d(TAG, "Initializing Car Home Assistant connection to $url")
-            HomeAssistantClient.initialize(url, token)
-            wsManager.connectWithFailover(url, backupUrl, token)
+            HomeAssistantClient.initialize(if (atHome) backupUrl else url, token)
+            wsManager.connectWithFailover(url, backupUrl, token, preferBackup = atHome)
         } else {
             Log.w(TAG, "No HA credentials found in SharedPreferences")
         }

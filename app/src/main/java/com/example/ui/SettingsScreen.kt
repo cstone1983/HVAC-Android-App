@@ -752,12 +752,21 @@ private fun ConnectionPage(viewModel: HvacViewModel) {
     )
     HomeWifiSection(viewModel)
     SettingsField("Main address (away from home)", primary, { primary = it }, keyboard = KeyboardType.Uri)
-    SettingsField("Home address (on the home Wi-Fi, and the backup)", backup, { backup = it }, keyboard = KeyboardType.Uri)
+    SettingsField("Home address (used only on the home Wi-Fi)", backup, { backup = it }, keyboard = KeyboardType.Uri)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PillButton("Save and reconnect", primary = true) {
-            viewModel.updateHaUrl(primary)
+            val mainSaved = viewModel.updateHaUrl(primary)
             viewModel.updateBackupHaUrl(backup)
-            Toast.makeText(context, "Saved — reconnecting", Toast.LENGTH_SHORT).show()
+            if (mainSaved) {
+                Toast.makeText(context, "Saved — reconnecting", Toast.LENGTH_SHORT).show()
+            } else {
+                primary = viewModel.haUrl.value
+                Toast.makeText(
+                    context,
+                    "The main address is used away from home, so it can't be a home network address. Home address saved.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
         PillButton("Restore default") {
             viewModel.restoreDefaultHaUrl()
@@ -770,12 +779,13 @@ private fun ConnectionPage(viewModel: HvacViewModel) {
 /**
  * Which Wi-Fi counts as home. On it the app talks to Home Assistant directly at the home address.
  *
- * "Find Wi-Fi networks" lists what is in range, strongest first; tapping one saves it. Android
- * shows Wi-Fi names only to apps with location access, so the first search asks for it.
+ * "Use this Wi-Fi" saves the network the device is on in one tap; "Find Wi-Fi networks" lists
+ * what is in range, strongest first, and tapping one saves it. Android shows Wi-Fi names only to
+ * apps with location access, so the first tap on either asks for it, once.
  *
- * On a phone the saved name is the only way home is recognised — a network elsewhere can share
- * home's address range, and would otherwise get the token over plain HTTP. A wall panel without a
- * saved name still recognises home by its network address.
+ * The saved name is the only way home is recognised, on every device, the wall panels included
+ * (2026-11-24). A network elsewhere can share home's address range, and would otherwise get the
+ * token over plain HTTP. With no name saved, the device always uses the main address.
  */
 @Composable
 private fun HomeWifiSection(viewModel: HvacViewModel) {
@@ -784,8 +794,9 @@ private fun HomeWifiSection(viewModel: HvacViewModel) {
     val homeSsid by viewModel.homeWifiSsid.collectAsStateWithLifecycle()
     val onHome by viewModel.onHomeNetwork.collectAsStateWithLifecycle()
     val usingBackup by viewModel.usingBackupUrl.collectAsStateWithLifecycle()
-    val deviceMode by viewModel.deviceMode.collectAsStateWithLifecycle()
     var current by remember { mutableStateOf(viewModel.currentWifiSsid()) }
+    // The home check re-runs on every network change; read the name again when its answer changes.
+    androidx.compose.runtime.LaunchedEffect(onHome) { current = viewModel.currentWifiSsid() }
     var networks by remember { mutableStateOf<List<String>>(emptyList()) }
     var searching by remember { mutableStateOf(false) }
 
@@ -801,37 +812,57 @@ private fun HomeWifiSection(viewModel: HvacViewModel) {
             }
         }
     }
+    fun useCurrent() {
+        val name = viewModel.currentWifiSsid()
+        current = name
+        if (name == null) {
+            Toast.makeText(context, "Can't read this Wi-Fi's name — check that Wi-Fi and location are on", Toast.LENGTH_LONG).show()
+        } else {
+            viewModel.setHomeWifiSsid(name)
+            Toast.makeText(context, "Home Wi-Fi set to $name", Toast.LENGTH_SHORT).show()
+        }
+    }
+    // What to do once location access is granted: search, or save the current Wi-Fi.
+    var afterGrant by remember { mutableStateOf<(() -> Unit)?>(null) }
     val askLocation = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) search()
-        else Toast.makeText(context, "Without location access Android won't show Wi-Fi names", Toast.LENGTH_LONG).show()
+        val next = afterGrant
+        afterGrant = null
+        if (granted) next?.invoke()
+        else Toast.makeText(context, "Without location access Android won't show Wi-Fi names, so this device will always use the main address", Toast.LENGTH_LONG).show()
+    }
+    fun withLocation(action: () -> Unit) {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) action() else {
+            afterGrant = action
+            askLocation.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        }
     }
 
     SettingsGroup {
         ValueRow(
             "Home network",
-            when (onHome) {
-                true -> "On the home network — talking to Home Assistant directly" + if (usingBackup) "" else " (switching…)"
-                false -> "Away from home — using the main address"
-                null -> "Can't tell right now"
+            when {
+                onHome == true -> "On the home Wi-Fi — talking to Home Assistant directly" + if (usingBackup) "" else " (switching…)"
+                homeSsid.isBlank() -> "Home Wi-Fi not set — using the main address"
+                onHome == false && current == null -> "Can't read this Wi-Fi's name — using the main address"
+                onHome == false -> "Not on the home Wi-Fi — using the main address"
+                else -> "Checking…"
             }
         )
         ValueRow(
             "Home Wi-Fi",
-            homeSsid.ifBlank {
-                if (deviceMode == com.example.model.DeviceMode.PHONE) "Not set — this phone always uses the main address"
-                else "Not set — recognised by network address"
-            },
+            homeSsid.ifBlank { "Not set — this device always uses the main address" },
             action = if (homeSsid.isNotBlank()) "Clear" else null,
             onClick = if (homeSsid.isNotBlank()) ({ viewModel.setHomeWifiSsid("") }) else null
         )
         Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-            PillButton(if (searching) "Searching…" else "Find Wi-Fi networks", primary = true) {
-                val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-                    context, android.Manifest.permission.ACCESS_FINE_LOCATION
-                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                if (granted) search() else askLocation.launch(android.Manifest.permission.ACCESS_FINE_LOCATION)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton("Use this Wi-Fi", primary = true) { withLocation { useCurrent() } }
+                PillButton(if (searching) "Searching…" else "Find Wi-Fi networks") { withLocation { search() } }
             }
             if (networks.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))

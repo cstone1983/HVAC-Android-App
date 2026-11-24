@@ -140,7 +140,8 @@ class SignInActions(
     val chooseMethod: (String) -> Unit = {},
     val startOver: () -> Unit = {},
     val clearSessions: () -> Unit = {},
-    val saveServer: (String) -> Unit = {},
+    /** False when the address was refused (a home network address can't be the main one). */
+    val saveServer: (String) -> Boolean = { true },
     val restoreServer: () -> Unit = {}
 )
 
@@ -595,8 +596,8 @@ private fun ServerAddressSection(
     actions: SignInActions,
     onDone: () -> Unit
 ) {
-    // A release has no main address built in, only a placeholder. Start the field on the address
-    // sign-in is actually going to use rather than on the placeholder.
+    // Since 85.0 there is always a main address (the built-in Nabu Casa one at least). The
+    // placeholder checks stay for safety: start the field on the address sign-in will use.
     val hasMain = currentHaUrl.isNotBlank() && currentHaUrl != PLACEHOLDER_HA_URL
     val hasDefault = defaultHaUrl.isNotBlank() && defaultHaUrl != PLACEHOLDER_HA_URL
     var urlText by remember(currentHaUrl, signInServer) {
@@ -611,7 +612,7 @@ private fun ServerAddressSection(
                 value = urlText,
                 onValueChange = { urlText = it },
                 label = { Text("Server address", color = Color.White.copy(alpha = 0.4f)) },
-                placeholder = { Text("http://192.168.1.10:8123", color = Color.White.copy(alpha = 0.2f)) },
+                placeholder = { Text("https://example.ui.nabu.casa", color = Color.White.copy(alpha = 0.2f)) },
                 colors = signInFieldColors(),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
@@ -628,9 +629,16 @@ private fun ServerAddressSection(
                 Button(
                     onClick = {
                         if (urlText.isNotBlank()) {
-                            actions.saveServer(urlText)
-                            Toast.makeText(context, "Server address saved", Toast.LENGTH_SHORT).show()
-                            onDone()
+                            if (actions.saveServer(urlText)) {
+                                Toast.makeText(context, "Server address saved", Toast.LENGTH_SHORT).show()
+                                onDone()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "This is the address used away from home, so it can't be a home network address. The home address is in Settings > Connection.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
                         } else {
                             Toast.makeText(context, "The address cannot be empty", Toast.LENGTH_SHORT).show()
                         }
